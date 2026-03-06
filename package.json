@@ -1,0 +1,15 @@
+{
+  "name": "fcp-pmr",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "node build.js",
+    "dev": "npm run build && wrangler dev",
+    "deploy": "npm run build && wrangler deploy",
+    "db:create": "wrangler d1 create fcp-pmr-db",
+    "db:migrate": "wrangler d1 execute fcp-pmr-db --remote --file=./migrations/0001_init.sql && wrangler d1 execute fcp-pmr-db --remote --file=./migrations/0002_auth.sql",
+    "db:migrate:local": "wrangler d1 execute fcp-pmr-db --local --file=./migrations/0001_init.sql && wrangler d1 execute fcp-pmr-db --local --file=./migrations/0002_auth.sql",
+    "db:seed:palm-city": "wrangler d1 execute fcp-pmr-db --remote --file=./migrations/seed_palm_city.sql",
+    "db:seed:southbury": "wrangler d1 execute fcp-pmr-db --remote --file=./migrations/seed_southbury.sql"
+  }
+}

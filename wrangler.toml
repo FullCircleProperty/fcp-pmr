@@ -1,0 +1,34 @@
+name = "fcp-pmr"
+main = "dist/worker.js"
+compatibility_date = "2024-12-01"
+
+# ─── Custom Domain ───
+routes = [
+  { pattern = "pmr.fullcircle-property.com/*", zone_name = "fullcircle-property.com" }
+]
+
+# ─── D1 Database ───
+[[d1_databases]]
+binding = "DB"
+database_name = "fcp-pmr-db"
+database_id = "ae314c77-468b-4668-8440-22c5a6bbdf52"  # ← deploy.sh fills this automatically
+
+# ─── AI Binding (Cloudflare Workers AI — optional) ───
+[ai]
+binding = "AI"
+
+# ─── R2 Object Storage (images) ───
+[[r2_buckets]]
+binding = "IMAGES"
+bucket_name = "fcp-pmr-images"
+
+# ─── Environment Variables ───
+[vars]
+ENVIRONMENT = "production"
+APP_NAME = "FCP — Property Market Research (PMR)"
+
+# ─── Secrets (set via wrangler secret put) ───
+# ANTHROPIC_API_KEY       — for Claude AI analysis
+# OPENAI_API_KEY          — for OpenAI analysis (alternative)
+# GOOGLE_PLACES_API_KEY   — for address autocomplete + property lookup
+# SEARCHAPI_KEY           — for real Airbnb/VRBO data via SearchAPI.io (100 free requests, then $40/mo)
