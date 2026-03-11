@@ -49,7 +49,7 @@ async function runAnalysis() {
   if (!pid) { toast('Select a property first', 'error'); return; }
   showLoading('Running pricing analysis...');
   try {
-    const d = await api('/api/properties/' + pid + '/analyze', 'POST', { use_ai: aiEnabled, ai_provider: aiProvider, analysis_type: analysisType });
+    const d = await api('/api/properties/' + pid + '/analyze', 'POST', { use_ai: aiEnabled, quality: aiQuality, analysis_type: analysisType });
     const prop = d.property || {};
     let h = '';
     if (d.market) {
@@ -72,7 +72,7 @@ async function runAnalysis() {
     if (d.pricelabs) {
       var pl = d.pricelabs;
       h += '<div style="grid-column:1/-1;padding:14px;background:rgba(167,139,250,0.06);border:1px solid rgba(167,139,250,0.2);border-radius:8px;margin-bottom:10px;">';
-      h += '<div style="font-weight:600;color:var(--purple);font-size:0.82rem;margin-bottom:8px;">📊 PriceLabs Live Data</div>';
+      h += '<div style="font-weight:600;color:var(--purple);font-size:0.82rem;margin-bottom:8px;">' + _ico('barChart', 13) + ' PriceLabs Live Data</div>';
       h += '<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:0.82rem;">';
       if (pl.base_price) h += '<span>Base: <strong>$' + pl.base_price + '/nt</strong></span>';
       if (pl.recommended_base) h += '<span>Rec: <strong style="color:var(--accent);">$' + pl.recommended_base + '/nt</strong></span>';
@@ -85,9 +85,9 @@ async function runAnalysis() {
     (d.strategies || []).forEach(s => {
       const ai = s.ai_generated;
       const isLTR = s.min_nights >= 365 || s.strategy_name.includes('LTR');
-      const provLabel = { anthropic: 'Claude', openai: 'GPT-4o', workers_ai: 'Workers AI' }[s.ai_provider] || s.ai_provider || 'AI';
+      const provLabel = { anthropic: 'Claude', openai: 'GPT-4o', workers_ai: 'Workers AI' }[s.ai_provider] || 'AI';
       h += '<div class="strategy-card' + (ai ? ' ai' : '') + '">';
-      h += '<h3>' + esc(s.strategy_name) + (ai ? ' <span class="ai-badge">✦ ' + esc(provLabel) + '</span>' : '') + (isLTR ? ' <span class="ltr-label">LTR</span>' : '') + '</h3>';
+      h += '<h3>' + esc(s.strategy_name) + (ai ? ' <span class="ai-badge">' + _ico('sparkle', 13, 'var(--purple)') + ' ' + esc(provLabel) + '</span>' : '') + (isLTR ? ' <span class="ltr-label">LTR</span>' : '') + '</h3>';
       if (isLTR) {
         h += '<div class="strategy-stat"><span>Monthly Rent</span><span class="val">$' + (s.base_nightly_rate || 0).toLocaleString() + '</span></div>';
         h += '<div class="strategy-stat"><span>Vacancy</span><span class="val">' + Math.round((1 - s.projected_occupancy) * 100) + '%</span></div>';
@@ -117,7 +117,7 @@ async function runAnalysis() {
       }
       if (s.reasoning) {
         h += '<div style="margin-top:10px;padding:10px 12px;background:' + (ai ? 'rgba(167,139,250,0.08)' : 'var(--bg)') + ';border-radius:6px;font-size:0.82rem;line-height:1.55;color:var(--text2);">';
-        if (ai) h += '<span style="color:var(--purple);font-weight:600;font-size:0.75rem;display:block;margin-bottom:4px;">✦ AI ANALYSIS</span>';
+        if (ai) h += '<span style="color:var(--purple);font-weight:600;font-size:0.75rem;display:block;margin-bottom:4px;">' + _ico('sparkle', 13, 'var(--purple)') + ' AI ANALYSIS</span>';
         // Show full analysis with paragraph breaks
         var analysisText = s.analysis || s.reasoning || '';
         analysisText.split(/\n\n|\n/).forEach(function(para) {
@@ -134,11 +134,11 @@ async function runAnalysis() {
       }
       // Cleaning fee reasoning
       if (s.cleaning_fee_reasoning) {
-        h += '<div style="margin-top:6px;font-size:0.72rem;color:var(--text3);">💡 Cleaning: ' + esc(s.cleaning_fee_reasoning) + '</div>';
+        h += '<div style="margin-top:6px;font-size:0.72rem;color:var(--text3);">' + _ico('zap', 13) + ' Cleaning: ' + esc(s.cleaning_fee_reasoning) + '</div>';
       }
       // Breakeven
       if (s.breakeven_rate) {
-        h += '<div style="margin-top:6px;font-size:0.72rem;color:var(--text3);">📊 Breakeven rate: $' + s.breakeven_rate + '/nt</div>';
+        h += '<div style="margin-top:6px;font-size:0.72rem;color:var(--text3);">' + _ico('barChart', 13) + ' Breakeven rate: $' + s.breakeven_rate + '/nt</div>';
       }
       h += '</div>';
     });
@@ -151,6 +151,15 @@ async function runAnalysis() {
     var provLabels2 = { anthropic: 'Claude (Anthropic)', openai: 'GPT-4o (OpenAI)', workers_ai: 'Workers AI (Cloudflare)' };
     if (usedProviders.size > 0) compMsg += ' · AI: ' + Array.from(usedProviders).map(function(p) { return provLabels2[p] || p; }).join(', ');
     h += '<div style="margin-top:10px;font-size:0.82rem;color:var(--text3);">' + compMsg + '</div>';
+    if (d.ai_error) {
+      var hasFallback = (d.strategies || []).some(function(s) { return s.ai_provider === 'workers_ai' && s.ai_generated; });
+      if (hasFallback) {
+        // Fallback succeeded — show soft warning not hard error
+        h += '<div style="margin-top:8px;padding:10px 14px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);border-radius:8px;font-size:0.78rem;color:#f59e0b;">' + _ico('alertCircle', 13, '#f59e0b') + ' <strong>Claude unavailable — fell back to Workers AI (Llama):</strong> ' + esc(d.ai_error.split('—')[0].trim()) + '</div>';
+      } else {
+        h += '<div style="margin-top:8px;padding:10px 14px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);border-radius:8px;font-size:0.8rem;color:var(--danger);">' + _ico('alertCircle', 13, '#f59e0b') + ' <strong>AI Strategy Failed:</strong> ' + esc(d.ai_error) + '</div>';
+      }
+    }
     document.getElementById('analysisResults').innerHTML = h;
   } catch (err) { toast(err.message, 'error'); }
   hideLoading();
@@ -272,7 +281,7 @@ async function runMarketSearch() {
     var d = r.data;
     // Sources
     (d.sources || []).forEach(function(s) {
-      var icon = s.status === 'ok' ? '✓' : s.status === 'limit' ? '⚠' : '✗';
+      var icon = s.status === 'ok' ? '✓' : s.status === 'limit' ? '' + _ico('alertCircle', 13, '#f59e0b') + '' : '✗';
       statusParts.push(icon + ' ' + r.city + '/' + s.name + (s.detail ? ': ' + s.detail : ''));
     });
     // Search links
@@ -301,7 +310,7 @@ async function runMarketSearch() {
   if (aiEl) {
     if (aiTexts.length > 0) {
       aiEl.innerHTML = aiTexts.map(function(a) {
-        return '<div style="margin-bottom:12px;"><strong style="color:var(--purple);">✦ ' + esc(a.city) + ', ' + esc(a.state) + ':</strong><div style="margin-top:4px;white-space:pre-wrap;">' + esc(a.text) + '</div></div>';
+        return '<div style="margin-bottom:12px;"><strong style="color:var(--purple);">' + _ico('sparkle', 13, 'var(--purple)') + ' ' + esc(a.city) + ', ' + esc(a.state) + ':</strong><div style="margin-top:4px;white-space:pre-wrap;">' + esc(a.text) + '</div></div>';
       }).join('');
       aiEl.style.display = '';
     } else { aiEl.style.display = 'none'; }
@@ -317,7 +326,7 @@ async function runMarketSearch() {
         seenCities[key] = true;
         linkHtml += '<div style="grid-column:1/-1;font-size:0.78rem;color:var(--text2);font-weight:600;margin-top:' + (linkHtml ? '10px' : '0') + ';">' + esc(l.city) + ', ' + esc(l.state) + '</div>';
       }
-      linkHtml += '<a href="' + esc(l.url) + '" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:6px;padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;text-decoration:none;color:var(--text);font-size:0.82rem;transition:border-color 0.15s;" onmouseover="this.style.borderColor=\'var(--accent)\'" onmouseout="this.style.borderColor=\'var(--border)\'">' + (l.icon || '🔗') + ' ' + esc(l.name) + ' <span style="color:var(--accent);font-size:0.72rem;">→</span></a>';
+      linkHtml += '<a href="' + esc(l.url) + '" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:6px;padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;text-decoration:none;color:var(--text);font-size:0.82rem;transition:border-color 0.15s;" onmouseover="this.style.borderColor=\'var(--accent)\'" onmouseout="this.style.borderColor=\'var(--border)\'">' + _ico(l.icon || 'link', 13) + ' ' + esc(l.name) + ' <span style="color:var(--accent);font-size:0.72rem;">→</span></a>';
     });
     linkGrid.innerHTML = linkHtml;
     linksEl.style.display = '';

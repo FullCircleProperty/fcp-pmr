@@ -21,8 +21,8 @@ async function loadRcUsage() {
     // Warning if close to limit
     if (pct >= 80) {
       h += '<div style="padding:10px 14px;margin-bottom:14px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.25);border-radius:8px;font-size:0.85rem;color:#ef4444;">';
-      if (pct >= 100) h += '⚠ Limit reached! RentCast calls are blocked until ' + d.reset_date + '. Increase the limit below or wait for reset.';
-      else h += '⚠ ' + d.remaining + ' calls remaining this month. Consider budgeting remaining calls carefully.';
+      if (pct >= 100) h +='' + _ico('alertTriangle', 13, '#f59e0b') + ' Limit reached! RentCast calls are blocked until ' + d.reset_date + '. Increase the limit below or wait for reset.';
+      else h +='' + _ico('alertTriangle', 13, '#f59e0b') + ' ' + d.remaining + ' calls remaining this month. Consider budgeting remaining calls carefully.';
       h += '</div>';
     }
 
@@ -68,7 +68,7 @@ async function loadRcUsage() {
         var ok = r.success === 1;
         h += '<div style="display:flex;gap:6px;align-items:center;padding:3px 0;font-size:0.75rem;border-bottom:1px solid var(--border);">';
         h += '<span style="color:' + (ok ? 'var(--accent)' : 'var(--danger)') + ';">' + (ok ? '✓' : '✗') + '</span>';
-        h += '<span style="color:var(--text3);">' + (r.created_at || '').substring(0, 16).replace('T', ' ') + '</span>';
+        h += '<span style="color:var(--text3);">' + fmtUTC(r.created_at) + '</span>';
         h += '<span>' + esc(r.endpoint || '') + '</span>';
         if (r.city) h += '<span style="color:var(--text3);">' + esc(r.city) + ', ' + esc(r.state) + '</span>';
         h += '</div>';
@@ -93,24 +93,22 @@ async function saveRcLimit() {
 
 // Admin: AI Config
 function setAdminAI(provider) {
-  aiProvider = provider;
-  localStorage.setItem('pmr_ai_provider', provider);
+  // provider arg kept for backward compat with any admin buttons, but quality is now the preference
+  localStorage.setItem('pmr_ai_provider', provider); // keep for legacy
   document.querySelectorAll('.admin-ai-btn').forEach(function(b) {
     b.classList.toggle('active', b.dataset.aiprov === provider);
   });
-  // Also update the analyze tab
-  document.querySelectorAll('.ai-option').forEach(function(o) { o.classList.toggle('selected', o.dataset.provider === provider); });
   var statusEl = document.getElementById('adminAiStatus');
-  if (statusEl) statusEl.textContent = 'Preferred provider set to: ' + provider + ' ✓';
+  if (statusEl) statusEl.textContent = 'Noted — AI provider selected automatically based on quality preference ✓';
   updateActiveProviderDisplay(provider);
-  toast('AI provider preference set to ' + provider);
+  toast('AI selection is now automatic — use Best/Economy in the analysis UI');
 }
 
 function loadAdminAIState() {
   document.querySelectorAll('.admin-ai-btn').forEach(function(b) {
-    b.classList.toggle('active', b.dataset.aiprov === aiProvider);
+    b.classList.toggle('active', false); // no longer a hard selection
   });
-  updateActiveProviderDisplay(aiProvider);
+  updateActiveProviderDisplay(null);
 }
 
 function updateActiveProviderDisplay(provider) {
@@ -133,10 +131,13 @@ async function loadBranding() {
     var subEl = document.getElementById('brandSubtitle');
     var logoEl = document.getElementById('brandLogoUrl');
     var favEl = document.getElementById('brandFaviconUrl');
+    var tzEl = document.getElementById('brandTimezone');
     if (nameEl && branding.companyName) nameEl.value = branding.companyName;
     if (subEl && branding.subtitle) subEl.value = branding.subtitle;
     if (logoEl && branding.logoUrl) logoEl.value = branding.logoUrl;
     if (favEl && branding.faviconUrl) favEl.value = branding.faviconUrl;
+    if (tzEl && branding.timezone) tzEl.value = branding.timezone;
+    if (branding.timezone) APP_TIMEZONE = branding.timezone;
     if (branding.logoUrl) updateBrandPreviewThumb('brandLogoUrl', branding.logoUrl);
     if (branding.faviconUrl) updateBrandPreviewThumb('brandFaviconUrl', branding.faviconUrl);
     applyBranding(branding);
@@ -149,6 +150,7 @@ async function initBranding() {
     var d = await api('/api/admin/settings/branding');
     var branding = {};
     try { branding = JSON.parse(d.value || '{}'); } catch {}
+    if (branding.timezone) APP_TIMEZONE = branding.timezone;
     applyBranding(branding);
   } catch {}
 }
@@ -208,14 +210,16 @@ async function saveBranding() {
     companyName: (document.getElementById('brandCompanyName') || {}).value || '',
     subtitle: (document.getElementById('brandSubtitle') || {}).value || '',
     logoUrl: (document.getElementById('brandLogoUrl') || {}).value || '',
-    faviconUrl: (document.getElementById('brandFaviconUrl') || {}).value || ''
+    faviconUrl: (document.getElementById('brandFaviconUrl') || {}).value || '',
+    timezone: (document.getElementById('brandTimezone') || {}).value || 'America/New_York'
   };
   try {
     await api('/api/admin/settings', 'POST', { key: 'branding', value: JSON.stringify(branding) });
+    APP_TIMEZONE = branding.timezone;
     applyBranding(branding);
     var statusEl = document.getElementById('brandSaveStatus');
     if (statusEl) statusEl.textContent = 'Saved ✓';
-    toast('Branding saved');
+    toast('Branding saved — timezone set to ' + branding.timezone);
   } catch (err) { toast('Save failed: ' + err.message, 'error'); }
 }
 
@@ -320,7 +324,7 @@ async function loadAiStatus() {
         var ok = r.success === 1;
         h += '<div style="display:flex;gap:8px;align-items:center;padding:4px 0;font-size:0.78rem;border-bottom:1px solid var(--border);">';
         h += '<span style="color:' + (ok ? 'var(--accent)' : 'var(--danger)') + ';">' + (ok ? '✓' : '✗') + '</span>';
-        h += '<span style="color:var(--text2);">' + (r.created_at || '').substring(0, 16).replace('T', ' ') + '</span>';
+        h += '<span style="color:var(--text2);">' + fmtUTC(r.created_at) + '</span>';
         h += '<span>' + esc(r.endpoint) + '</span>';
         h += '<span style="color:var(--text3);">' + esc(r.provider) + '</span>';
         if (r.error_msg) h += '<span style="color:var(--danger);font-size:0.72rem;">' + esc(r.error_msg).substring(0, 60) + '</span>';
@@ -365,8 +369,8 @@ async function loadBudgetSettings() {
   try {
     var alerts = await api('/api/usage-alerts');
     var services = [
-      { key: 'anthropic', label: 'Anthropic Claude AI', default_budget: 5.00, unit: '$/month' },
-      { key: 'openai', label: 'OpenAI GPT', default_budget: 5.00, unit: '$/month' },
+      { key: 'anthropic', label: 'Anthropic Claude AI', default_budget: 20.00, unit: '$/month' },
+      { key: 'openai', label: 'OpenAI GPT', default_budget: 20.00, unit: '$/month' },
       { key: 'searchapi', label: 'SearchAPI (Google)', default_budget: 5.00, unit: '$/month' },
       { key: 'rentcast', label: 'RentCast', default_budget: 5.00, unit: '$/month' },
       { key: 'google_places', label: 'Google Places', default_budget: 5.00, unit: '$/month' },
@@ -391,7 +395,7 @@ async function loadBudgetSettings() {
       var remaining = Math.max(0, budget - spent);
       var pct = budget > 0 ? Math.round(spent / budget * 100) : 0;
       var statusColor = pct >= 90 ? 'var(--danger)' : pct >= 70 ? '#f59e0b' : 'var(--accent)';
-      var statusIcon = pct >= 100 ? '🔴 Over budget' : pct >= 90 ? '🟡 Near limit' : pct >= 70 ? '🟡 Watch' : '🟢 OK';
+      var statusIcon = pct >= 100 ? '' + _ico('alertCircle', 13, 'var(--danger)') + ' Over budget' : pct >= 90 ? '' + _ico('alertCircle', 13, '#f59e0b') + ' Near limit' : pct >= 70 ? '' + _ico('alertCircle', 13, '#f59e0b') + ' Watch' : '' + _ico('check', 13, 'var(--accent)') + ' OK';
       h += '<tr><td style="font-weight:600;">' + esc(s.label) + '</td>';
       h += '<td><input type="number" step="0.50" min="0" value="' + budget.toFixed(2) + '" style="width:80px;font-size:0.82rem;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:3px 6px;" onchange="saveBudget(\'' + s.key + '\',this.value)"> $/mo</td>';
       h += '<td style="font-family:DM Mono,monospace;color:' + (spent > 0 ? '#f59e0b' : 'var(--text3)') + ';">$' + spent.toFixed(2) + '</td>';
@@ -407,7 +411,7 @@ async function loadBudgetSettings() {
       var ah = '';
       alerts.alerts.forEach(function(a) {
         var bg = a.level === 'critical' ? 'rgba(239,68,68,0.08)' : a.level === 'warning' ? 'rgba(245,158,11,0.08)' : 'rgba(96,165,250,0.06)';
-        var icon = a.level === 'critical' ? '🔴' : a.level === 'warning' ? '🟡' : 'ℹ️';
+        var icon = a.level === 'critical' ? '' + _ico('alertCircle', 13, 'var(--danger)') + '' : a.level === 'warning' ? '' + _ico('alertCircle', 13, '#f59e0b') + '' : '' + _ico('info', 13, 'var(--blue)') + '';
         ah += '<div style="padding:6px 10px;background:' + bg + ';border-radius:6px;margin-bottom:4px;font-size:0.75rem;">' + icon + ' <strong>' + esc(a.service) + ':</strong> ' + esc(a.msg) + '</div>';
       });
       alertEl.innerHTML = ah;
@@ -419,4 +423,115 @@ async function saveBudget(service, value) {
     await api('/api/admin/settings', 'POST', { key: 'budget_' + service, value: String(parseFloat(value) || 0) });
     toast('Budget saved: ' + service + ' → $' + parseFloat(value).toFixed(2) + '/mo');
   } catch (err) { toast('Error saving: ' + err.message, 'error'); }
+}
+
+
+// Admin: Reset user password
+async function adminResetPassword() {
+  var userId = (document.getElementById('adminUserSelect') || {}).value || '';
+  if (!userId) { toast('Select a user first', 'error'); return; }
+  if (!confirm('Reset password for this user? A temporary password will be generated.')) return;
+  try {
+    var d = await api('/api/admin/users/' + userId + '/reset-password', 'POST');
+    toast('Password reset. Temp password: ' + (d.temp_password || d.password || '(check logs)'));
+    if (d.temp_password || d.password) {
+      prompt('Temporary password (copy this):', d.temp_password || d.password);
+    }
+  } catch (err) { toast(err.message, 'error'); }
+}
+
+// Admin: Run DNS setup
+async function runDnsSetup() {
+  showLoading('Running DNS setup...');
+  try {
+    var d = await api('/api/admin/dns/setup', 'POST');
+    toast(d.message || 'DNS setup complete');
+  } catch (err) { toast(err.message, 'error'); }
+  hideLoading();
+}
+
+// ── Bulk Tax Rate ──────────────────────────────────────────────────────────
+function toggleBulkTaxState() {
+  var scope = (document.getElementById('bulkTaxScope') || {}).value;
+  var stateGroup = document.getElementById('bulkTaxStateGroup');
+  if (stateGroup) stateGroup.style.display = scope === 'state' ? '' : 'none';
+}
+
+async function applyBulkTaxRate() {
+  var rate = parseFloat((document.getElementById('bulkTaxRate') || {}).value);
+  if (isNaN(rate) || rate < 0 || rate > 50) { toast('Enter a valid tax rate (0-50%)', 'error'); return; }
+  var scope = (document.getElementById('bulkTaxScope') || {}).value || 'all';
+  var state = (document.getElementById('bulkTaxState') || {}).value;
+  if (scope === 'state' && !state) { toast('Enter a state code', 'error'); return; }
+
+  var label = scope === 'state' ? 'all properties in ' + state.toUpperCase() : 'ALL properties';
+  if (!confirm('Set tax rate to ' + rate + '% on ' + label + '?')) return;
+
+  var resultEl = document.getElementById('bulkTaxResult');
+  if (resultEl) resultEl.innerHTML = '<span style="color:var(--text3);">Updating...</span>';
+  try {
+    var payload = { tax_rate_pct: rate, scope: scope };
+    if (scope === 'state') payload.state = state;
+    var d = await api('/api/properties/bulk-tax-rate', 'POST', payload);
+    if (resultEl) resultEl.innerHTML = '<span style="color:var(--accent);">' + _ico('check', 13, 'var(--accent)') + ' ' + esc(d.message) + '</span>';
+    toast(d.message, 'success');
+  } catch (err) {
+    if (resultEl) resultEl.innerHTML = '<span style="color:var(--danger);">' + esc(err.message) + '</span>';
+    toast('Failed: ' + err.message, 'error');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// System Log Viewer (Admin tab)
+// ═══════════════════════════════════════════════════════════════════════════
+
+function loadSystemLog(level) {
+  var el = document.getElementById('systemLogPanel');
+  if (!el) return;
+  el.innerHTML = '<p style="color:var(--text3);font-size:0.78rem;text-align:center;padding:12px;">' + _ico('refresh', 14) + ' Loading...</p>';
+  var url = '/api/admin/system-log?limit=100';
+  if (level) url += '&level=' + level;
+  api(url).then(function(d) {
+    var logs = d.logs || [];
+    var counts = d.counts || {};
+    var h = '';
+
+    // Level filter buttons
+    h += '<div style="display:flex;gap:4px;margin-bottom:10px;flex-wrap:wrap;">';
+    h += '<button class="btn btn-xs' + (!level ? ' btn-primary' : '') + '" onclick="loadSystemLog()" style="font-size:0.68rem;">All (' + ((counts.error || 0) + (counts.warn || 0) + (counts.info || 0)) + ')</button>';
+    h += '<button class="btn btn-xs' + (level === 'error' ? ' btn-primary' : '') + '" onclick="loadSystemLog(\'error\')" style="font-size:0.68rem;color:var(--danger);">' + _ico('alertTriangle', 10, 'var(--danger)') + ' Errors (' + (counts.error || 0) + ')</button>';
+    h += '<button class="btn btn-xs' + (level === 'warn' ? ' btn-primary' : '') + '" onclick="loadSystemLog(\'warn\')" style="font-size:0.68rem;color:#f59e0b;">' + _ico('alertTriangle', 10, '#f59e0b') + ' Warns (' + (counts.warn || 0) + ')</button>';
+    h += '<button class="btn btn-xs' + (level === 'info' ? ' btn-primary' : '') + '" onclick="loadSystemLog(\'info\')" style="font-size:0.68rem;">' + _ico('eye', 10) + ' Info (' + (counts.info || 0) + ')</button>';
+    h += '<button class="btn btn-xs btn-danger" onclick="_clearSystemLog()" style="font-size:0.68rem;margin-left:auto;">' + _ico('trash', 10) + ' Clear</button>';
+    h += '</div>';
+
+    if (logs.length === 0) {
+      h += '<p style="color:var(--text3);font-size:0.78rem;text-align:center;padding:20px;">No log entries' + (level ? ' at ' + level + ' level' : '') + '. That\'s a good thing.</p>';
+    } else {
+      h += '<div style="max-height:400px;overflow-y:auto;font-size:0.72rem;">';
+      logs.forEach(function(log) {
+        var col = log.level === 'error' ? 'var(--danger)' : log.level === 'warn' ? '#f59e0b' : 'var(--text3)';
+        var ico = log.level === 'error' ? 'alertTriangle' : log.level === 'warn' ? 'alertTriangle' : 'eye';
+        h += '<div style="padding:6px 8px;border-bottom:1px solid var(--border);display:grid;grid-template-columns:70px 110px 1fr;gap:8px;align-items:start;">';
+        h += '<span style="color:var(--text3);font-family:DM Mono,monospace;font-size:0.62rem;">' + (log.created_at || '').substring(5, 16).replace('T', ' ') + '</span>';
+        h += '<span style="font-family:DM Mono,monospace;font-size:0.65rem;color:' + col + ';font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + esc(log.source || '') + '">' + _ico(ico, 10, col) + ' ' + esc(log.source || '') + '</span>';
+        h += '<div>';
+        h += '<span style="color:var(--text);">' + esc(log.message || '') + '</span>';
+        if (log.detail) h += '<div style="color:var(--text3);font-size:0.65rem;margin-top:2px;word-break:break-all;">' + esc(log.detail.substring(0, 200)) + '</div>';
+        if (log.property_id) h += '<span style="color:var(--accent);font-size:0.62rem;margin-left:4px;">[prop:' + log.property_id + ']</span>';
+        h += '</div></div>';
+      });
+      h += '</div>';
+    }
+    el.innerHTML = h;
+  }).catch(function(err) {
+    el.innerHTML = '<p style="color:var(--danger);font-size:0.78rem;">' + esc(err.message) + '</p>';
+  });
+}
+
+function _clearSystemLog() {
+  if (!confirm('Clear all system logs? This cannot be undone.')) return;
+  api('/api/admin/system-log/clear', 'POST', {})
+    .then(function() { toast('System log cleared'); loadSystemLog(); })
+    .catch(function(err) { toast(err.message, 'error'); });
 }

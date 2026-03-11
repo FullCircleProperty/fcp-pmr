@@ -238,10 +238,11 @@ function renderPropertyFinance(propId) {
 
   // ── Data source badges ──
   h += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;">';
-  if (p.pl_base_price) h += '<span style="font-size:0.68rem;padding:2px 8px;border-radius:4px;background:rgba(167,139,250,0.1);color:var(--purple);border:1px solid rgba(167,139,250,0.2);">📊 PriceLabs data</span>';
-  if (p.analysis_nightly_rate) h += '<span style="font-size:0.68rem;padding:2px 8px;border-radius:4px;background:rgba(16,185,129,0.1);color:var(--accent);border:1px solid rgba(16,185,129,0.2);">🤖 Analysis data</span>';
-  if (p.pl_occ_30d) h += '<span style="font-size:0.68rem;padding:2px 8px;border-radius:4px;background:rgba(59,130,246,0.1);color:var(--blue);border:1px solid rgba(59,130,246,0.2);">📈 Live occupancy</span>';
-  if (!p.pl_base_price && !p.analysis_nightly_rate) h += '<span style="font-size:0.68rem;padding:2px 8px;border-radius:4px;background:rgba(245,158,11,0.1);color:#f59e0b;border:1px solid rgba(245,158,11,0.2);">⚠ No pricing data — run analysis or sync PriceLabs</span>';
+  if (p.pl_base_price) h += '<span style="font-size:0.68rem;padding:2px 8px;border-radius:4px;background:rgba(167,139,250,0.1);color:var(--purple);border:1px solid rgba(167,139,250,0.2);">' + _ico('barChart', 13) + ' PriceLabs data</span>';
+  if (p.analysis_nightly_rate) h += '<span style="font-size:0.68rem;padding:2px 8px;border-radius:4px;background:rgba(16,185,129,0.1);color:var(--accent);border:1px solid rgba(16,185,129,0.2);">' + _ico('sparkle', 13) + ' Analysis data</span>';
+  if (p.pl_occ_30d) h += '<span style="font-size:0.68rem;padding:2px 8px;border-radius:4px;background:rgba(59,130,246,0.1);color:var(--blue);border:1px solid rgba(59,130,246,0.2);">' + _ico('trendUp', 13) + ' Live occupancy</span>';
+  if (!p.pl_base_price && !p.analysis_nightly_rate) h += '<span style="font-size:0.68rem;padding:2px 8px;border-radius:4px;background:rgba(245,158,11,0.1);color:#f59e0b;border:1px solid rgba(245,158,11,0.2);">' + _ico('alertCircle', 13, '#f59e0b') + ' No pricing data — run analysis or sync PriceLabs</span>';
+
   h += '</div>';
 
   // ── Key Metrics ──
@@ -251,7 +252,7 @@ function renderPropertyFinance(propId) {
       '<div style="font-size:0.62rem;color:var(--text3);">' + label + '</div>' +
       '<div style="font-family:DM Mono,monospace;font-size:1.1rem;font-weight:700;color:' + (color || 'var(--text)') + ';">' + val + '</div>' +
       (sub ? '<div style="font-size:0.58rem;color:var(--text3);">' + sub + '</div>' : '') +
-      (src ? '<div style="font-size:0.55rem;color:' + (src.includes('PriceLabs') ? 'var(--purple)' : src.includes('Analysis') ? 'var(--accent)' : 'var(--text3)') + ';">' + src + '</div>' : '') +
+      (src ? '<div style="font-size:0.65rem;color:' + (src.includes('PriceLabs') ? 'var(--purple)' : src.includes('Analysis') ? 'var(--accent)' : 'var(--text3)') + ';">' + src + '</div>' : '') +
       '</div>';
   }
 
@@ -312,7 +313,7 @@ function renderPropertyFinance(propId) {
   // Building ownership share (only for child units)
   if (bldOwnershipShare > 0) {
     h += '<div style="margin-top:12px;padding:12px;background:rgba(245,158,11,0.04);border:1px solid rgba(245,158,11,0.15);border-radius:8px;">';
-    h += '<div style="font-size:0.72rem;font-weight:600;color:#f59e0b;margin-bottom:6px;">🏢 BUILDING OWNERSHIP SHARE</div>';
+    h += '<div style="font-size:0.72rem;font-weight:600;color:#f59e0b;margin-bottom:6px;">' + _ico('building', 14, '#f59e0b') + ' BUILDING OWNERSHIP SHARE</div>';
     h += '<div style="font-size:0.72rem;color:var(--text3);margin-bottom:6px;">' + esc(bldOwnershipDetail) + '</div>';
     h += plRow('This unit\'s share', bldOwnershipShare, bldOwnershipShare * 12, '#f59e0b', false, bldSiblingCount + ' units splitting ownership costs');
     h += '</div>';
@@ -331,16 +332,16 @@ function renderPropertyFinance(propId) {
 
   // ── Capital Expenses & Investment Summary ──
   if (propExpenses && propExpenses.length > 0) {
-    var catIcons2 = {closing:'📋',renovation:'🔨',repair:'🔧',furniture:'🛋️',appliance:'⚡',legal:'📜',other:'📌'};
+    var catIcons2 = {closing:'' + _ico('clipboard', 13) + '',renovation:'' + _ico('tool', 13) + '',repair:_ico('tool',13),furniture:_ico('layers',15),appliance:'' + _ico('zap', 13) + '',legal:'' + _ico('receipt', 13) + '',other:_ico('target',13)};
     var totalCapital = 0;
     propExpenses.forEach(function(e) { totalCapital += e.amount || 0; });
     var allInCost = (p.purchase_price || 0) + totalCapital;
 
     h += '<div style="padding:14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;margin-bottom:14px;">';
-    h += '<div style="font-size:0.82rem;font-weight:600;color:var(--purple);margin-bottom:8px;">💰 CAPITAL INVESTMENT</div>';
+    h += '<div style="font-size:0.82rem;font-weight:600;color:var(--purple);margin-bottom:8px;">' + _ico('dollarSign', 13) + ' CAPITAL INVESTMENT</div>';
 
     propExpenses.forEach(function(e) {
-      var icon = catIcons2[e.category] || '📌';
+      var icon = catIcons2[e.category] || _ico('target',13);
       h += '<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:0.82rem;">';
       h += '<span>' + icon + ' ' + esc(e.name) + ' <span style="color:var(--text3);font-size:0.68rem;">' + esc(e.category || '') + (e.date_incurred ? ' · ' + e.date_incurred : '') + '</span></span>';
       h += '<span style="font-family:DM Mono,monospace;">$' + (e.amount || 0).toLocaleString() + '</span></div>';
@@ -360,11 +361,11 @@ function renderPropertyFinance(propId) {
       var paybackMonths = Math.ceil(totalCapital / monthlyNet);
       var cashOnCash = allInCost > 0 ? Math.round(annualNet / allInCost * 10000) / 100 : 0;
       h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;margin-top:8px;">';
-      h += '<div style="text-align:center;padding:8px;background:var(--bg);border-radius:6px;"><div style="font-size:0.6rem;color:var(--text3);">Capital Payback</div><div style="font-family:DM Mono,monospace;font-size:1rem;font-weight:700;color:' + (paybackMonths <= 24 ? 'var(--accent)' : paybackMonths <= 48 ? '#f59e0b' : 'var(--danger)') + ';">' + paybackMonths + ' mo</div><div style="font-size:0.55rem;color:var(--text3);">~' + Math.round(paybackMonths / 12 * 10) / 10 + ' years</div></div>';
+      h += '<div style="text-align:center;padding:8px;background:var(--bg);border-radius:6px;"><div style="font-size:0.6rem;color:var(--text3);">Capital Payback</div><div style="font-family:DM Mono,monospace;font-size:1rem;font-weight:700;color:' + (paybackMonths <= 24 ? 'var(--accent)' : paybackMonths <= 48 ? '#f59e0b' : 'var(--danger)') + ';">' + paybackMonths + ' mo</div><div style="font-size:0.65rem;color:var(--text3);">~' + Math.round(paybackMonths / 12 * 10) / 10 + ' years</div></div>';
       if (cashOnCash !== 0) h += '<div style="text-align:center;padding:8px;background:var(--bg);border-radius:6px;"><div style="font-size:0.6rem;color:var(--text3);">Cash-on-Cash ROI</div><div style="font-family:DM Mono,monospace;font-size:1rem;font-weight:700;color:' + (cashOnCash >= 8 ? 'var(--accent)' : cashOnCash >= 4 ? '#f59e0b' : 'var(--danger)') + ';">' + cashOnCash + '%</div></div>';
       h += '</div>';
     } else if (monthlyNet <= 0 && totalCapital > 0) {
-      h += '<div style="font-size:0.78rem;color:var(--danger);margin-top:6px;">⚠ Currently not profitable — capital payback cannot be estimated.</div>';
+      h += '<div style="font-size:0.78rem;color:var(--danger);margin-top:6px;">' + _ico('alertCircle', 13, '#f59e0b') + ' Currently not profitable — capital payback cannot be estimated.</div>';
     }
     h += '</div>';
   }
@@ -394,10 +395,10 @@ function renderPropertyFinance(propId) {
     if (propExpenses && propExpenses.length > 0) propExpenses.forEach(function(e) { totalCapExp += e.amount || 0; });
 
     h += '<div style="padding:14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;margin-bottom:14px;">';
-    h += '<div style="font-size:0.82rem;font-weight:600;color:var(--accent);margin-bottom:8px;">🏦 EQUITY POSITION</div>';
+    h += '<div style="font-size:0.82rem;font-weight:600;color:var(--accent);margin-bottom:8px;">' + _ico('home', 13) + ' EQUITY POSITION</div>';
     h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;margin-bottom:8px;">';
 
-    function eqCard(label, val, color, sub) { return '<div style="text-align:center;padding:8px;background:var(--bg);border-radius:6px;"><div style="font-size:0.6rem;color:var(--text3);">' + label + '</div><div style="font-family:DM Mono,monospace;font-size:1rem;font-weight:700;color:' + (color || 'var(--text)') + ';">' + val + '</div>' + (sub ? '<div style="font-size:0.55rem;color:var(--text3);">' + sub + '</div>' : '') + '</div>'; }
+    function eqCard(label, val, color, sub) { return '<div style="text-align:center;padding:8px;background:var(--bg);border-radius:6px;"><div style="font-size:0.6rem;color:var(--text3);">' + label + '</div><div style="font-family:DM Mono,monospace;font-size:1rem;font-weight:700;color:' + (color || 'var(--text)') + ';">' + val + '</div>' + (sub ? '<div style="font-size:0.65rem;color:var(--text3);">' + sub + '</div>' : '') + '</div>'; }
 
     h += eqCard('Purchase Price', '$' + p.purchase_price.toLocaleString(), 'var(--text2)');
     h += eqCard('Current Value', '$' + currentValue.toLocaleString(), 'var(--accent)', p.zestimate ? ('Zestimate ' + (p.zestimate_date || '') + (p.zillow_url ? ' <a href="' + esc(p.zillow_url) + '" target="_blank" style="color:var(--accent);text-decoration:none;" onclick="event.stopPropagation()">↗</a>' : '')) : p.estimated_value ? 'manual est.' : '');
@@ -423,7 +424,7 @@ function renderPropertyFinance(propId) {
     var actAvgMonthly = actuals.length > 0 ? Math.round(totalActRev / actuals.length) : 0;
 
     h += '<div style="padding:14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;margin-bottom:14px;">';
-    h += '<div style="font-size:0.82rem;font-weight:600;color:var(--accent);margin-bottom:8px;">📊 ACTUAL PERFORMANCE (Guesty · ' + actuals.length + ' months)</div>';
+    h += '<div style="font-size:0.82rem;font-weight:600;color:var(--accent);margin-bottom:8px;">' + _ico('barChart', 13) + ' ACTUAL PERFORMANCE (Guesty · ' + actuals.length + ' months)</div>';
 
     h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;margin-bottom:10px;">';
     function actCard(l, v, c) { return '<div style="text-align:center;padding:6px;background:var(--bg);border-radius:6px;"><div style="font-size:0.6rem;color:var(--text3);">' + l + '</div><div style="font-family:DM Mono,monospace;font-size:0.95rem;font-weight:700;color:' + (c || 'var(--text)') + ';">' + v + '</div></div>'; }
@@ -453,7 +454,7 @@ function renderPropertyFinance(propId) {
         var pct = maxRev > 0 ? Math.round((a.total_revenue || 0) / maxRev * 100) : 0;
         var occ = Math.round((a.occupancy_pct || 0) * 100);
         h += '<div style="flex:1;text-align:center;"><div style="background:var(--accent);border-radius:3px 3px 0 0;height:' + Math.max(pct, 2) + '%;min-height:2px;" title="$' + Math.round(a.total_revenue || 0).toLocaleString() + ' · ' + occ + '% occ"></div>';
-        h += '<div style="font-size:0.55rem;color:var(--text3);margin-top:2px;">' + (a.month || '').substring(5) + '</div></div>';
+        h += '<div style="font-size:0.65rem;color:var(--text3);margin-top:2px;">' + (a.month || '').substring(5) + '</div></div>';
       });
       h += '</div>';
     }
@@ -464,7 +465,7 @@ function renderPropertyFinance(propId) {
   var seasonality = window._propSeasonality || [];
   if (seasonality.length >= 6) {
     h += '<div style="padding:14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;margin-bottom:14px;">';
-    h += '<div style="font-size:0.82rem;font-weight:600;color:var(--purple);margin-bottom:8px;">📅 SEASONALITY (' + esc(p.city) + ', ' + esc(p.state) + ')</div>';
+    h += '<div style="font-size:0.82rem;font-weight:600;color:var(--purple);margin-bottom:8px;">' + _ico('calendar', 13) + ' SEASONALITY (' + esc(p.city) + ', ' + esc(p.state) + ')</div>';
     var monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
     h += '<div style="display:flex;gap:2px;align-items:flex-end;height:80px;margin-bottom:6px;">';
     var maxMult = Math.max.apply(null, seasonality.map(function(s) { return s.multiplier || 1; }));
@@ -472,9 +473,9 @@ function renderPropertyFinance(propId) {
       var pct = maxMult > 0 ? Math.round((s.multiplier || 1) / maxMult * 100) : 50;
       var color = (s.multiplier || 1) >= 1.1 ? 'var(--accent)' : (s.multiplier || 1) <= 0.8 ? 'var(--danger)' : '#f59e0b';
       h += '<div style="flex:1;text-align:center;">';
-      h += '<div style="font-size:0.55rem;color:var(--text3);">' + (s.multiplier ? s.multiplier.toFixed(1) + 'x' : '') + '</div>';
+      h += '<div style="font-size:0.65rem;color:var(--text3);">' + (s.multiplier ? s.multiplier.toFixed(1) + 'x' : '') + '</div>';
       h += '<div style="background:' + color + ';border-radius:3px 3px 0 0;height:' + Math.max(pct, 5) + '%;min-height:3px;opacity:0.7;" title="' + monthNames[(s.month_number || 1) - 1] + ': ' + (s.avg_adr ? '$' + Math.round(s.avg_adr) + ' ADR' : '') + ' · ' + (s.avg_occupancy ? Math.round(s.avg_occupancy * 100) + '% occ' : '') + '"></div>';
-      h += '<div style="font-size:0.55rem;color:var(--text3);margin-top:2px;">' + monthNames[(s.month_number || 1) - 1] + '</div></div>';
+      h += '<div style="font-size:0.65rem;color:var(--text3);margin-top:2px;">' + monthNames[(s.month_number || 1) - 1] + '</div></div>';
     });
     h += '</div>';
     h += '<div style="font-size:0.68rem;color:var(--text3);">Bar height = rate multiplier vs annual avg. Green = peak season, Red = low season. Based on ' + (seasonality[0].sample_size || 0) + ' property-months of data.</div>';
@@ -498,28 +499,28 @@ function renderPropertyFinance(propId) {
   if (targets && targets.length > 0) {
     var meta = targets._meta || {};
     h += '<div style="padding:14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;margin-bottom:14px;">';
-    h += '<div style="font-size:0.82rem;font-weight:600;color:#f59e0b;margin-bottom:6px;">🎯 12-MONTH REVENUE TARGETS</div>';
+    h += '<div style="font-size:0.82rem;font-weight:600;color:#f59e0b;margin-bottom:6px;">' + _ico('target', 13) + ' 12-MONTH REVENUE TARGETS</div>';
 
     // Show what the targets are actually based on — transparent about data quality
     var basisColor = meta.targetBasis && meta.targetBasis.includes('cost floor') && !meta.targetBasis.includes('market') ? '#f59e0b' : 'var(--text3)';
     h += '<div style="font-size:0.68rem;color:' + basisColor + ';margin-bottom:6px;padding:6px 8px;background:var(--bg);border-radius:4px;border:1px solid var(--border);">';
-    h += '📐 <strong>Target basis:</strong> ' + esc(meta.targetBasis || 'cost coverage') + '<br>';
+    h += '' + _ico('target', 13) + ' <strong>Target basis:</strong> ' + esc(meta.targetBasis || 'cost coverage') + '<br>';
     if (meta.baseADR > 0) {
-      h += '📊 <strong>Rate source:</strong> ' + esc(meta.adrSource || 'pricing analysis') + ' ($' + meta.baseADR + '/nt base, scaled by season per month)<br>';
+      h +='' + _ico('barChart', 13) + ' <strong>Rate source:</strong> ' + esc(meta.adrSource || 'pricing analysis') + ' ($' + meta.baseADR + '/nt base, scaled by season per month)<br>';
     } else {
-      h += '⚠️ <strong>No rate data yet</strong> — run Price Analysis or connect PriceLabs to get market-based targets. Required ADR column will be blank.<br>';
+      h +='' + _ico('alertTriangle', 13, '#f59e0b') + ' <strong>No rate data yet</strong> — run Price Analysis or connect PriceLabs to get market-based targets. Required ADR column will be blank.<br>';
     }
     if (!meta.hasSeasonality) {
-      h += '⚠️ <strong>No seasonality data</strong> — import Guesty reservations to calibrate seasonal targets for ' + esc((p.city || '') + ', ' + (p.state || '')) + '.<br>';
+      h +='' + _ico('alertTriangle', 13, '#f59e0b') + ' <strong>No seasonality data</strong> — import Guesty reservations to calibrate seasonal targets for ' + esc((p.city || '') + ', ' + (p.state || '')) + '.<br>';
     }
     if (!meta.hasActuals) {
-      h += 'ℹ️ Occupancy estimates based on ' + (meta.hasSeasonality ? 'market averages' : 'default 40%') + ' — will sharpen as Guesty data accumulates.';
+      h += '' + _ico('info', 13, 'var(--blue)') + ' Occupancy estimates based on ' + (meta.hasSeasonality ? 'market averages' : 'default 40%') + ' — will sharpen as Guesty data accumulates.';
     }
     h += '</div>';
 
     if (meta.marketEstimate > 0 && meta.costFloor > 0 && meta.marketEstimate < meta.costFloor) {
       h += '<div style="font-size:0.72rem;color:var(--danger);padding:6px 8px;background:rgba(239,68,68,0.06);border-radius:4px;border:1px solid rgba(239,68,68,0.2);margin-bottom:6px;">';
-      h += '⚠️ <strong>Market estimate ($' + Math.round(meta.marketEstimate / 12).toLocaleString() + '/mo) is below your expenses ($' + Math.round(meta.costFloor / 12 / 1.15).toLocaleString() + '/mo).</strong> Either pricing is too low, occupancy is overestimated, or this market may not cover costs at current rates. Run Price Analysis to get an updated rate recommendation.';
+      h +='' + _ico('alertTriangle', 13, '#f59e0b') + ' <strong>Market estimate ($' + Math.round(meta.marketEstimate / 12).toLocaleString() + '/mo) is below your expenses ($' + Math.round(meta.costFloor / 12 / 1.15).toLocaleString() + '/mo).</strong> Either pricing is too low, occupancy is overestimated, or this market may not cover costs at current rates. Run Price Analysis to get an updated rate recommendation.';
       h += '</div>';
     }
 
@@ -537,16 +538,16 @@ function renderPropertyFinance(propId) {
       var isPast = (t.year < currentYear2) || (t.year === currentYear2 && t.monthNum < currentMN);
       var actualRev = t.actual || 0;
       var pct = t.target > 0 && actualRev > 0 ? Math.round(actualRev / t.target * 100) : 0;
-      var statusIcon = !isPast && !isCurrent ? '—' : isCurrent ? '📊' : pct >= 95 ? '🚀' : pct >= 80 ? '✅' : pct >= 60 ? '⚠️' : '❌';
+      var statusIcon = !isPast && !isCurrent ? '—' : isCurrent ? '' + _ico('barChart', 13) + '' : pct >= 95 ? _ico('trendUp',13,'var(--accent)') : pct >= 80 ? _ico('check',13,'var(--accent)') : pct >= 60 ? '' + _ico('alertCircle', 13, '#f59e0b') + '' : _ico('x',13,'var(--danger)');
       var rowBg = isCurrent ? 'background:rgba(245,158,11,0.06);' : '';
       var gapColor = t.gap > 20 ? 'var(--danger)' : t.gap < -20 ? 'var(--accent)' : 'var(--text2)';
       var statusColor = pct >= 95 ? 'var(--accent)' : pct >= 80 ? 'var(--accent)' : pct >= 60 ? '#f59e0b' : 'var(--danger)';
       var occTip = t.occSource ? ' title="' + esc(t.occSource) + '"' : '';
 
       h += '<tr style="' + rowBg + '">';
-      h += '<td style="font-weight:600;">' + t.monthName + (isCurrent ? ' *' : '') + (t.seasonMult !== 1.0 ? '<div style="font-size:0.55rem;color:var(--text3);">' + t.seasonMult.toFixed(2) + 'x</div>' : '') + '</td>';
+      h += '<td style="font-weight:600;">' + t.monthName + (isCurrent ? ' *' : '') + (t.seasonMult !== 1.0 ? '<div style="font-size:0.65rem;color:var(--text3);">' + t.seasonMult.toFixed(2) + 'x</div>' : '') + '</td>';
       h += '<td style="font-family:DM Mono,monospace;color:#f59e0b;">$' + Math.round(t.target).toLocaleString() + '</td>';
-      h += '<td' + occTip + '>' + t.expectedOcc + '%<div style="font-size:0.55rem;color:var(--text3);">' + esc(t.occSource || '') + '</div></td>';
+      h += '<td' + occTip + '>' + t.expectedOcc + '%<div style="font-size:0.65rem;color:var(--text3);">' + esc(t.occSource || '') + '</div></td>';
       h += '<td style="font-family:DM Mono,monospace;font-weight:600;">' + (t.requiredADR > 0 ? '$' + Math.round(t.requiredADR) : '—') + '</td>';
       h += '<td style="font-family:DM Mono,monospace;">' + (t.currentRate > 0 ? '$' + Math.round(t.currentRate) : '—') + '</td>';
       h += '<td style="font-family:DM Mono,monospace;color:' + gapColor + ';">' + (t.currentRate > 0 && t.requiredADR > 0 ? (t.gap > 0 ? '+$' + Math.round(t.gap) : '-$' + Math.abs(Math.round(t.gap))) : '—') + '</td>';
@@ -619,7 +620,7 @@ function renderPropertyFinance(propId) {
     var strAdvantage = strNet - ltrNet;
 
     h += '<div style="padding:14px;background:var(--surface2);border-radius:8px;border:1px solid var(--border);margin-bottom:14px;">';
-    h += '<div style="font-weight:600;font-size:0.85rem;margin-bottom:12px;">📊 STR vs LTR Comparison</div>';
+    h += '<div style="font-weight:600;font-size:0.85rem;margin-bottom:12px;">' + _ico('barChart', 13) + ' STR vs LTR Comparison</div>';
     h += '<table class="comp-table" style="font-size:0.82rem;"><thead><tr><th></th><th style="color:var(--accent);">Short-Term (STR)</th><th style="color:var(--blue);">Long-Term (LTR)</th><th>Difference</th></tr></thead><tbody>';
 
     function cmpRow(label, strVal, ltrVal, note) {
@@ -645,9 +646,9 @@ function renderPropertyFinance(propId) {
     h += '</tbody></table>';
 
     h += '<div style="margin-top:8px;font-size:0.72rem;color:var(--text3);">';
-    if (strAdvantage > 200) h += '✅ STR is earning <strong style="color:var(--accent);">+$' + Math.round(strAdvantage).toLocaleString() + '/mo more</strong> than LTR would. STR is the right call.';
-    else if (strAdvantage > 0) h += '⚠️ STR is only <strong>+$' + Math.round(strAdvantage).toLocaleString() + '/mo</strong> more than LTR. Factor in management time and effort.';
-    else h += '❌ LTR would earn <strong style="color:var(--danger);">$' + Math.abs(Math.round(strAdvantage)).toLocaleString() + '/mo more</strong> with less work. Consider switching to long-term.';
+    if (strAdvantage > 200) h += '' + _ico('check', 13, 'var(--accent)') + ' STR is earning <strong style="color:var(--accent);">+$' + Math.round(strAdvantage).toLocaleString() + '/mo more</strong> than LTR would. STR is the right call.';
+    else if (strAdvantage > 0) h +='' + _ico('alertTriangle', 13, '#f59e0b') + ' STR is only <strong>+$' + Math.round(strAdvantage).toLocaleString() + '/mo</strong> more than LTR. Factor in management time and effort.';
+    else h += '' + _ico('x', 13, 'var(--danger)') + ' LTR would earn <strong style="color:var(--danger);">$' + Math.abs(Math.round(strAdvantage)).toLocaleString() + '/mo more</strong> with less work. Consider switching to long-term.';
     h += '<br>LTR estimate: ~$' + ltrEstimate.toLocaleString() + '/mo' + (ltrEstimate === Math.round((p.estimated_value || 0) * 0.007) ? ' (0.7% value rule)' : ' (33% of STR daily rate)') + '. LTR has no platform fees, cleaning costs, or supplies.';
     h += '</div></div>';
   }
@@ -668,12 +669,12 @@ async function loadPerformanceTrend(propId) {
     var d = await api('/api/properties/' + propId + '/performance');
     var snaps = (d.snapshots || []).reverse(); // oldest first
     if (snaps.length < 2) {
-      el.innerHTML = '<div style="padding:12px;background:var(--surface2);border-radius:8px;border:1px solid var(--border);font-size:0.78rem;color:var(--text3);">📈 Performance tracking started. Sync PriceLabs regularly to build history — trends will appear here after 2+ data points.</div>';
+      el.innerHTML = '<div style="padding:12px;background:var(--surface2);border-radius:8px;border:1px solid var(--border);font-size:0.78rem;color:var(--text3);">' + _ico('trendUp', 13) + ' Performance tracking started. Sync PriceLabs regularly to build history — trends will appear here after 2+ data points.</div>';
       return;
     }
 
     var h = '<div style="padding:14px;background:var(--surface2);border-radius:8px;border:1px solid var(--border);">';
-    h += '<div style="font-weight:600;font-size:0.85rem;margin-bottom:10px;">📈 Performance Trend (' + snaps.length + ' snapshots)</div>';
+    h += '<div style="font-weight:600;font-size:0.85rem;margin-bottom:10px;">' + _ico('trendUp', 13) + ' Performance Trend (' + snaps.length + ' snapshots)</div>';
 
     // Summary: first vs latest
     var first = snaps[0], last = snaps[snaps.length - 1];
@@ -765,16 +766,34 @@ function renderRevenueSnapshot(propId) {
 
   // Monthly expenses
   var cost = 0;
-  if (p.ownership_type === 'rental') cost = p.monthly_rent_cost || 0;
-  else cost = (p.monthly_mortgage || 0) + (p.monthly_insurance || 0) + Math.round((p.annual_taxes || 0) / 12) + (p.hoa_monthly || 0);
-  cost += (p.expense_electric || 0) + (p.expense_gas || 0) + (p.expense_water || 0) + (p.expense_internet || 0) + (p.expense_trash || 0) + (p.expense_other || 0);
-  if (cost > 0) {
-    var netRev = (plRev || p.analysis_monthly || 0) - cost;
+  var isManagedProp = p.is_managed || p.ownership_type === 'managed';
+  if (isManagedProp) {
+    var feeBasisLabel = (p.fee_basis || 'gross') === 'net_profit' ? '% of net profit' : '% of gross';
+    h += snapCard('Status', '' + _ico('handshake', 13) + ' Managed', p.owner_name || 'Owner', '#60a5fa');
+    if (p.management_fee_pct) h += snapCard('Mgmt Fee', p.management_fee_pct + '%', feeBasisLabel, 'var(--accent)');
+  } else {
+    if (p.ownership_type === 'rental') cost = p.monthly_rent_cost || 0;
+    else cost = (p.monthly_mortgage || 0) + (p.monthly_insurance || 0) + Math.round((p.annual_taxes || 0) / 12) + (p.hoa_monthly || 0);
+    cost += (p.expense_electric || 0) + (p.expense_gas || 0) + (p.expense_water || 0) + (p.expense_internet || 0) + (p.expense_trash || 0) + (p.expense_other || 0);
+  }
+  if (!isManagedProp && cost > 0) {
+    var displayRev = plRev || p.analysis_monthly || 0;
+    var netRev = displayRev - cost;
     h += snapCard('Expenses', '$' + Math.round(cost).toLocaleString() + '/mo', '', 'var(--danger)');
     h += snapCard('Net Income', (netRev >= 0 ? '+' : '') + '$' + Math.round(netRev).toLocaleString() + '/mo', '$' + (Math.round(netRev) * 12).toLocaleString() + '/yr', netRev >= 0 ? 'var(--accent)' : 'var(--danger)');
   }
 
   h += '</div></div>';
+
+  // Restrictions & AI Notes banner (if any set)
+  if (p.rental_restrictions || p.hoa_name || p.ai_notes) {
+    h += '<div style="margin-top:10px;padding:10px 14px;border-radius:8px;border:1px solid rgba(245,158,11,0.25);background:rgba(245,158,11,0.04);font-size:0.78rem;">';
+    if (p.hoa_name) h += '<div style="margin-bottom:4px;"><span style="color:#f59e0b;font-weight:600;">' + _ico('home', 13) + ' HOA:</span> ' + esc(p.hoa_name) + '</div>';
+    if (p.rental_restrictions) h += '<div style="margin-bottom:4px;"><span style="color:var(--danger);font-weight:600;">' + _ico('alertCircle', 13, '#f59e0b') + ' Restrictions:</span> ' + esc(p.rental_restrictions) + '</div>';
+    if (p.ai_notes) h += '<div><span style="color:var(--purple);font-weight:600;">' + _ico('sparkle', 13) + ' AI Notes:</span> ' + esc(p.ai_notes) + '</div>';
+    h += '</div>';
+  }
+
   el.innerHTML = h;
 }
 
@@ -783,17 +802,19 @@ async function generateRevenueOptimization() {
   if (!editId) { toast('Save property first', 'error'); return; }
   var btn = document.getElementById('genOptBtn');
   var res = document.getElementById('revenueOptResults');
-  if (btn) { btn.disabled = true; btn.textContent = '⏳ Analyzing...'; }
+  if (btn) { btn.disabled = true; btn.innerHTML ='' + _ico('clock', 13) + ' Analyzing...'; }
   showLoading('AI analyzing revenue optimization opportunities...');
   try {
     var d = await api('/api/properties/' + editId + '/revenue-optimize', 'POST');
     renderRevenueOptimization(d, res);
+    // Invalidate research cache so Listing Health section picks up new AI recommendations
+    if (_researchCache[editId]) delete _researchCache[editId];
     toast('Optimization analysis complete');
   } catch (err) {
     if (res) res.innerHTML = '<div style="color:var(--danger);padding:10px;">' + esc(err.message) + '</div>';
     toast(err.message, 'error');
   }
-  if (btn) { btn.disabled = false; btn.textContent = '🚀 Optimize Revenue'; }
+  if (btn) { btn.disabled = false; btn.innerHTML ='' + _ico('trendUp', 13) + ' Optimize Revenue'; }
   hideLoading();
 }
 
@@ -814,7 +835,7 @@ function renderRevenueOptimization(d, container) {
   // Quick wins
   if (o.quick_wins && o.quick_wins.length > 0) {
     h += '<div style="padding:12px 14px;background:rgba(16,185,129,0.05);border:1px solid rgba(16,185,129,0.15);border-radius:8px;margin-bottom:12px;">';
-    h += '<div style="font-size:0.78rem;font-weight:600;color:var(--accent);margin-bottom:6px;">⚡ QUICK WINS (do today)</div>';
+    h += '<div style="font-size:0.78rem;font-weight:600;color:var(--accent);margin-bottom:6px;">' + _ico('zap', 13) + ' QUICK WINS (do today)</div>';
     o.quick_wins.forEach(function(w) { h += '<div style="font-size:0.78rem;margin:4px 0;">✓ ' + esc(w) + '</div>'; });
     h += '</div>';
   }
@@ -822,7 +843,7 @@ function renderRevenueOptimization(d, container) {
   // Occupancy improvements
   if (o.occupancy_improvements && o.occupancy_improvements.length > 0) {
     h += '<div style="padding:12px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;margin-bottom:12px;">';
-    h += '<div style="font-size:0.78rem;font-weight:600;color:var(--purple);margin-bottom:6px;">📈 INCREASE OCCUPANCY</div>';
+    h += '<div style="font-size:0.78rem;font-weight:600;color:var(--purple);margin-bottom:6px;">' + _ico('trendUp', 13) + ' INCREASE OCCUPANCY</div>';
     o.occupancy_improvements.sort(function(a,b) { return (a.priority || 99) - (b.priority || 99); });
     o.occupancy_improvements.forEach(function(item) {
       var effortColor = item.effort === 'low' ? 'var(--accent)' : item.effort === 'high' ? 'var(--danger)' : '#f59e0b';
@@ -838,7 +859,7 @@ function renderRevenueOptimization(d, container) {
   // Revenue improvements
   if (o.revenue_improvements && o.revenue_improvements.length > 0) {
     h += '<div style="padding:12px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;margin-bottom:12px;">';
-    h += '<div style="font-size:0.78rem;font-weight:600;color:var(--accent);margin-bottom:6px;">💰 INCREASE REVENUE</div>';
+    h += '<div style="font-size:0.78rem;font-weight:600;color:var(--accent);margin-bottom:6px;">' + _ico('dollarSign', 13) + ' INCREASE REVENUE</div>';
     o.revenue_improvements.sort(function(a,b) { return (a.priority || 99) - (b.priority || 99); });
     o.revenue_improvements.forEach(function(item) {
       var effortColor = item.effort === 'low' ? 'var(--accent)' : item.effort === 'high' ? 'var(--danger)' : '#f59e0b';
@@ -854,7 +875,7 @@ function renderRevenueOptimization(d, container) {
   // PriceLabs settings adjustments
   if (o.pricing_adjustments && o.pricing_adjustments.length > 0) {
     h += '<div style="padding:12px 14px;background:rgba(167,139,250,0.04);border:1px solid rgba(167,139,250,0.15);border-radius:8px;margin-bottom:12px;">';
-    h += '<div style="font-size:0.78rem;font-weight:600;color:var(--purple);margin-bottom:6px;">⚙️ PRICELABS ADJUSTMENTS</div>';
+    h += '<div style="font-size:0.78rem;font-weight:600;color:var(--purple);margin-bottom:6px;">' + _ico('settings', 13) + ' PRICELABS ADJUSTMENTS</div>';
     h += '<table class="comp-table" style="font-size:0.78rem;"><thead><tr><th>Setting</th><th>Current</th><th>Recommended</th><th>Why</th></tr></thead><tbody>';
     o.pricing_adjustments.forEach(function(adj) {
       h += '<tr><td style="font-weight:600;">' + esc(adj.setting) + '</td>';
@@ -871,13 +892,16 @@ function renderRevenueOptimization(d, container) {
     h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">';
     if (o.listing_improvements && o.listing_improvements.length > 0) {
       h += '<div style="padding:12px;background:var(--surface2);border-radius:8px;border:1px solid var(--border);">';
-      h += '<div style="font-size:0.72rem;font-weight:600;color:var(--text2);margin-bottom:4px;">📝 LISTING IMPROVEMENTS</div>';
+      h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">';
+      h += '<div style="font-size:0.72rem;font-weight:600;color:var(--text2);">' + _ico('edit', 13) + ' LISTING IMPROVEMENTS</div>';
+      h += '<a href="#" onclick="event.preventDefault();switchPropTab(\'research\')" style="font-size:0.62rem;color:var(--purple);">' + _ico('sparkle', 10, 'var(--purple)') + ' Full Health Report →</a>';
+      h += '</div>';
       o.listing_improvements.forEach(function(i) { h += '<div style="font-size:0.75rem;margin:3px 0;">• ' + esc(i) + '</div>'; });
       h += '</div>';
     }
     if (o.guest_experience_improvements && o.guest_experience_improvements.length > 0) {
       h += '<div style="padding:12px;background:var(--surface2);border-radius:8px;border:1px solid var(--border);">';
-      h += '<div style="font-size:0.72rem;font-weight:600;color:var(--text2);margin-bottom:4px;">🏠 GUEST EXPERIENCE</div>';
+      h += '<div style="font-size:0.72rem;font-weight:600;color:var(--text2);margin-bottom:4px;">' + _ico('home', 13) + ' GUEST EXPERIENCE</div>';
       o.guest_experience_improvements.forEach(function(i) { h += '<div style="font-size:0.75rem;margin:3px 0;">• ' + esc(i) + '</div>'; });
       h += '</div>';
     }
@@ -886,10 +910,28 @@ function renderRevenueOptimization(d, container) {
 
   // 90-day plan
   if (o.ninety_day_plan) {
-    h += '<div style="padding:14px;background:linear-gradient(135deg,rgba(167,139,250,0.06),rgba(16,185,129,0.06));border:1px solid rgba(167,139,250,0.2);border-radius:8px;margin-bottom:12px;">';
-    h += '<div style="font-size:0.78rem;font-weight:600;color:var(--purple);margin-bottom:6px;">🎯 90-DAY PLAN</div>';
-    h += '<div style="font-size:0.82rem;line-height:1.5;color:var(--text);">' + esc(o.ninety_day_plan) + '</div>';
-    h += '</div>';
+    var planText = o.ninety_day_plan;
+    // AI sometimes returns raw JSON in this field — detect and clean it
+    if (planText.indexOf('{') === 0 || planText.indexOf('```') >= 0 || planText.indexOf('"current_monthly_revenue"') >= 0) {
+      // This is a JSON blob, not a plan — try to extract ninety_day_plan from it
+      try {
+        var cleaned = planText.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+        if (cleaned.indexOf('{') === 0) {
+          var parsed = JSON.parse(cleaned);
+          if (parsed.ninety_day_plan && typeof parsed.ninety_day_plan === 'string') {
+            planText = parsed.ninety_day_plan;
+          } else {
+            planText = null; // garbage — don't display
+          }
+        }
+      } catch { planText = null; }
+    }
+    if (planText && planText.length > 10) {
+      h += '<div style="padding:14px;background:linear-gradient(135deg,rgba(167,139,250,0.06),rgba(16,185,129,0.06));border:1px solid rgba(167,139,250,0.2);border-radius:8px;margin-bottom:12px;">';
+      h += '<div style="font-size:0.78rem;font-weight:600;color:var(--purple);margin-bottom:6px;">' + _ico('target', 13) + ' 90-DAY PLAN</div>';
+      h += '<div style="font-size:0.82rem;line-height:1.5;color:var(--text);">' + esc(planText) + '</div>';
+      h += '</div>';
+    }
   }
 
   h += '<div style="font-size:0.68rem;color:var(--text3);margin-top:8px;">Generated by ' + esc(d.provider || 'AI') + ' · Read-only recommendations — no prices changed.</div>';
@@ -901,7 +943,7 @@ async function generateAcquisitionAnalysis() {
   if (!editId) { toast('Save property first', 'error'); return; }
   var btn = document.getElementById('genAcqBtn');
   var res = document.getElementById('acquisitionResults');
-  if (btn) { btn.disabled = true; btn.textContent = '⏳ Analyzing...'; }
+  if (btn) { btn.disabled = true; btn.innerHTML ='' + _ico('clock', 13) + ' Analyzing...'; }
   showLoading('AI evaluating acquisition opportunity...');
   try {
     var body = {};
@@ -916,7 +958,7 @@ async function generateAcquisitionAnalysis() {
     if (res) res.innerHTML = '<div style="color:var(--danger);padding:10px;">' + esc(err.message) + '</div>';
     toast(err.message, 'error');
   }
-  if (btn) { btn.disabled = false; btn.textContent = '🏠 Update Analysis'; }
+  if (btn) { btn.disabled = false; btn.innerHTML ='' + _ico('home', 13) + ' Update Analysis'; }
   hideLoading();
 }
 
@@ -927,13 +969,13 @@ function renderAcquisitionAnalysis(d, container) {
 
   // Change button to "Update" since we have data
   var acqBtn = document.getElementById('genAcqBtn');
-  if (acqBtn) acqBtn.innerHTML = '🏠 Update Analysis';
+  if (acqBtn) acqBtn.innerHTML ='' + _ico('home', 13) + ' Update Analysis';
 
   // Verdict banner
   var vc = a.verdict === 'GO' ? 'var(--accent)' : a.verdict === 'NO-GO' ? 'var(--danger)' : '#f59e0b';
   var vBg = a.verdict === 'GO' ? 'rgba(16,185,129,0.08)' : a.verdict === 'NO-GO' ? 'rgba(239,68,68,0.08)' : 'rgba(245,158,11,0.08)';
   var vBdr = a.verdict === 'GO' ? 'rgba(16,185,129,0.3)' : a.verdict === 'NO-GO' ? 'rgba(239,68,68,0.3)' : 'rgba(245,158,11,0.3)';
-  var vIcon = a.verdict === 'GO' ? '✅' : a.verdict === 'NO-GO' ? '❌' : '⚠️';
+  var vIcon = a.verdict === 'GO' ? _ico('check',13,'var(--accent)') : a.verdict === 'NO-GO' ? _ico('x',13,'var(--danger)') : '' + _ico('alertCircle', 13, '#f59e0b') + '';
   h += '<div style="padding:18px;background:' + vBg + ';border:2px solid ' + vBdr + ';border-radius:10px;margin-bottom:14px;text-align:center;">';
   h += '<div style="font-size:2rem;">' + vIcon + '</div>';
   h += '<div style="font-size:1.3rem;font-weight:700;color:' + vc + ';margin:4px 0;">' + esc(a.verdict) + '</div>';
@@ -944,14 +986,14 @@ function renderAcquisitionAnalysis(d, container) {
   // Considerations dialog
   h += '<div style="padding:10px 14px;background:var(--bg);border:1px solid var(--border);border-radius:8px;margin-bottom:14px;">';
   h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">';
-  h += '<strong style="font-size:0.82rem;">📝 Considerations for Next Update</strong>';
+  h += '<strong style="font-size:0.82rem;">' + _ico('edit', 13) + ' Considerations for Next Update</strong>';
   h += '<button class="btn btn-xs" onclick="saveAcqConsiderations()">Save</button></div>';
   h += '<textarea id="acqConsiderations" placeholder="Add notes for AI to consider next time: e.g. \'property needs new roof ~$15K\', \'zoning allows ADU\', \'HOA restricts STR\', \'seller willing to negotiate\'..." style="width:100%;height:60px;font-size:0.78rem;padding:8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);resize:vertical;">' + esc(window._acqConsiderations || '') + '</textarea>';
   h += '</div>';
 
   // Financial projections grid
   h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;margin-bottom:14px;">';
-  function ac(l,v,c,s){return '<div style="text-align:center;padding:10px 6px;background:var(--surface2);border-radius:6px;border:1px solid var(--border);"><div style="font-size:0.6rem;color:var(--text3);">'+l+'</div><div style="font-family:DM Mono,monospace;font-size:1rem;font-weight:700;color:'+(c||'var(--text)')+';">'+v+'</div>'+(s?'<div style="font-size:0.55rem;color:var(--text3);">'+s+'</div>':'')+'</div>';}
+  function ac(l,v,c,s){return '<div style="text-align:center;padding:10px 6px;background:var(--surface2);border-radius:6px;border:1px solid var(--border);"><div style="font-size:0.6rem;color:var(--text3);">'+l+'</div><div style="font-family:DM Mono,monospace;font-size:1rem;font-weight:700;color:'+(c||'var(--text)')+';">'+v+'</div>'+(s?'<div style="font-size:0.65rem;color:var(--text3);">'+s+'</div>':'')+'</div>';}
   h += ac('Nightly Rate', '$' + (a.projected_nightly_rate || '?'), 'var(--purple)');
   h += ac('Occupancy', (a.projected_occupancy_pct || '?') + '%', 'var(--accent)');
   h += ac('Monthly Rev', '$' + (a.projected_monthly_revenue || 0).toLocaleString(), 'var(--accent)');
@@ -966,7 +1008,7 @@ function renderAcquisitionAnalysis(d, container) {
 
   // SWOT grid
   h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">';
-  [['Strengths', a.strengths, 'var(--accent)', '💪'], ['Weaknesses', a.weaknesses, 'var(--danger)', '⚠️'], ['Opportunities', a.opportunities, 'var(--purple)', '🎯'], ['Threats', a.threats, '#f59e0b', '🔥']].forEach(function(sw) {
+  [['Strengths', a.strengths, 'var(--accent)', _ico('trendUp',14)], ['Weaknesses', a.weaknesses, 'var(--danger)', '' + _ico('alertCircle', 13, '#f59e0b') + ''], ['Opportunities', a.opportunities, 'var(--purple)', '' + _ico('target', 13) + ''], ['Threats', a.threats, '#f59e0b', _ico('alertTriangle',14)]].forEach(function(sw) {
     if (!sw[1] || sw[1].length === 0) return;
     h += '<div style="padding:12px;background:var(--surface2);border-radius:8px;border:1px solid var(--border);">';
     h += '<div style="font-size:0.75rem;font-weight:600;color:' + sw[2] + ';margin-bottom:6px;">' + sw[3] + ' ' + sw[0].toUpperCase() + '</div>';
@@ -978,7 +1020,7 @@ function renderAcquisitionAnalysis(d, container) {
   // Upgrade recommendations
   if (a.upgrades && a.upgrades.length > 0) {
     h += '<div style="padding:14px;background:var(--surface2);border-radius:8px;border:1px solid var(--border);margin-bottom:14px;">';
-    h += '<div style="font-size:0.82rem;font-weight:600;color:var(--purple);margin-bottom:8px;">🔧 RECOMMENDED UPGRADES</div>';
+    h += '<div style="font-size:0.82rem;font-weight:600;color:var(--purple);margin-bottom:8px;">' + _ico('tool', 13) + ' RECOMMENDED UPGRADES</div>';
     h += '<table class="comp-table" style="font-size:0.8rem;"><thead><tr><th>Upgrade</th><th>Est. Cost</th><th>Monthly +</th><th>ROI</th><th>Why</th></tr></thead><tbody>';
     a.upgrades.forEach(function(u) {
       h += '<tr><td style="font-weight:600;">' + esc(u.name || '') + '</td>';
@@ -993,7 +1035,7 @@ function renderAcquisitionAnalysis(d, container) {
   // Comparable properties (STR + LTR)
   if (a.str_comps && a.str_comps.length > 0) {
     h += '<div style="padding:14px;background:var(--surface2);border-radius:8px;border:1px solid var(--border);margin-bottom:10px;">';
-    h += '<div style="font-size:0.82rem;font-weight:600;color:var(--accent);margin-bottom:8px;">📊 STR COMPARABLES</div>';
+    h += '<div style="font-size:0.82rem;font-weight:600;color:var(--accent);margin-bottom:8px;">' + _ico('barChart', 13) + ' STR COMPARABLES</div>';
     h += '<table class="comp-table" style="font-size:0.78rem;"><thead><tr><th>Property</th><th>BR/BA</th><th>Rate</th><th>Occ</th><th>Revenue</th></tr></thead><tbody>';
     a.str_comps.forEach(function(c) {
       h += '<tr><td>' + esc(c.description || c.name || '') + '</td><td>' + (c.bedrooms || '?') + '/' + (c.bathrooms || '?') + '</td>';
@@ -1005,7 +1047,7 @@ function renderAcquisitionAnalysis(d, container) {
   }
   if (a.ltr_comps && a.ltr_comps.length > 0) {
     h += '<div style="padding:14px;background:var(--surface2);border-radius:8px;border:1px solid var(--border);margin-bottom:10px;">';
-    h += '<div style="font-size:0.82rem;font-weight:600;color:var(--blue);margin-bottom:8px;">🏠 LTR COMPARABLES</div>';
+    h += '<div style="font-size:0.82rem;font-weight:600;color:var(--blue);margin-bottom:8px;">' + _ico('home', 13) + ' LTR COMPARABLES</div>';
     h += '<table class="comp-table" style="font-size:0.78rem;"><thead><tr><th>Property</th><th>BR/BA</th><th>Monthly Rent</th></tr></thead><tbody>';
     a.ltr_comps.forEach(function(c) {
       h += '<tr><td>' + esc(c.description || c.name || '') + '</td><td>' + (c.bedrooms || '?') + '/' + (c.bathrooms || '?') + '</td>';
@@ -1017,7 +1059,7 @@ function renderAcquisitionAnalysis(d, container) {
   // Sale comps — nearby properties for sale
   if (a.sale_comps && a.sale_comps.length > 0) {
     h += '<div style="padding:14px;background:var(--surface2);border-radius:8px;border:1px solid var(--border);margin-bottom:10px;">';
-    h += '<div style="font-size:0.82rem;font-weight:600;color:#f59e0b;margin-bottom:8px;">🏷️ NEARBY PROPERTIES FOR SALE</div>';
+    h += '<div style="font-size:0.82rem;font-weight:600;color:#f59e0b;margin-bottom:8px;">' + _ico('tag', 13) + ' NEARBY PROPERTIES FOR SALE</div>';
     h += '<table class="comp-table" style="font-size:0.78rem;"><thead><tr><th>Property</th><th>BR/BA</th><th>Sqft</th><th>Price</th><th>Link</th></tr></thead><tbody>';
     a.sale_comps.forEach(function(c) {
       h += '<tr><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(c.description || '') + '</td>';
@@ -1030,7 +1072,7 @@ function renderAcquisitionAnalysis(d, container) {
   }
   if (a.str_projection || a.ltr_projection || a.midterm_projection) {
     h += '<div style="padding:14px;background:var(--surface2);border-radius:8px;border:1px solid var(--border);margin-bottom:14px;">';
-    h += '<div style="font-size:0.85rem;font-weight:600;color:var(--text);margin-bottom:10px;">💰 REVENUE PROJECTIONS BY STRATEGY</div>';
+    h += '<div style="font-size:0.85rem;font-weight:600;color:var(--text);margin-bottom:10px;">' + _ico('dollarSign', 13) + ' REVENUE PROJECTIONS BY STRATEGY</div>';
     h += '<table class="comp-table" style="font-size:0.82rem;"><thead><tr><th></th><th style="color:var(--accent);">Short-Term</th><th style="color:var(--blue);">Mid-Term</th><th style="color:var(--purple);">Long-Term</th></tr></thead><tbody>';
     var sp = a.str_projection || {}, mp = a.midterm_projection || {}, lp = a.ltr_projection || {};
     function pv(v, fmt) { if (!v) return '<span style="color:var(--text3);">—</span>'; return fmt === '$' ? '$' + Math.round(v).toLocaleString() : v + (fmt || ''); }
@@ -1049,16 +1091,16 @@ function renderAcquisitionAnalysis(d, container) {
   if (a.regulations) {
     var reg = a.regulations;
     h += '<div style="padding:14px;background:var(--surface2);border-radius:8px;border:1px solid var(--border);margin-bottom:14px;">';
-    h += '<div style="font-size:0.85rem;font-weight:600;color:var(--text);margin-bottom:10px;">📜 LOCAL REGULATIONS</div>';
+    h += '<div style="font-size:0.85rem;font-weight:600;color:var(--text);margin-bottom:10px;">' + _ico('receipt', 13) + ' LOCAL REGULATIONS</div>';
     h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-bottom:10px;">';
     var strOk = reg.str_allowed === true ? 'var(--accent)' : reg.str_allowed === false ? 'var(--danger)' : '#f59e0b';
-    h += '<div style="text-align:center;padding:8px;background:var(--bg);border-radius:6px;"><div style="font-size:0.6rem;color:var(--text3);">STR Allowed</div><div style="font-weight:700;color:' + strOk + ';">' + (reg.str_allowed === true ? '✅ Yes' : reg.str_allowed === false ? '❌ No' : '❓ Check') + '</div></div>';
-    h += '<div style="text-align:center;padding:8px;background:var(--bg);border-radius:6px;"><div style="font-size:0.6rem;color:var(--text3);">Permit Required</div><div style="font-weight:700;">' + (reg.permit_required === true ? '📋 Yes' : reg.permit_required === false ? 'No' : '❓ Check') + '</div></div>';
+    h += '<div style="text-align:center;padding:8px;background:var(--bg);border-radius:6px;"><div style="font-size:0.6rem;color:var(--text3);">STR Allowed</div><div style="font-weight:700;color:' + strOk + ';">' + (reg.str_allowed === true ? '' + _ico('check', 13, 'var(--accent)') + ' Yes' : reg.str_allowed === false ? '' + _ico('x', 13, 'var(--danger)') + ' No' : '' + _ico('helpCircle', 13, '#f59e0b') + ' Check') + '</div></div>';
+    h += '<div style="text-align:center;padding:8px;background:var(--bg);border-radius:6px;"><div style="font-size:0.6rem;color:var(--text3);">Permit Required</div><div style="font-weight:700;">' + (reg.permit_required === true ? '' + _ico('receipt', 13) + ' Yes' : reg.permit_required === false ? 'No' : '' + _ico('helpCircle', 13, '#f59e0b') + ' Check') + '</div></div>';
     if (reg.occupancy_tax_pct) h += '<div style="text-align:center;padding:8px;background:var(--bg);border-radius:6px;"><div style="font-size:0.6rem;color:var(--text3);">Occupancy Tax</div><div style="font-weight:700;">' + reg.occupancy_tax_pct + '%</div></div>';
     if (reg.max_occupancy_days) h += '<div style="text-align:center;padding:8px;background:var(--bg);border-radius:6px;"><div style="font-size:0.6rem;color:var(--text3);">Max Days/Year</div><div style="font-weight:700;">' + reg.max_occupancy_days + '</div></div>';
     h += '</div>';
     if (reg.notes) h += '<div style="font-size:0.85rem;color:var(--text);line-height:1.6;">' + esc(reg.notes) + '</div>';
-    h += '<div style="font-size:0.68rem;color:var(--text3);margin-top:8px;">⚠️ Always verify regulations with the local municipality before purchasing. AI-sourced data may not be current.</div>';
+    h += '<div style="font-size:0.68rem;color:var(--text3);margin-top:8px;">' + _ico('alertCircle', 13, '#f59e0b') + ' Always verify regulations with the local municipality before purchasing. AI-sourced data may not be current.</div>';
     h += '</div>';
   }
 
@@ -1066,7 +1108,7 @@ function renderAcquisitionAnalysis(d, container) {
   if (a.area_demand) {
     var ad = a.area_demand;
     h += '<div style="padding:14px;background:var(--surface2);border-radius:8px;border:1px solid var(--border);margin-bottom:14px;">';
-    h += '<div style="font-size:0.85rem;font-weight:600;color:var(--text);margin-bottom:10px;">🏙️ AREA DEMAND ANALYSIS</div>';
+    h += '<div style="font-size:0.85rem;font-weight:600;color:var(--text);margin-bottom:10px;">' + _ico('building', 13) + ' AREA DEMAND ANALYSIS</div>';
     if (ad.str_demand_drivers && ad.str_demand_drivers.length) {
       h += '<div style="margin-bottom:8px;"><strong style="font-size:0.78rem;color:var(--accent);">What brings short-term visitors:</strong></div>';
       ad.str_demand_drivers.forEach(function(d) { h += '<div style="font-size:0.85rem;margin:3px 0;line-height:1.4;">• ' + esc(d) + '</div>'; });
@@ -1084,7 +1126,7 @@ function renderAcquisitionAnalysis(d, container) {
   if (a.future_value) {
     var fv = a.future_value;
     h += '<div style="padding:14px;background:var(--surface2);border-radius:8px;border:1px solid var(--border);margin-bottom:14px;">';
-    h += '<div style="font-size:0.85rem;font-weight:600;color:var(--text);margin-bottom:10px;">📈 FUTURE VALUE PROJECTION</div>';
+    h += '<div style="font-size:0.85rem;font-weight:600;color:var(--text);margin-bottom:10px;">' + _ico('trendUp', 13) + ' FUTURE VALUE PROJECTION</div>';
     h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;margin-bottom:10px;">';
     if (fv.appreciation_pct_annual) h += ac('Annual Appreciation', fv.appreciation_pct_annual + '%', fv.appreciation_pct_annual > 0 ? 'var(--accent)' : 'var(--danger)');
     if (fv.value_in_3_years) h += ac('Value in 3 Years', '$' + Math.round(fv.value_in_3_years).toLocaleString(), 'var(--accent)');
@@ -1112,19 +1154,19 @@ function renderAcquisitionAnalysis(d, container) {
   // Market outlook & comp performance — BIGGER, readable
   if (a.market_outlook) {
     h += '<div style="padding:14px;background:var(--surface2);border-radius:8px;margin-bottom:10px;">';
-    h += '<div style="font-size:0.82rem;font-weight:600;color:var(--text2);margin-bottom:6px;">🌍 MARKET OUTLOOK</div>';
+    h += '<div style="font-size:0.82rem;font-weight:600;color:var(--text2);margin-bottom:6px;">' + _ico('globe', 13) + ' MARKET OUTLOOK</div>';
     h += '<div style="font-size:0.88rem;color:var(--text);line-height:1.6;">' + esc(a.market_outlook) + '</div></div>';
   }
   if (a.comparable_performance) {
     h += '<div style="padding:14px;background:var(--surface2);border-radius:8px;margin-bottom:10px;">';
-    h += '<div style="font-size:0.82rem;font-weight:600;color:var(--text2);margin-bottom:6px;">📊 VS. COMPARABLES</div>';
+    h += '<div style="font-size:0.82rem;font-weight:600;color:var(--text2);margin-bottom:6px;">' + _ico('barChart', 13) + ' VS. COMPARABLES</div>';
     h += '<div style="font-size:0.88rem;color:var(--text);line-height:1.6;">' + esc(a.comparable_performance) + '</div></div>';
   }
 
   // Final recommendation
   if (a.recommendation) {
     h += '<div style="padding:16px;background:' + vBg + ';border:2px solid ' + vBdr + ';border-radius:8px;margin-bottom:10px;">';
-    h += '<div style="font-size:0.82rem;font-weight:600;color:' + vc + ';margin-bottom:6px;">📋 FINAL RECOMMENDATION</div>';
+    h += '<div style="font-size:0.82rem;font-weight:600;color:' + vc + ';margin-bottom:6px;">' + _ico('receipt', 13) + ' FINAL RECOMMENDATION</div>';
     h += '<div style="font-size:0.88rem;line-height:1.6;color:var(--text);">' + esc(a.recommendation) + '</div>';
     h += '</div>';
   }
@@ -1174,24 +1216,24 @@ async function loadSavedReports(propId) {
 
     // Show saved report timestamps
     var savedInfo = [];
-    if (latest.pricing_analysis) savedInfo.push('🔍 Price Analysis: ' + latest.pricing_analysis.created_at.substring(0, 16).replace('T', ' '));
-    if (latest.pl_strategy) savedInfo.push('📊 Strategy: ' + latest.pl_strategy.created_at.substring(0, 16).replace('T', ' '));
-    if (latest.revenue_optimization) savedInfo.push('🚀 Optimization: ' + latest.revenue_optimization.created_at.substring(0, 16).replace('T', ' '));
-    if (latest.acquisition_analysis) savedInfo.push('🏠 Acquisition: ' + latest.acquisition_analysis.created_at.substring(0, 16).replace('T', ' '));
+    if (latest.pricing_analysis) savedInfo.push('' + _ico('search', 13) + ' Price Analysis: ' + fmtUTC(latest.pricing_analysis.created_at));
+    if (latest.pl_strategy) savedInfo.push('' + _ico('barChart', 13) + ' Strategy: ' + fmtUTC(latest.pl_strategy.created_at));
+    if (latest.revenue_optimization) savedInfo.push('' + _ico('trendUp', 13) + ' Optimization: ' + fmtUTC(latest.revenue_optimization.created_at));
+    if (latest.acquisition_analysis) savedInfo.push('' + _ico('home', 13) + ' Acquisition: ' + fmtUTC(latest.acquisition_analysis.created_at));
 
     if (savedInfo.length > 0 && st) {
       st.innerHTML = '<div style="font-size:0.72rem;color:var(--text3);margin-bottom:8px;">Saved reports: ' + savedInfo.join(' · ') + '</div>';
     }
 
     // Restore latest pricing analysis (from Run Price Analysis button) — highest priority
-    var resultsEl = document.getElementById('plStrategyResults');
-    if (resultsEl && !resultsEl.innerHTML && latest.pricing_analysis && latest.pricing_analysis.data) {
+    var resultsEl = document.getElementById('priceAnalysisResults');
+    if (resultsEl && latest.pricing_analysis && latest.pricing_analysis.data) {
       var pd = latest.pricing_analysis.data;
       var h = '';
       // Restored banner
       var ago = Math.round((Date.now() - new Date(latest.pricing_analysis.created_at).getTime()) / 86400000);
       var agoText = ago === 0 ? 'today' : ago === 1 ? 'yesterday' : ago + ' days ago';
-      h += '<div style="font-size:0.7rem;color:var(--text3);padding:4px 8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;margin-bottom:8px;">🔄 Restored from ' + agoText + ' · ' + latest.pricing_analysis.created_at.substring(0, 16).replace('T', ' ') + ' · <em>Run Price Analysis to refresh</em></div>';
+      h += '<div style="font-size:0.7rem;color:var(--text3);padding:4px 8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;margin-bottom:8px;">' + _ico('refresh', 13) + ' Restored from ' + agoText + ' · ' + fmtUTC(latest.pricing_analysis.created_at) + ' · <em>Run Price Analysis to refresh</em></div>';
       // Sources
       if (pd.sources && pd.sources.length > 0) {
         h += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">';
@@ -1224,7 +1266,7 @@ async function loadSavedReports(propId) {
           var pct = maxM > 0 ? Math.round((s.multiplier || 1) / maxM * 100) : 50;
           var clr = (s.multiplier || 1) >= 1.1 ? 'var(--accent)' : (s.multiplier || 1) <= 0.85 ? 'var(--danger)' : '#f59e0b';
           h += '<div style="flex:1;text-align:center;"><div style="background:' + clr + ';border-radius:3px 3px 0 0;height:' + Math.max(pct, 5) + '%;min-height:3px;opacity:0.7;" title="' + mNames[(s.month_number || 1) - 1] + ': ' + (s.multiplier || 1).toFixed(2) + 'x"></div>';
-          h += '<div style="font-size:0.55rem;color:var(--text3);margin-top:2px;">' + mNames[(s.month_number || 1) - 1] + '</div>';
+          h += '<div style="font-size:0.65rem;color:var(--text3);margin-top:2px;">' + mNames[(s.month_number || 1) - 1] + '</div>';
           h += '<div style="font-size:0.5rem;color:' + clr + ';">' + (s.multiplier || 1).toFixed(1) + 'x</div></div>';
         });
         h += '</div></div>';
@@ -1237,19 +1279,27 @@ async function loadSavedReports(propId) {
       resultsEl.innerHTML = h;
     }
 
-    // Restore latest PL strategy if pricing analysis isn't available and container is still empty
-    if (resultsEl && !resultsEl.innerHTML && latest.pl_strategy && latest.pl_strategy.data && latest.pl_strategy.data.strategy && !latest.pl_strategy.data.context?.parse_error) {
-      renderPLStrategy(latest.pl_strategy.data, resultsEl);
+    // Restore latest PL strategy into plStrategyResults
+    var plStratEl = document.getElementById('plStrategyResults');
+    if (plStratEl && latest.pl_strategy && latest.pl_strategy.data && latest.pl_strategy.data.strategy && !latest.pl_strategy.data.context?.parse_error) {
+      renderPLStrategy(latest.pl_strategy.data, plStratEl);
+      // Add "last updated" banner
+      var plAgo = _agoText(latest.pl_strategy.created_at);
+      plStratEl.insertAdjacentHTML('afterbegin', '<div style="font-size:0.68rem;color:var(--text3);padding:4px 8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;margin-bottom:8px;">' + _ico('clock', 12) + ' Last run ' + plAgo + ' · ' + fmtUTC(latest.pl_strategy.created_at) + ' · <em>Click Generate Strategy to refresh</em></div>');
     }
-    // Restore latest revenue optimization
+    // Restore latest revenue optimization — ALWAYS show latest if available
     var optRes = document.getElementById('revenueOptResults');
-    if (optRes && !optRes.innerHTML && latest.revenue_optimization && latest.revenue_optimization.data && latest.revenue_optimization.data.optimization) {
+    if (optRes && latest.revenue_optimization && latest.revenue_optimization.data && latest.revenue_optimization.data.optimization) {
       renderRevenueOptimization(latest.revenue_optimization.data, optRes);
+      var optAgo = _agoText(latest.revenue_optimization.created_at);
+      optRes.insertAdjacentHTML('afterbegin', '<div style="font-size:0.68rem;color:var(--text3);padding:4px 8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;margin-bottom:8px;">' + _ico('clock', 12) + ' Last run ' + optAgo + ' · ' + fmtUTC(latest.revenue_optimization.created_at) + ' · <em>Click Optimize Revenue to refresh</em></div>');
     }
-    // Restore latest acquisition analysis
+    // Restore latest acquisition analysis — ALWAYS show latest if available
     var acqRes = document.getElementById('acquisitionResults');
-    if (acqRes && !acqRes.innerHTML && latest.acquisition_analysis && latest.acquisition_analysis.data && latest.acquisition_analysis.data.analysis) {
+    if (acqRes && latest.acquisition_analysis && latest.acquisition_analysis.data && latest.acquisition_analysis.data.analysis) {
       renderAcquisitionAnalysis(latest.acquisition_analysis.data, acqRes);
+      var acqAgo = _agoText(latest.acquisition_analysis.created_at);
+      acqRes.insertAdjacentHTML('afterbegin', '<div style="font-size:0.68rem;color:var(--text3);padding:4px 8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;margin-bottom:8px;">' + _ico('clock', 12) + ' Last run ' + acqAgo + ' · ' + fmtUTC(latest.acquisition_analysis.created_at) + ' · <em>Click to refresh</em></div>');
     }
     // Load saved considerations
     loadAcqConsiderations(propId);
@@ -1264,22 +1314,53 @@ async function generatePLStrategy() {
   var st = document.getElementById('plStrategyStatus');
   var res = document.getElementById('plStrategyResults');
   if (btn) btn.disabled = true;
-  if (btn) btn.textContent = '⏳ Generating...';
-  if (st) st.innerHTML = '🤖 Analyzing property data, market conditions, comps, and PriceLabs data...';
+  if (btn) btn.innerHTML ='' + _ico('clock', 13) + ' Generating...';
+  if (st) st.innerHTML ='' + _ico('sparkle', 13) + ' Analyzing property data, market conditions, comps, and PriceLabs data...';
   if (res) res.innerHTML = ''; // Clear old results
   showLoading('Generating pricing strategy...');
   try {
     var d = await api('/api/properties/' + editId + '/pl-strategy', 'POST');
     if (st) st.innerHTML = '';
     renderPLStrategy(d, res);
+    // Refresh the compare panel: convert pl-strategy result into the shape loadPLComparePanel expects
+    if (typeof loadPLComparePanel === 'function' && d && d.strategy) {
+      var s = d.strategy;
+      // Map pl-strategy output → strategy card shape the compare panel understands
+      var syntheticStrat = {
+        strategy_name: 'AI — PL Strategy',
+        base_nightly_rate: s.base_price || 0,
+        min_price: s.min_price || 0,
+        max_price: s.max_price || 0,
+        weekend_rate: s.base_price && s.weekend_adjustment ? Math.round(s.base_price * (1 + (s.weekend_adjustment || 20) / 100)) : (s.base_price ? Math.round(s.base_price * 1.2) : 0),
+        cleaning_fee: s.cleaning_fee || 0,
+        min_nights: s.min_nights_weekday || s.min_nights_weekend || 2,
+        projected_occupancy: s.projected_occupancy || 0,
+        projected_monthly_avg: s.projected_monthly_revenue || 0,
+        projected_annual_revenue: s.projected_annual_revenue || 0,
+        ai_generated: true,
+        from_pl_strategy: true,
+      };
+      // Build a synthetic analysisData object the panel can consume
+      var syntheticData = {
+        pricelabs: d.context && d.context.pricelabs ? d.context.pricelabs : null,
+        strategies: [syntheticStrat],
+        property: d.property || null,
+      };
+      // If no PL data in context, load from property
+      if (!syntheticData.pricelabs) {
+        loadPLComparePanel(editId, null); // will fetch from property endpoint
+      } else {
+        loadPLComparePanel(editId, syntheticData);
+      }
+    }
     toast('Strategy generated');
   } catch (err) {
     var errMsg = err.message || 'Unknown error';
-    var helpHtml = errMsg.includes('AI provider') ? '<div style="margin-top:6px;padding:8px 12px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);border-radius:6px;font-size:0.78rem;">💡 Go to <strong>Admin → API Keys</strong> and add your Anthropic or OpenAI API key. Workers AI (free) should also work if enabled on your Cloudflare account.</div>' : '';
+    var helpHtml = errMsg.includes('AI provider') ? '<div style="margin-top:6px;padding:8px 12px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);border-radius:6px;font-size:0.78rem;">' + _ico('zap', 13) + ' Go to <strong>Admin → API Keys</strong> and add your Anthropic or OpenAI API key. Workers AI (free) should also work if enabled on your Cloudflare account.</div>' : '';
     if (st) st.innerHTML = '<span style="color:var(--danger);">✗ ' + esc(errMsg) + '</span>' + helpHtml;
     toast(errMsg, 'error');
   }
-  if (btn) { btn.disabled = false; btn.textContent = '📊 Generate Strategy'; }
+  if (btn) { btn.disabled = false; btn.innerHTML ='' + _ico('barChart', 13) + ' Generate Strategy'; }
   hideLoading();
 }
 
@@ -1352,12 +1433,12 @@ function renderPLStrategy(d, container) {
     h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">';
     if (s.peak_season_months && s.peak_season_months.length > 0) {
       h += '<div style="padding:10px 14px;background:rgba(239,68,68,0.05);border:1px solid rgba(239,68,68,0.15);border-radius:8px;">';
-      h += '<div style="font-size:0.72rem;font-weight:600;color:var(--danger);margin-bottom:4px;">🔥 PEAK SEASON (+' + (s.peak_season_markup_pct || 0) + '%)</div>';
+      h += '<div style="font-size:0.72rem;font-weight:600;color:var(--danger);margin-bottom:4px;">' + _ico('flame', 13, 'var(--danger)') + ' PEAK SEASON (+' + (s.peak_season_markup_pct || 0) + '%)</div>';
       h += '<div style="font-size:0.78rem;">' + s.peak_season_months.join(', ') + '</div></div>';
     }
     if (s.low_season_months && s.low_season_months.length > 0) {
       h += '<div style="padding:10px 14px;background:rgba(59,130,246,0.05);border:1px solid rgba(59,130,246,0.15);border-radius:8px;">';
-      h += '<div style="font-size:0.72rem;font-weight:600;color:var(--blue);margin-bottom:4px;">❄️ LOW SEASON (-' + (s.low_season_discount_pct || 0) + '%)</div>';
+      h += '<div style="font-size:0.72rem;font-weight:600;color:var(--blue);margin-bottom:4px;">' + _ico('snowflake', 13, 'var(--blue)') + ' LOW SEASON (-' + (s.low_season_discount_pct || 0) + '%)</div>';
       h += '<div style="font-size:0.78rem;">' + s.low_season_months.join(', ') + '</div></div>';
     }
     h += '</div>';
@@ -1366,7 +1447,7 @@ function renderPLStrategy(d, container) {
   // PriceLabs setup steps
   if (s.pricelabs_setup_steps && s.pricelabs_setup_steps.length > 0) {
     h += '<div style="padding:14px;background:rgba(167,139,250,0.04);border:1px solid rgba(167,139,250,0.15);border-radius:8px;margin-bottom:14px;">';
-    h += '<div style="font-size:0.78rem;font-weight:600;color:var(--purple);margin-bottom:8px;">📋 PRICELABS SETUP STEPS</div>';
+    h += '<div style="font-size:0.78rem;font-weight:600;color:var(--purple);margin-bottom:8px;">' + _ico('receipt', 13) + ' PRICELABS SETUP STEPS</div>';
     s.pricelabs_setup_steps.forEach(function(step, i) {
       h += '<div style="display:flex;gap:8px;margin:6px 0;font-size:0.78rem;">';
       h += '<span style="flex-shrink:0;width:22px;height:22px;border-radius:50%;background:var(--purple);color:var(--bg);display:flex;align-items:center;justify-content:center;font-size:0.68rem;font-weight:700;">' + (i + 1) + '</span>';
@@ -1388,7 +1469,7 @@ function renderPLStrategy(d, container) {
   // Risks
   if (s.risks && s.risks.length > 0) {
     h += '<div style="padding:14px;background:rgba(245,158,11,0.04);border:1px solid rgba(245,158,11,0.15);border-radius:8px;margin-bottom:14px;">';
-    h += '<div style="font-size:0.78rem;font-weight:600;color:#f59e0b;margin-bottom:8px;">⚠ RISKS</div>';
+    h += '<div style="font-size:0.78rem;font-weight:600;color:#f59e0b;margin-bottom:8px;">' + _ico('alertCircle', 13, '#f59e0b') + ' RISKS</div>';
     s.risks.forEach(function(r) {
       h += '<div style="font-size:0.78rem;color:var(--text);margin:4px 0;">• ' + esc(r) + '</div>';
     });
@@ -1408,8 +1489,21 @@ function renderPLStrategy(d, container) {
 
 var propTrends = {};
 async function loadProperties() {
-  try { const d = await api('/api/properties'); properties = d.properties || []; propTrends = d.trends || {}; window._actualRevenue = d.actual_revenue || {}; renderProperties(); }
+  try { const d = await api('/api/properties'); properties = d.properties || []; propTrends = d.trends || {}; window._actualRevenue = d.actual_revenue || {}; window._marketProfiles = d.market_profiles || {}; renderProperties(); }
   catch { properties = []; propTrends = {}; renderProperties(); }
+  // Show/hide Management tab based on managed properties
+  var hasManaged = properties.some(function(p) { return p.is_managed === 1 || p.is_managed === '1' || p.ownership_type === 'managed'; });
+  var mgmtTab = document.getElementById('managementTab');
+  if (mgmtTab) mgmtTab.style.display = hasManaged ? '' : 'none';
+}
+
+var _propCompact = false;  // compact vs detailed card view
+
+function togglePropView() {
+  _propCompact = !_propCompact;
+  var btn = document.getElementById('propViewToggle');
+  if (btn) { btn.textContent = _propCompact ? '☰' : '⊞'; btn.title = _propCompact ? 'Switch to detailed view' : 'Switch to compact view'; }
+  renderProperties();
 }
 
 function renderProperties() {
@@ -1457,7 +1551,7 @@ function renderProperties() {
       default: return 0;
     }
   });
-  // Separate buildings from standalone
+  // Identify buildings and children
   var buildingIds = new Set();
   var childIds = new Set();
   sorted.forEach(function(p) {
@@ -1466,43 +1560,120 @@ function renderProperties() {
   });
 
   var buildings = sorted.filter(function(p) { return buildingIds.has(p.id); });
-  var standalone = sorted.filter(function(p) { return !buildingIds.has(p.id) && !childIds.has(p.id) && !p.is_research; });
+  var topLevel = sorted.filter(function(p) { return !childIds.has(p.id); }); // buildings + standalone + research (no children)
   var research = sorted.filter(function(p) { return !buildingIds.has(p.id) && !childIds.has(p.id) && p.is_research; });
 
+  var groupBy = (document.getElementById('propGroupBy') || {}).value || 'type';
   var html = '';
 
-  // ── BUILDINGS SECTION ──
-  if (buildings.length > 0) {
-    html += '<div style="margin-bottom:20px;">';
-    html += '<div style="font-size:0.72rem;font-weight:600;color:var(--purple);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;padding:0 4px;">🏢 Buildings & Units (' + buildings.length + ' buildings)</div>';
-    buildings.forEach(function(bld) {
-      var children = sorted.filter(function(p) { return String(p.parent_id) === String(bld.id); });
-      html += renderPropertyCard(bld, true, false);
-      children.forEach(function(child) {
-        html += renderPropertyCard(child, false, true);
+  // ── Helper: render a section header ──
+  function sectionHeader(icon, label, count, color) {
+    return '<div style="font-size:0.72rem;font-weight:600;color:' + (color || 'var(--text3)') + ';text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;padding:4px 6px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">' +
+      '<span>' + icon + ' ' + label + '</span>' +
+      '<span style="font-weight:400;font-size:0.68rem;color:var(--text3);">' + count + ' ' + (count === 1 ? 'property' : 'properties') + '</span>' +
+    '</div>';
+  }
+
+  // ── Helper: render one building + its children ──
+  function renderBuilding(bld) {
+    var ch = '';
+    if (!_propCompact) {
+      sorted.filter(function(p) { return String(p.parent_id) === String(bld.id); }).forEach(function(child) {
+        ch += renderPropertyCard(child, false, true);
       });
-    });
-    html += '</div>';
+    }
+    return renderPropertyCard(bld, true, false) + ch;
   }
 
-  // ── STANDALONE SECTION ──
-  if (standalone.length > 0) {
-    html += '<div style="margin-bottom:20px;">';
-    html += '<div style="font-size:0.72rem;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;padding:0 4px;">🏠 Properties (' + standalone.length + ')</div>';
-    standalone.forEach(function(p) {
-      html += renderPropertyCard(p, false, false);
+  if (groupBy === 'city') {
+    // ── Group by city ──
+    var cityGroups = {};
+    topLevel.forEach(function(p) {
+      var key = (p.city || 'Unknown') + ', ' + (p.state || '');
+      if (!cityGroups[key]) cityGroups[key] = [];
+      cityGroups[key].push(p);
     });
-    html += '</div>';
-  }
+    Object.keys(cityGroups).sort().forEach(function(city) {
+      var grp = cityGroups[city];
+      html += '<div style="margin-bottom:20px;">';
+      html += sectionHeader('' + _ico('mapPin', 13) + '', city, grp.length, 'var(--accent)');
+      grp.forEach(function(p) {
+        html += buildingIds.has(p.id) ? renderBuilding(p) : renderPropertyCard(p, false, false);
+      });
+      html += '</div>';
+    });
 
-  // ── RESEARCH SECTION ──
-  if (research.length > 0) {
+  } else if (groupBy === 'status') {
+    // ── Group by listing status ──
+    var statusOrder = ['active', 'paused', 'inactive', ''];
+    var statusLabels = { active: '● Live', paused: '⏸ Paused', inactive: '⏹ Inactive', '': 'No Status' };
+    var statusColors = { active: 'var(--accent)', paused: '#f59e0b', inactive: 'var(--danger)', '': 'var(--text3)' };
+    var statusGroups = {};
+    topLevel.forEach(function(p) {
+      var key = p.listing_status || '';
+      if (!statusGroups[key]) statusGroups[key] = [];
+      statusGroups[key].push(p);
+    });
+    statusOrder.forEach(function(status) {
+      if (!statusGroups[status] || statusGroups[status].length === 0) return;
+      var grp = statusGroups[status];
+      html += '<div style="margin-bottom:20px;">';
+      html += sectionHeader('', statusLabels[status], grp.length, statusColors[status]);
+      grp.forEach(function(p) {
+        html += buildingIds.has(p.id) ? renderBuilding(p) : renderPropertyCard(p, false, false);
+      });
+      html += '</div>';
+    });
+
+  } else if (groupBy === 'none') {
+    // ── No grouping — flat list ──
     html += '<div style="margin-bottom:20px;">';
-    html += '<div style="font-size:0.72rem;font-weight:600;color:var(--purple);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;padding:0 4px;">🔬 Research (' + research.length + ')</div>';
-    research.forEach(function(p) {
-      html += renderPropertyCard(p, false, false);
+    topLevel.forEach(function(p) {
+      html += buildingIds.has(p.id) ? renderBuilding(p) : renderPropertyCard(p, false, false);
     });
     html += '</div>';
+
+  } else {
+    // ── Default: group by type (Buildings / STR / LTR / Research) ──
+    if (buildings.length > 0) {
+      html += '<div style="margin-bottom:20px;">';
+      html += sectionHeader('' + _ico('building', 13) + '', 'Buildings & Units', buildings.length, 'var(--purple)');
+      buildings.forEach(function(bld) { html += renderBuilding(bld); });
+      html += '</div>';
+    }
+
+    var isManaged = function(p) { return p.is_managed === 1 || p.is_managed === '1' || p.ownership_type === 'managed'; };
+    var strProps = topLevel.filter(function(p) { return !buildingIds.has(p.id) && !p.is_research && !isManaged(p) && p.rental_type !== 'ltr'; });
+    if (strProps.length > 0) {
+      html += '<div style="margin-bottom:20px;">';
+      html += sectionHeader('' + _ico('home', 13) + '', 'Short-Term Rentals', strProps.length, 'var(--text2)');
+      strProps.forEach(function(p) { html += renderPropertyCard(p, false, false); });
+      html += '</div>';
+    }
+
+    var ltrProps = topLevel.filter(function(p) { return !buildingIds.has(p.id) && !p.is_research && !isManaged(p) && p.rental_type === 'ltr'; });
+    if (ltrProps.length > 0) {
+      html += '<div style="margin-bottom:20px;">';
+      html += sectionHeader('' + _ico('clipboard', 13) + '', 'Long-Term Rentals', ltrProps.length, '#60a5fa');
+      ltrProps.forEach(function(p) { html += renderPropertyCard(p, false, false); });
+      html += '</div>';
+    }
+
+    var managedProps = topLevel.filter(function(p) { return !buildingIds.has(p.id) && !p.is_research && isManaged(p); });
+    if (managedProps.length > 0) {
+      html += '<div style="margin-bottom:20px;">';
+      html += sectionHeader('' + _ico('handshake', 13) + '', 'Managed for Owners', managedProps.length, '#60a5fa');
+      html += '<div style="font-size:0.72rem;color:var(--text3);margin-bottom:8px;padding:0 4px;">These properties are managed for other owners. Their revenue and costs are NOT included in your portfolio totals.</div>';
+      managedProps.forEach(function(p) { html += renderPropertyCard(p, false, false); });
+      html += '</div>';
+    }
+
+    if (research.length > 0) {
+      html += '<div style="margin-bottom:20px;">';
+      html += sectionHeader('' + _ico('search', 13) + '', 'Research', research.length, 'var(--purple)');
+      research.forEach(function(p) { html += renderPropertyCard(p, false, false); });
+      html += '</div>';
+    }
   }
 
   list.innerHTML = html;
@@ -1510,23 +1681,24 @@ function renderProperties() {
 
 function renderPropertyCard(p, isBuilding, isChild) {
     var tl = p.property_type ? p.property_type.replace('_', ' ') : '';
-    var typeIcons = {single_family:'🏠',apartment:'🏬',condo:'🏙️',townhouse:'🏘️',multi_family:'🏢',cabin:'🏕️',cottage:'🛖',villa:'🏡',mobile_home:'🚐'};
+    var typeIcons = {single_family:'' + _ico('home', 13) + '',apartment:'' + _ico('building', 13) + '',condo:'' + _ico('building', 13) + '',townhouse:'' + _ico('home', 13) + '',multi_family:'' + _ico('building', 13) + '',cabin:'' + _ico('home', 13) + '',cottage:'' + _ico('home', 13) + '',villa:_ico('home',15),mobile_home:'' + _ico('home', 13) + ''};
     var typeColors = {single_family:'59,130,246',apartment:'167,139,250',condo:'14,165,233',townhouse:'234,179,8',multi_family:'167,139,250',cabin:'180,83,9',cottage:'22,163,74',villa:'168,85,247',mobile_home:'107,114,128'};
-    var typeIcon = typeIcons[p.property_type] || '🏠';
+    var typeIcon = typeIcons[p.property_type] || '' + _ico('home', 13) + '';
     var typeRgb = typeColors[p.property_type] || '148,163,184';
     var typeBadge = tl ? '<span class="badge" style="background:rgba(' + typeRgb + ',0.1);color:rgb(' + typeRgb + ');">' + typeIcon + ' ' + tl + '</span>' : '';
-    var ownerBadge = p.ownership_type === 'rental' ? '<span class="badge" style="background:rgba(245,158,11,0.1);color:#f59e0b;">🔑 renting</span>' : '';
+    var ownerBadge = p.is_research
+      ? '<span class="badge" style="background:rgba(167,139,250,0.1);color:var(--purple);border:1px solid rgba(167,139,250,0.25);">' + _ico('search', 13) + ' research</span>'
+      : p.ownership_type === 'rental'
+      ? '<span class="badge" style="background:rgba(245,158,11,0.1);color:#f59e0b;border:1px solid rgba(245,158,11,0.25);">' + _ico('key', 13) + ' renting</span>'
+      : (p.ownership_type === 'owned' || p.ownership_type === 'purchased' || (!p.ownership_type && p.purchase_price > 0))
+        ? '<span class="badge" style="background:rgba(16,185,129,0.1);color:var(--accent);border:1px solid rgba(16,185,129,0.25);">' + _ico('home', 13) + ' purchased</span>'
+        : '';
     var checked = selectedProps.has(p.id) ? ' checked' : '';
     var thumb = p.image_url ? '<div style="width:60px;height:60px;border-radius:6px;overflow:hidden;flex-shrink:0;"><img src="' + esc(p.image_url) + '" style="width:100%;height:100%;object-fit:cover;" onerror="this.parentElement.style.display=\'none\'"></div>' : '';
     var label = getPropertyLabel(p);
-    var indent = isChild ? 'margin-left:28px;border-left:3px solid rgba(' + typeRgb + ',0.3);' : '';
-    var buildingStyle = isBuilding ? 'border-left:4px solid rgb(' + typeRgb + ');background:linear-gradient(90deg,rgba(' + typeRgb + ',0.03),transparent);' : '';
-    var standaloneAccent = (!isBuilding && !isChild) ? 'border-left:3px solid rgba(' + typeRgb + ',0.25);' : '';
-    var childBadge = isBuilding ? '<span class="badge" style="background:rgba(' + typeRgb + ',0.15);color:rgb(' + typeRgb + ');">🏢 ' + (p.child_count || p.total_units_count || 0) + ' units</span>' : '';
-    var unitBadge = isChild ? '<span style="font-size:0.68rem;color:rgb(' + typeRgb + ');background:rgba(' + typeRgb + ',0.1);padding:1px 6px;border-radius:3px;">↳ unit</span>' : '';
-    var coordHtml = (p.latitude && p.longitude) ? '<span style="font-size:0.68rem;color:var(--text3);" title="' + p.latitude + ', ' + p.longitude + '">📍</span>' : '';
+    var indent = isChild ? 'margin-left:28px;' : '';
 
-    // Calculate monthly cost
+    // ── Financial computation (must come before border color) ──
     var monthlyCost = 0;
     if (p.ownership_type === 'rental') {
       monthlyCost = p.monthly_rent_cost || 0;
@@ -1536,137 +1708,147 @@ function renderPropertyCard(p, isBuilding, isChild) {
     monthlyCost += (p.expense_electric || 0) + (p.expense_gas || 0) + (p.expense_water || 0) + (p.expense_internet || 0) + (p.expense_trash || 0) + (p.expense_other || 0);
 
     var monthlyRev = p.est_monthly_revenue || 0;
-
-    // Compute PriceLabs projected revenue using blended ADR and smart occupancy
     var plMonthlyRev = 0;
     var cardADR = 0;
     if (p.pl_base_price) {
-      var plFwd = p.pl_occ_30d ? parseInt(p.pl_occ_30d) / 100 : 0;
-      var plMktFwd = p.pl_mkt_occ_30d ? parseInt(p.pl_mkt_occ_30d) / 100 : 0;
-      // Smart occupancy: same logic as finance tab
-      var cardOcc = p.analysis_occ && p.analysis_occ > 0.2 ? p.analysis_occ : 0.50;
-      if (plFwd >= 0.50) cardOcc = plFwd;
-      else if (plFwd > 0 && plMktFwd > 0 && plFwd > plMktFwd) cardOcc = Math.max(0.55, Math.min(0.70, plFwd * 3.5));
-      else if (plFwd > 0) cardOcc = Math.max(0.40, Math.min(0.60, plFwd * 3));
-
-      var plB = p.pl_base_price, plM = p.pl_max_price || plB, plR = p.pl_rec_base || plB;
-      cardADR = Math.round(plB * 0.4 + plR * 0.3 + plB * 1.2 * 0.2 + (plB + plM) / 2 * 0.1);
-      plMonthlyRev = Math.round(cardADR * 30 * cardOcc);
-      if (plMonthlyRev > 0) monthlyRev = plMonthlyRev;
+      var plB = parseFloat(p.pl_base_price) || 0;
+      var plM = parseFloat(p.pl_max_price) || plB;
+      var plR = parseFloat(p.pl_rec_base) || plB;
+      var plFwdPct = p.pl_occ_30d ? parseInt(p.pl_occ_30d) : null;
+      var plMktPct = p.pl_mkt_occ_30d ? parseInt(p.pl_mkt_occ_30d) : null;
+      var cardOcc = null;
+      if (plFwdPct !== null && plFwdPct > 10) cardOcc = plFwdPct / 100;
+      else if (plFwdPct === null && plMktPct !== null) cardOcc = Math.min(plMktPct / 100, 0.55);
+      if (cardOcc !== null && plB > 0) {
+        cardADR = Math.round(plB * 0.4 + plR * 0.3 + plB * 1.2 * 0.2 + (plB + plM) / 2 * 0.1);
+        plMonthlyRev = Math.round(cardADR * 30 * cardOcc);
+        if (plMonthlyRev > 0) monthlyRev = plMonthlyRev;
+      }
     }
-
-    // Analysis projected revenue
     var analysisMonthly = p.analysis_monthly || 0;
-    var net = monthlyRev - monthlyCost;
+    var net = isNaN(monthlyRev) ? 0 : monthlyRev - monthlyCost;
 
-    // Revenue & pricing section (not shown for research-only)
-    var revHtml = '';
-    var actualRev = (window._actualRevenue || {})[p.id];
-    if (!p.is_research && (p.pl_base_price || monthlyRev > 0 || analysisMonthly > 0 || actualRev)) {
-      revHtml += '<div style="margin-top:6px;padding:8px 10px;background:var(--surface2);border-radius:6px;font-size:0.75rem;">';
-
-      // Row 0: Actual revenue from Guesty (most important — real data)
-      if (actualRev && actualRev.monthly_avg > 0) {
-        revHtml += '<div style="display:flex;justify-content:space-between;align-items:center;">';
-        revHtml += '<span style="color:var(--accent);">✅ Actual (' + actualRev.months + 'mo avg)</span>';
-        revHtml += '<span style="font-family:DM Mono,monospace;">';
-        revHtml += '<strong style="color:var(--accent);">$' + actualRev.adr + '/nt</strong>';
-        revHtml += ' · <span style="color:' + (actualRev.occ >= 50 ? 'var(--accent)' : actualRev.occ >= 30 ? '#f59e0b' : 'var(--danger)') + ';">' + actualRev.occ + '% occ</span>';
-        revHtml += ' → <strong style="color:var(--accent);">$' + actualRev.monthly_avg.toLocaleString() + '/mo</strong>';
-        revHtml += '</span></div>';
-      }
-
-      // Row 1: Current pricing (PriceLabs or set)
-      if (p.pl_base_price) {
-        revHtml += '<div style="display:flex;justify-content:space-between;align-items:center;">';
-        revHtml += '<span style="color:var(--text3);">📊 Current (PriceLabs)</span>';
-        revHtml += '<span style="font-family:DM Mono,monospace;">';
-        revHtml += '<strong style="color:var(--purple);">$' + p.pl_base_price + '/nt</strong>';
-        if (cardADR > 0 && cardADR !== p.pl_base_price) revHtml += ' <span style="color:var(--text3);font-size:0.68rem;">(~$' + cardADR + ' ADR)</span>';
-        if (p.pl_occ_30d) {
-          var yourOcc = parseInt(p.pl_occ_30d);
-          var mktOcc = p.pl_mkt_occ_30d ? parseInt(p.pl_mkt_occ_30d) : 0;
-          revHtml += ' · <span style="color:' + (yourOcc >= mktOcc ? 'var(--accent)' : 'var(--danger)') + ';">' + yourOcc + '% occ</span>';
-          if (mktOcc) revHtml += ' <span style="color:var(--text3);">(mkt ' + mktOcc + '%)</span>';
-        }
-        revHtml += ' → <strong style="color:var(--accent);">$' + plMonthlyRev.toLocaleString() + '/mo</strong>';
-        revHtml += '</span></div>';
-
-        // PriceLabs recommended vs current
-        if (p.pl_rec_base && Math.abs(p.pl_rec_base - p.pl_base_price) > 2) {
-          var recDiff = p.pl_rec_base - p.pl_base_price;
-          var recRev = p.pl_occ_30d ? Math.round(p.pl_rec_base * 30 * parseInt(p.pl_occ_30d) / 100) : 0;
-          var revDiff = recRev - plMonthlyRev;
-          revHtml += '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px;">';
-          revHtml += '<span style="color:var(--text3);">💡 PL Recommended</span>';
-          revHtml += '<span style="font-family:DM Mono,monospace;color:' + (recDiff > 0 ? 'var(--accent)' : '#f59e0b') + ';">$' + p.pl_rec_base + '/nt (' + (recDiff > 0 ? '+' : '') + '$' + recDiff + ')';
-          if (recRev > 0) revHtml += ' → $' + recRev.toLocaleString() + '/mo (' + (revDiff > 0 ? '+' : '') + '$' + revDiff.toLocaleString() + ')';
-          revHtml += '</span></div>';
-        }
-      }
-
-      // Row 2: Analysis projection (if different from current)
-      if (p.analysis_nightly_rate && p.analysis_nightly_rate > 0 && analysisMonthly > 0) {
-        var analOcc = p.analysis_occ ? Math.round(p.analysis_occ * 100) : 0;
-        var analDiff = analysisMonthly - monthlyRev;
-        revHtml += '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px;' + (Math.abs(analDiff) > 100 ? 'padding-top:2px;border-top:1px dashed var(--border);' : '') + '">';
-        revHtml += '<span style="color:var(--text3);">🤖 Analysis (' + esc(p.latest_strategy || 'Latest') + ')</span>';
-        revHtml += '<span style="font-family:DM Mono,monospace;">$' + p.analysis_nightly_rate + '/nt';
-        if (analOcc) revHtml += ' · ' + analOcc + '% occ';
-        revHtml += ' → <strong style="color:' + (analDiff >= 0 ? 'var(--accent)' : 'var(--danger)') + ';">$' + analysisMonthly.toLocaleString() + '/mo</strong>';
-        if (monthlyRev > 0 && Math.abs(analDiff) > 50) {
-          revHtml += ' <span style="color:' + (analDiff > 0 ? 'var(--accent)' : 'var(--danger)') + ';font-weight:700;">(' + (analDiff > 0 ? '+' : '') + '$' + analDiff.toLocaleString() + ')</span>';
-        }
-        revHtml += '</span></div>';
-      }
-
-      // Row 3: Expenses & Net
-      if (monthlyCost > 0) {
-        revHtml += '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:3px;padding-top:3px;border-top:1px solid var(--border);">';
-        revHtml += '<span style="color:var(--text3);">Expenses</span>';
-        revHtml += '<span style="font-family:DM Mono,monospace;">';
-        revHtml += '<span style="color:var(--danger);">-$' + Math.round(monthlyCost).toLocaleString() + '/mo</span>';
-        revHtml += ' → <strong style="color:' + (net >= 0 ? 'var(--accent)' : 'var(--danger)') + ';">' + (net >= 0 ? '+' : '') + '$' + Math.round(net).toLocaleString() + ' net</strong>';
-        revHtml += '</span></div>';
-      }
-
-      revHtml += '</div>';
+    // Profitability-based left border for quick glance scanning
+    var profitBorderColor = '';
+    if (!p.is_research && (monthlyCost > 0 || monthlyRev > 0)) {
+      if (net >= 300) profitBorderColor = 'rgba(16,185,129,0.6)';       // profitable — green
+      else if (net >= 0) profitBorderColor = 'rgba(245,158,11,0.5)';    // breakeven — amber
+      else profitBorderColor = 'rgba(239,68,68,0.45)';                   // losing — red
     }
-    // Simple financial line for properties without PL data
-    else if (!p.is_research && (monthlyCost > 0 || monthlyRev > 0)) {
-      revHtml += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;font-size:0.78rem;font-family:\'DM Mono\',monospace;">';
-      if (monthlyRev > 0) revHtml += '<span style="color:var(--accent);font-weight:600;">↑ $' + Math.round(monthlyRev).toLocaleString() + '/mo</span>';
-      if (monthlyCost > 0) revHtml += '<span style="color:var(--danger);">↓ $' + Math.round(monthlyCost).toLocaleString() + '/mo</span>';
-      if (monthlyRev > 0 && monthlyCost > 0) {
-        var netColor = net >= 0 ? 'var(--accent)' : 'var(--danger)';
-        revHtml += '<span style="color:' + netColor + ';font-weight:700;">' + (net >= 0 ? '+' : '') + '$' + Math.round(net).toLocaleString() + ' net</span>';
+    var borderLeft = isChild
+      ? '3px solid ' + (profitBorderColor || 'rgba(' + typeRgb + ',0.3)')
+      : isBuilding
+        ? '4px solid rgb(' + typeRgb + ')'
+        : '3px solid ' + (profitBorderColor || 'rgba(' + typeRgb + ',0.25)');
+    var buildingStyle = isBuilding ? 'background:linear-gradient(90deg,rgba(' + typeRgb + ',0.03),transparent);' : '';
+    var standaloneAccent = '';
+    var childBadge = isBuilding ? '<span class="badge" style="background:rgba(' + typeRgb + ',0.15);color:rgb(' + typeRgb + ');">' + _ico('building', 13) + ' ' + (p.child_count || p.total_units_count || 0) + ' units</span>' : '';
+    var unitBadge = isChild
+      ? '<span style="font-size:0.68rem;font-weight:700;color:rgb(' + typeRgb + ');background:rgba(' + typeRgb + ',0.15);border:1px solid rgba(' + typeRgb + ',0.3);padding:2px 7px;border-radius:4px;letter-spacing:0.02em;">UNIT</span>'
+      : '';
+    var coordHtml = (p.latitude && p.longitude) ? '<span style="font-size:0.68rem;color:var(--text3);" title="' + p.latitude + ', ' + p.longitude + '">' + _ico('mapPin', 13) + '</span>' : '';
+
+    // ── Health Score ─────────────────────────────────────────────────────────
+    // Combines net profit + occupancy vs market into a traffic-light signal
+    var healthScore = null; // null = no data
+    var healthLabel = '';
+    var healthColor = '';
+    var healthBg = '';
+    var healthBorder = '';
+    var healthTooltip = '';
+    var healthReasons = [];
+
+    if (!p.is_research && !isBuilding) {
+      // ── ACTUAL DATA ONLY — health is never based on projections or analysis estimates ──
+      // Sources considered REAL:
+      //   1. Guesty monthly actuals (actual_revenue from /api/properties)
+      //   2. PriceLabs forward occupancy % (real bookings on calendar)
+      // Sources explicitly EXCLUDED:
+      //   - analysis projections (projected_monthly_avg, analysis_monthly)
+      //   - estimated revenue (est_monthly_revenue)
+      //   - any "smart occupancy" extrapolations
+
+      var actualData  = (window._actualRevenue || {})[p.id];
+      var actualMonthly  = (actualData && actualData.monthly_avg > 0) ? actualData.monthly_avg : null;
+      var actualADR      = (actualData && actualData.avg_adr > 0) ? actualData.avg_adr : null;
+      var actualOccPct   = (actualData && actualData.avg_occ > 0) ? Math.round(actualData.avg_occ * 100) : null;
+      var plFwdOccPct    = p.pl_occ_30d ? parseInt(p.pl_occ_30d) : null;  // real forward bookings from PL
+      var mktOccPct      = p.pl_mkt_occ_30d ? parseInt(p.pl_mkt_occ_30d) : null;
+      var hasCosts       = monthlyCost > 0;
+
+      // Use Guesty actual occ if available, otherwise PL forward occ
+      var yourOccPct = actualOccPct !== null ? actualOccPct : plFwdOccPct;
+      var occGap     = (yourOccPct !== null && mktOccPct !== null) ? yourOccPct - mktOccPct : null;
+
+      // Only show health badge if we have at least ONE real data point
+      // No actuals + no PL occ → property not live yet → no badge
+      var canScore = actualMonthly !== null || plFwdOccPct !== null;
+
+      if (canScore) {
+        var score = 100;
+
+        // ── Net P&L — actual revenue vs actual expenses only ──
+        if (actualMonthly !== null && hasCosts) {
+          var realNet = actualMonthly - monthlyCost;
+          if (realNet < 0)        { score -= 50; healthReasons.push('losing $' + Math.abs(Math.round(realNet)).toLocaleString() + '/mo actual'); }
+          else if (realNet < 200) { score -= 20; healthReasons.push('thin margin — $' + Math.round(realNet).toLocaleString() + '/mo net'); }
+        } else if (actualMonthly === null && hasCosts && plFwdOccPct !== null) {
+          // Has PL data (so it's live) but no Guesty actuals yet — expenses with unknown revenue
+          score -= 25;
+          healthReasons.push('no actual revenue recorded — expenses are $' + Math.round(monthlyCost).toLocaleString() + '/mo');
+        }
+
+        // ── Occupancy vs market ──
+        if (occGap !== null) {
+          if (occGap < -20)      { score -= 40; healthReasons.push('occ ' + yourOccPct + '% vs market ' + mktOccPct + '% (−' + Math.abs(occGap) + '%)'); }
+          else if (occGap < -10) { score -= 20; healthReasons.push('occ lagging market by ' + Math.abs(occGap) + '%'); }
+          else if (occGap < -5)  { score -= 10; healthReasons.push('occ ' + yourOccPct + '% vs market ' + mktOccPct + '%'); }
+          else if (occGap >= 5)  { healthReasons.push('occ ' + yourOccPct + '% beating market +' + occGap + '%'); }
+        }
+
+        // ── Very low forward booking pace ──
+        if (plFwdOccPct !== null && plFwdOccPct <= 5) {
+          score -= 25;
+          healthReasons.push('only ' + plFwdOccPct + '% forward bookings');
+        }
+
+        // ── ADR vs PriceLabs recommendation ──
+        if (p.pl_base_price && p.pl_rec_base && parseFloat(p.pl_rec_base) > parseFloat(p.pl_base_price) * 1.1) {
+          score -= 10;
+          healthReasons.push('PL recommends raising base to $' + p.pl_rec_base + '/nt');
+        }
+
+        // Map score → tier
+        if (score >= 80) {
+          healthScore = 'green';
+          healthLabel = '● Healthy';
+          healthColor = '#10b981';
+          healthBg    = 'rgba(16,185,129,0.1)';
+          healthBorder= 'rgba(16,185,129,0.3)';
+          healthTooltip = 'Performing well' + (healthReasons.length ? ': ' + healthReasons.join(' · ') : '');
+        } else if (score >= 50) {
+          healthScore = 'yellow';
+          healthLabel = '● Watch';
+          healthColor = '#f59e0b';
+          healthBg    = 'rgba(245,158,11,0.1)';
+          healthBorder= 'rgba(245,158,11,0.3)';
+          healthTooltip = 'Needs attention: ' + healthReasons.join(' · ');
+        } else {
+          healthScore = 'red';
+          healthLabel = '● Act Now';
+          healthColor = '#ef4444';
+          healthBg    = 'rgba(239,68,68,0.1)';
+          healthBorder= 'rgba(239,68,68,0.3)';
+          healthTooltip = 'Underperforming: ' + healthReasons.join(' · ');
+        }
       }
-      revHtml += '</div>';
     }
-    // Research property — show projected revenue and profitability
-    else if (p.is_research) {
-      var resRev = analysisMonthly || monthlyRev;
-      var resCost = monthlyCost;
-      var resNet = resRev - resCost;
-      revHtml += '<div style="margin-top:6px;padding:8px 10px;background:rgba(167,139,250,0.06);border:1px solid rgba(167,139,250,0.15);border-radius:6px;font-size:0.75rem;">';
-      revHtml += '<div style="display:flex;justify-content:space-between;align-items:center;">';
-      revHtml += '<span style="color:var(--purple);font-weight:600;">🔬 Research Projections</span>';
-      if (resRev > 0) {
-        revHtml += '<span style="font-family:DM Mono,monospace;">';
-        if (p.analysis_nightly_rate) revHtml += '$' + p.analysis_nightly_rate + '/nt → ';
-        revHtml += '<strong style="color:var(--accent);">$' + Math.round(resRev).toLocaleString() + '/mo</strong>';
-        if (resCost > 0) revHtml += ' · <span style="color:' + (resNet >= 0 ? 'var(--accent)' : 'var(--danger)') + ';font-weight:700;">' + (resNet >= 0 ? '+' : '') + '$' + Math.round(resNet).toLocaleString() + ' net</span>';
-        revHtml += '</span>';
-      } else {
-        revHtml += '<span style="color:var(--text3);">Run analysis to see projections</span>';
-      }
-      revHtml += '</div>';
-      if (resRev > 0 && resCost > 0) {
-        var verdict = resNet > 500 ? '✅ Looks profitable' : resNet > 0 ? '⚠️ Marginal' : '❌ Projected loss';
-        revHtml += '<div style="margin-top:4px;font-size:0.72rem;color:' + (resNet > 500 ? 'var(--accent)' : resNet > 0 ? '#f59e0b' : 'var(--danger)') + ';font-weight:600;">' + verdict + ' · $' + (resNet * 12).toLocaleString() + '/yr</div>';
-      }
-      revHtml += '</div>';
-    }
+
+    var healthBadge = healthScore
+      ? '<span onclick="event.stopPropagation();openProperty(' + p.id + ',\'pricing\')" title="' + healthTooltip.replace(/"/g, '&quot;') + '" style="cursor:pointer;display:inline-flex;align-items:center;gap:4px;font-size:0.75rem;font-weight:800;color:' + healthColor + ';background:' + healthBg + ';border:2px solid ' + healthBorder + ';padding:4px 10px;border-radius:6px;letter-spacing:0.02em;user-select:none;text-transform:uppercase;">' + healthLabel + '</span>'
+      : '';
+
+    // ─────────────────────────────────────────────────────────────────────────
 
     // Performance trend indicator
     var trendHtml = '';
@@ -1695,51 +1877,263 @@ function renderPropertyCard(p, isBuilding, isChild) {
       var netDelta = t.prev_net !== null ? t.latest_net - t.prev_net : 0;
 
       if (profitable && improving) {
-        trendHtml = '<span class="badge" style="background:rgba(16,185,129,0.15);color:var(--accent);">📈 +$' + Math.abs(Math.round(netDelta)).toLocaleString() + '</span>';
+        trendHtml = '<span class="badge" style="background:rgba(16,185,129,0.15);color:var(--accent);">' + _ico('trendUp', 13) + ' +$' + Math.abs(Math.round(netDelta)).toLocaleString() + '</span>';
       } else if (profitable && declining) {
-        trendHtml = '<span class="badge" style="background:rgba(245,158,11,0.15);color:#f59e0b;">📉 -$' + Math.abs(Math.round(netDelta)).toLocaleString() + '</span>';
+        trendHtml = '<span class="badge" style="background:rgba(245,158,11,0.15);color:#f59e0b;">' + _ico('trendDown', 13) + ' -$' + Math.abs(Math.round(netDelta)).toLocaleString() + '</span>';
       } else if (profitable) {
-        trendHtml = '<span class="badge" style="background:rgba(16,185,129,0.15);color:var(--accent);">✅ +$' + Math.round(t.latest_net).toLocaleString() + '/mo</span>';
+        trendHtml = '<span class="badge" style="background:rgba(16,185,129,0.15);color:var(--accent);">' + _ico('check', 13, 'var(--accent)') + ' +$' + Math.round(t.latest_net).toLocaleString() + '/mo</span>';
       } else if (!profitable && improving) {
-        trendHtml = '<span class="badge" style="background:rgba(245,158,11,0.15);color:#f59e0b;">📈 -$' + Math.abs(Math.round(t.latest_net)).toLocaleString() + '/mo</span>';
+        trendHtml = '<span class="badge" style="background:rgba(245,158,11,0.15);color:#f59e0b;">' + _ico('trendUp', 13) + ' -$' + Math.abs(Math.round(t.latest_net)).toLocaleString() + '/mo</span>';
       } else if (!profitable) {
-        trendHtml = '<span class="badge" style="background:rgba(239,68,68,0.15);color:var(--danger);">❌ -$' + Math.abs(Math.round(t.latest_net)).toLocaleString() + '/mo</span>';
+        trendHtml = '<span class="badge" style="background:rgba(239,68,68,0.15);color:var(--danger);">' + _ico('x', 13, 'var(--danger)') + ' -$' + Math.abs(Math.round(t.latest_net)).toLocaleString() + '/mo</span>';
       }
     } else if (t && t.latest_net !== null && p.is_research) {
-      if (t.latest_net >= 500) trendHtml = '<span class="badge" style="background:rgba(16,185,129,0.15);color:var(--accent);">✅ +$' + Math.round(t.latest_net).toLocaleString() + '/mo</span>';
-      else if (t.latest_net >= 0) trendHtml = '<span class="badge" style="background:rgba(245,158,11,0.15);color:#f59e0b;">⚠️ +$' + Math.round(t.latest_net).toLocaleString() + '/mo</span>';
-      else trendHtml = '<span class="badge" style="background:rgba(239,68,68,0.15);color:var(--danger);">❌ -$' + Math.abs(Math.round(t.latest_net)).toLocaleString() + '/mo</span>';
+      if (t.latest_net >= 500) trendHtml = '<span class="badge" style="background:rgba(16,185,129,0.15);color:var(--accent);">' + _ico('check', 13, 'var(--accent)') + ' +$' + Math.round(t.latest_net).toLocaleString() + '/mo</span>';
+      else if (t.latest_net >= 0) trendHtml = '<span class="badge" style="background:rgba(245,158,11,0.15);color:#f59e0b;">' + _ico('alertCircle', 13, '#f59e0b') + ' +$' + Math.round(t.latest_net).toLocaleString() + '/mo</span>';
+      else trendHtml = '<span class="badge" style="background:rgba(239,68,68,0.15);color:var(--danger);">' + _ico('x', 13, 'var(--danger)') + ' -$' + Math.abs(Math.round(t.latest_net)).toLocaleString() + '/mo</span>';
     } else if (p.is_research && analysisMonthly > 0) {
       var resNet = analysisMonthly - monthlyCost;
-      if (resNet >= 500) trendHtml = '<span class="badge" style="background:rgba(16,185,129,0.15);color:var(--accent);">✅ +$' + Math.round(resNet).toLocaleString() + '/mo</span>';
-      else if (resNet >= 0) trendHtml = '<span class="badge" style="background:rgba(245,158,11,0.15);color:#f59e0b;">⚠️ +$' + Math.round(resNet).toLocaleString() + '/mo</span>';
-      else trendHtml = '<span class="badge" style="background:rgba(239,68,68,0.15);color:var(--danger);">❌ -$' + Math.abs(Math.round(resNet)).toLocaleString() + '/mo</span>';
+      if (resNet >= 500) trendHtml = '<span class="badge" style="background:rgba(16,185,129,0.15);color:var(--accent);">' + _ico('check', 13, 'var(--accent)') + ' +$' + Math.round(resNet).toLocaleString() + '/mo</span>';
+      else if (resNet >= 0) trendHtml = '<span class="badge" style="background:rgba(245,158,11,0.15);color:#f59e0b;">' + _ico('alertCircle', 13, '#f59e0b') + ' +$' + Math.round(resNet).toLocaleString() + '/mo</span>';
+      else trendHtml = '<span class="badge" style="background:rgba(239,68,68,0.15);color:var(--danger);">' + _ico('x', 13, 'var(--danger)') + ' -$' + Math.abs(Math.round(resNet)).toLocaleString() + '/mo</span>';
     }
 
-    return '<div class="property-card" style="position:relative;' + indent + buildingStyle + standaloneAccent + '">' +
-      '<label class="prop-select" onclick="event.stopPropagation()" style="position:absolute;top:12px;left:12px;display:' + (bulkMode ? 'block' : 'none') + ';"><input type="checkbox" onchange="togglePropSelect(' + p.id + ')"' + checked + '></label>' +
-      '<div style="margin-left:' + (bulkMode ? '28' : '0') + 'px;cursor:pointer;display:flex;gap:12px;align-items:center;flex:1;min-width:0;" onclick="openProperty(' + p.id + ')">' +
-      thumb +
-      '<div style="flex:1;min-width:0;"><h3>' + (isBuilding ? '🏢 ' : '') + esc(label) + ' ' + coordHtml + ' ' + unitBadge + '</h3><p>' + mapLink(p.address, p.city, p.state, p.zip) + (p.unit_number && !p.name ? '' : p.unit_number ? ' #' + esc(p.unit_number) : '') + ' · ' + esc(p.city) + ', ' + esc(p.state) + (p.zip ? ' ' + esc(p.zip) : '') + (p.zillow_url ? ' · <a href="' + esc(p.zillow_url) + '" target="_blank" onclick="event.stopPropagation();" style="color:var(--text3);font-size:0.72rem;text-decoration:none;" title="View on Zillow">🏠 Zillow</a>' : '') + '</p>' +
-      '<div class="meta">' + typeBadge + ownerBadge +
-      '<span>' + (p.bedrooms || 0) + 'BR / ' + (p.bathrooms || 0) + 'BA</span>' +
-      (p.sqft ? '<span>' + p.sqft.toLocaleString() + ' sqft</span>' : '') +
-      (p.estimated_value ? '<span>$' + p.estimated_value.toLocaleString() + '</span>' : '') +
-      childBadge +
-      (p.strategy_count > 0 ? '<span class="badge">' + p.strategy_count + ' strategies</span>' : '') +
-      (p.last_analyzed ? '<span class="badge" style="background:rgba(96,165,250,0.12);color:rgba(96,165,250,0.9);font-size:0.62rem;" title="Last price analysis">🔍 ' + p.last_analyzed.substring(0, 10) + '</span>' : '<span class="badge" style="background:rgba(239,68,68,0.1);color:var(--danger);font-size:0.62rem;">⚠ Not analyzed</span>') +
-      (p.listing_status === 'active' ? '<span class="badge" style="background:rgba(16,185,129,0.15);color:var(--accent);">● Live</span>' : p.listing_status === 'paused' ? '<span class="badge" style="background:rgba(245,158,11,0.15);color:#f59e0b;">⏸ Paused</span>' : p.listing_status === 'inactive' ? '<span class="badge" style="background:rgba(239,68,68,0.12);color:var(--danger);">⏹ Inactive</span>' : '') +
-      (p.rental_type === 'ltr' ? '<span class="badge" style="background:rgba(96,165,250,0.15);color:#60a5fa;">LTR</span>' : '<span class="badge" style="background:rgba(167,139,250,0.1);color:var(--purple);">STR</span>') +
-      (p.is_research ? '<span class="badge" style="background:rgba(167,139,250,0.15);color:var(--purple);">🔬 Research</span>' : '') +
-      trendHtml +
-      '</div>' +
-      revHtml +
-      '</div></div>' +
-      '<div style="position:absolute;top:10px;right:10px;display:flex;gap:4px;">' +
-      '<button class="btn btn-xs" onclick="event.stopPropagation();openProperty(' + p.id + ')" title="Edit" style="padding:2px 8px;">✎</button>' +
-      '<button class="btn btn-xs btn-danger" onclick="event.stopPropagation();deleteOneProp(' + p.id + ')" title="Delete" style="padding:2px 8px;">✕</button>' +
-      '</div>' +
+    // ── COMPACT VIEW ── single-row card with just the essentials
+    if (_propCompact) {
+      var netColor = net >= 0 ? 'var(--accent)' : 'var(--danger)';
+      var profitBorder = net >= 200 ? '3px solid rgba(16,185,129,0.5)' : net >= 0 ? '3px solid rgba(245,158,11,0.4)' : net < 0 ? '3px solid rgba(239,68,68,0.4)' : '3px solid var(--border)';
+      var actualMark = '';
+      var actR = (window._actualRevenue || {})[p.id];
+      if (actR && actR.monthly_avg > 0) actualMark = '<span style="font-size:0.68rem;color:var(--accent);font-family:DM Mono,monospace;font-weight:600;">$' + actR.monthly_avg.toLocaleString() + '/mo</span>';
+      else if (monthlyRev > 0) actualMark = '<span style="font-size:0.68rem;color:var(--text3);font-family:DM Mono,monospace;">~$' + Math.round(monthlyRev).toLocaleString() + '/mo</span>';
+
+      return '<div onclick="openProperty(' + p.id + ')" style="cursor:pointer;display:flex;align-items:center;gap:10px;padding:7px 10px;background:var(--card);border:1px solid var(--border);border-left:' + profitBorder + ';border-radius:7px;margin-bottom:5px;' + indent + 'transition:background 0.1s;" onmouseenter="this.style.background=&quot;var(--surface2)&quot;" onmouseleave="this.style.background=&quot;var(--card)&quot;">' +
+        (p.image_url ? '<img src="' + esc(p.image_url) + '" style="width:36px;height:36px;border-radius:4px;object-fit:cover;flex-shrink:0;" onerror="this.style.display=&quot;none&quot;">' : '<div style="width:36px;height:36px;border-radius:4px;background:rgba(' + typeRgb + ',0.1);display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0;">' + typeIcon + '</div>') +
+        '<div style="flex:1;min-width:0;">' +
+          '<div style="font-size:0.85rem;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' +
+            (isChild ? '<span style="font-size:0.62rem;font-weight:800;color:rgb(' + typeRgb + ');background:rgba(' + typeRgb + ',0.15);border:1px solid rgba(' + typeRgb + ',0.3);padding:1px 5px;border-radius:3px;letter-spacing:0.04em;margin-right:5px;">UNIT</span>' : '') +
+            esc(label) + '</div>' +
+          '<div style="font-size:0.68rem;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(p.city) + ', ' + esc(p.state) + ' · ' + (p.bedrooms || 0) + 'BR/' + (p.bathrooms || 0) + 'BA' + (p.sqft ? ' · ' + p.sqft.toLocaleString() + 'sqft' : '') + '</div>' +
+        '</div>' +
+        '<div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">' +
+          actualMark +
+          (net !== 0 && monthlyCost > 0 ? '<span style="font-size:0.72rem;font-weight:700;color:' + netColor + ';font-family:DM Mono,monospace;">' + (net >= 0 ? '+' : '') + '$' + Math.round(net).toLocaleString() + ' net</span>' : '') +
+          trendHtml +
+          healthBadge +
+          (p.listing_status === 'active' ? '<span style="width:8px;height:8px;border-radius:50%;background:var(--accent);display:inline-block;" title="Live"></span>' : p.listing_status === 'paused' ? '<span style="width:8px;height:8px;border-radius:50%;background:#f59e0b;display:inline-block;" title="Paused"></span>' : '') +
+          '<button class="btn btn-xs" onclick="event.stopPropagation();openProperty(' + p.id + ')" style="padding:2px 7px;font-size:0.68rem;">✎</button>' +
+        '</div>' +
       '</div>';
+    }
+
+    // ── Status variables ──
+    var lsDot = p.listing_status === 'active' ? '<span class="badge" style="background:rgba(16,185,129,0.15);color:var(--accent);">● Live</span>'
+      : p.listing_status === 'paused' ? '<span class="badge" style="background:rgba(245,158,11,0.15);color:#f59e0b;">⏸ Paused</span>'
+      : p.listing_status === 'inactive' ? '<span class="badge" style="background:rgba(239,68,68,0.12);color:var(--danger);">⏹ Off</span>'
+      : '';
+    var rtBadge = p.rental_type === 'ltr' ? '<span class="badge" style="background:rgba(96,165,250,0.15);color:#60a5fa;">LTR</span>' : '<span class="badge" style="background:rgba(167,139,250,0.1);color:var(--purple);">STR</span>';
+    var healthGlow = '';
+    if (healthBadge) {
+      if (healthLabel && healthLabel.match(/ACT NOW/i)) healthGlow = ' health-glow-danger';
+      else if (healthLabel && healthLabel.match(/WATCH/i)) healthGlow = ' health-glow-warn';
+    }
+    var healthBadgeStyled = healthBadge ? healthBadge.replace('style="', 'class="' + healthGlow + '" style="') : '';
+
+    // ── CARD LAYOUT ──
+    // ZONE 1: [thumb] Name + top-right health/status indicators
+    // ZONE 2: Address + specs (compact)
+    // ZONE 3: Financial grid — clear cells instead of dot-separated text
+
+    // ── FINANCIAL GRID (structured cells for scanability) ──
+    var finHtml = '';
+    if (!isBuilding) {
+      var actualRev = (window._actualRevenue || {})[p.id];
+
+      if (!p.is_research) {
+        var cells = [];
+        var hasTm = actualRev && actualRev.this_month_payout !== undefined && actualRev.this_month_payout > 0;
+        var predictedMonthly = p.analysis_monthly || (p.pl_base_price && p.pl_occ_30d ? Math.round(p.pl_base_price * 30 * parseInt(p.pl_occ_30d) / 100) : 0);
+
+        if (hasTm) {
+          // This Month payout — matches dashboard definition (money you receive)
+          cells.push({label:'This Month', val:'$' + actualRev.this_month_payout.toLocaleString(), color:'var(--accent)', bold:true});
+          // Actual vs Predicted
+          if (predictedMonthly > 0) {
+            var pctOfPredicted = Math.round(actualRev.this_month_payout / predictedMonthly * 100);
+            var trackColor = pctOfPredicted >= 90 ? 'var(--accent)' : pctOfPredicted >= 60 ? '#f0b840' : 'var(--danger)';
+            cells.push({label:'vs Predicted', val:pctOfPredicted + '%', sub:'of $' + predictedMonthly.toLocaleString(), color:trackColor});
+          }
+          // This month occupancy
+          cells.push({label:'Occ', val:actualRev.this_month_occ + '%', color:actualRev.this_month_occ >= 50 ? 'var(--accent)' : actualRev.this_month_occ >= 30 ? '#f0b840' : 'var(--danger)'});
+          // ADR
+          cells.push({label:'ADR', val:'$' + actualRev.this_month_adr, color:'var(--text)'});
+        } else if (actualRev && actualRev.monthly_avg > 0) {
+          // No this-month data, show average
+          cells.push({label:'Avg Revenue', val:'$' + actualRev.monthly_avg.toLocaleString(), sub:actualRev.months + 'mo avg', color:'var(--accent)'});
+          cells.push({label:'ADR', val:'$' + actualRev.adr, color:'var(--text)'});
+          cells.push({label:'Occ', val:actualRev.occ + '%', color:actualRev.occ >= 50 ? 'var(--accent)' : actualRev.occ >= 30 ? '#f0b840' : 'var(--danger)'});
+        } else if (plMonthlyRev > 0) {
+          cells.push({label:'Est Revenue', val:'~$' + plMonthlyRev.toLocaleString(), sub:'PriceLabs est', color:'var(--purple)'});
+          if (p.pl_base_price) cells.push({label:'Base', val:'$' + p.pl_base_price + '/nt', color:'var(--text)'});
+        } else if (predictedMonthly > 0) {
+          cells.push({label:'Predicted', val:'$' + Math.round(predictedMonthly).toLocaleString() + '/mo', sub:'from analysis', color:'var(--purple)'});
+        }
+
+        // Expenses — always show if we have them
+        if (monthlyCost > 0) {
+          cells.push({label:'Expenses', val:'-$' + Math.round(monthlyCost).toLocaleString(), color:'var(--danger)'});
+        }
+
+        // Net — the bottom line using payout if available, else avg
+        var netBase = hasTm ? actualRev.this_month_payout : (actualRev ? actualRev.monthly_avg : monthlyRev);
+        if (monthlyCost > 0 && netBase > 0) {
+          var netVal = netBase - monthlyCost;
+          cells.push({label:'Net', val:(netVal >= 0 ? '+' : '') + '$' + Math.round(netVal).toLocaleString(), color:netVal >= 0 ? 'var(--accent)' : 'var(--danger)', bold:true});
+        }
+
+        // MoM trend if we have last month — using payout for consistency
+        if (hasTm && actualRev.last_month_payout > 0) {
+          var mom = Math.round((actualRev.this_month_payout - actualRev.last_month_payout) / actualRev.last_month_payout * 100);
+          cells.push({label:'vs Last Mo', val:(mom >= 0 ? '+' : '') + mom + '%', color:mom >= 0 ? 'var(--accent)' : 'var(--danger)'});
+        }
+
+        if (cells.length > 0) {
+          finHtml = '<div class="prop-fin" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(80px,1fr));gap:1px;margin-top:6px;background:var(--border);border-radius:6px;overflow:hidden;font-size:0.72rem;">';
+          cells.forEach(function(c) {
+            finHtml += '<div style="background:var(--surface2);padding:5px 8px;text-align:center;">';
+            finHtml += '<div style="color:var(--text3);font-size:0.66rem;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:1px;">' + c.label + '</div>';
+            finHtml += '<div style="font-family:DM Mono,monospace;font-weight:' + (c.bold ? '800' : '600') + ';color:' + c.color + ';font-size:' + (c.bold ? '0.82rem' : '0.76rem') + ';">' + c.val + '</div>';
+            if (c.sub) finHtml += '<div style="font-size:0.56rem;color:var(--text3);">' + c.sub + '</div>';
+            finHtml += '</div>';
+          });
+          finHtml += '</div>';
+
+          // ── Data source hint + actionable next step ──
+          var hintParts = [];
+          var hintActions = [];
+
+          if (hasTm) {
+            hintParts.push(_ico('check', 10, 'var(--accent)') + ' Guesty actuals');
+            if (!predictedMonthly) hintActions.push('<a href="#" onclick="event.stopPropagation();openProperty(' + p.id + ',\'pricing\')" style="color:var(--purple);text-decoration:none;">Run analysis</a> for vs-predicted');
+            if (!actualRev.last_month_payout) hintActions.push('Last month data pending');
+          } else if (actualRev && actualRev.monthly_avg > 0) {
+            hintParts.push(_ico('barChart', 10, 'var(--text3)') + ' ' + actualRev.months + '-month avg from Guesty');
+            hintActions.push('No bookings this month yet');
+          } else if (plMonthlyRev > 0) {
+            hintParts.push(_ico('barChart', 10, 'var(--purple)') + ' PriceLabs estimate');
+            hintActions.push('<a href="#" onclick="event.stopPropagation();switchView(\'pms\')" style="color:var(--accent);text-decoration:none;">Sync Guesty</a> for real revenue');
+          } else if (predictedMonthly > 0) {
+            hintParts.push(_ico('sparkle', 10, 'var(--purple)') + ' AI projection');
+            hintActions.push('<a href="#" onclick="event.stopPropagation();switchView(\'pms\')" style="color:var(--accent);text-decoration:none;">Link Guesty</a> for actuals');
+          }
+
+          if (!monthlyCost && (hasTm || (actualRev && actualRev.monthly_avg > 0))) {
+            hintActions.push('<a href="#" onclick="event.stopPropagation();openProperty(' + p.id + ',\'details\')" style="color:#f0b840;text-decoration:none;">Add expenses</a> for net calc');
+          }
+          if (!p.analysis_nightly_rate && !p.pl_base_price) {
+            hintActions.push('<a href="#" onclick="event.stopPropagation();openProperty(' + p.id + ',\'pricing\')" style="color:var(--purple);text-decoration:none;">Run price analysis</a>');
+          }
+
+          if (hintParts.length > 0 || hintActions.length > 0) {
+            finHtml += '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:3px;padding:0 2px;font-size:0.6rem;color:var(--text3);gap:8px;">';
+            if (hintParts.length > 0) finHtml += '<span style="display:flex;align-items:center;gap:3px;">' + hintParts.join('') + '</span>';
+            if (hintActions.length > 0) finHtml += '<span>' + hintActions.join(' · ') + '</span>';
+            finHtml += '</div>';
+          }
+        } else if (!p.is_research) {
+          // No financial data at all — show setup hints
+          var setupHints = [];
+          if (!actualRev) setupHints.push('<a href="#" onclick="event.stopPropagation();switchView(\'pms\')" style="color:var(--accent);text-decoration:none;">Link Guesty</a>');
+          if (!p.pl_base_price) setupHints.push('<a href="#" onclick="event.stopPropagation();switchView(\'pms\')" style="color:var(--purple);text-decoration:none;">Sync PriceLabs</a>');
+          if (!p.analysis_nightly_rate) setupHints.push('<a href="#" onclick="event.stopPropagation();openProperty(' + p.id + ',\'pricing\')" style="color:var(--purple);text-decoration:none;">Run analysis</a>');
+          if (setupHints.length > 0) {
+            finHtml = '<div style="margin-top:5px;padding:4px 8px;font-size:0.6rem;color:var(--text3);display:flex;align-items:center;gap:4px;">' + _ico('info', 10, 'var(--text3)') + ' No revenue data — ' + setupHints.join(' · ') + '</div>';
+          }
+        }
+      } else {
+        // Research — simplified
+        var resRev = analysisMonthly || monthlyRev;
+        var resNet = resRev - monthlyCost;
+        if (resRev > 0) {
+          var verdict = resNet > 500 ? _ico('check',13,'var(--accent)') : resNet > 0 ? '' + _ico('alertCircle', 13, '#f59e0b') + '' : _ico('x',13,'var(--danger)');
+          finHtml = '<div class="prop-fin" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(80px,1fr));gap:1px;margin-top:6px;background:rgba(167,139,250,0.2);border-radius:6px;overflow:hidden;font-size:0.72rem;">';
+          finHtml += '<div style="background:rgba(167,139,250,0.06);padding:5px 8px;text-align:center;"><div style="color:var(--text3);font-size:0.66rem;text-transform:uppercase;">Projected</div><div style="font-family:DM Mono,monospace;font-weight:700;color:var(--purple);">$' + Math.round(resRev).toLocaleString() + '/mo</div></div>';
+          if (p.analysis_nightly_rate) finHtml += '<div style="background:rgba(167,139,250,0.06);padding:5px 8px;text-align:center;"><div style="color:var(--text3);font-size:0.66rem;text-transform:uppercase;">Rate</div><div style="font-family:DM Mono,monospace;font-weight:600;color:var(--text);">$' + p.analysis_nightly_rate + '/nt</div></div>';
+          if (p.analysis_occ) finHtml += '<div style="background:rgba(167,139,250,0.06);padding:5px 8px;text-align:center;"><div style="color:var(--text3);font-size:0.66rem;text-transform:uppercase;">Occ</div><div style="font-family:DM Mono,monospace;font-weight:600;color:var(--text);">' + Math.round(p.analysis_occ * 100) + '%</div></div>';
+          if (monthlyCost > 0) finHtml += '<div style="background:rgba(167,139,250,0.06);padding:5px 8px;text-align:center;"><div style="color:var(--text3);font-size:0.66rem;text-transform:uppercase;">Verdict</div><div style="font-family:DM Mono,monospace;font-weight:800;color:' + (resNet >= 0 ? 'var(--accent)' : 'var(--danger)') + ';">' + verdict + ' ' + (resNet >= 0 ? '+' : '') + '$' + Math.round(resNet).toLocaleString() + '</div></div>';
+          finHtml += '</div>';
+        } else {
+          finHtml = '<div style="margin-top:6px;padding:5px 10px;background:rgba(167,139,250,0.06);border:1px solid rgba(167,139,250,0.15);border-radius:6px;font-size:0.72rem;color:var(--text3);">' + _ico('search', 13) + ' Run analysis to see projections</div>';
+        }
+      }
+    }
+
+    // ── STATUS BADGES — only the truly important ones ──
+    // Health + trend are the most glanceable, shown prominently next to the name
+    // Secondary info (STR/LTR, strategy count, last analyzed) goes in the meta line
+    var topRightBadges = '';
+    if (healthBadgeStyled) topRightBadges += healthBadgeStyled;
+    if (trendHtml) topRightBadges += trendHtml;
+    if (lsDot) topRightBadges += lsDot;
+
+    // Secondary badges — in the meta line, not floating
+    var metaBadges = typeBadge + ownerBadge;
+    metaBadges += rtBadge;
+    if (p.strategy_count > 0) metaBadges += '<span class="badge">' + p.strategy_count + ' strat</span>';
+    if (p.last_analyzed) metaBadges += '<span class="badge" style="background:rgba(96,165,250,0.12);color:rgba(96,165,250,0.9);font-size:0.62rem;">' + _ico('search', 13) + ' ' + p.last_analyzed.substring(0, 10) + '</span>';
+    else if (!p.is_research) metaBadges += '<span class="badge" style="background:rgba(239,68,68,0.1);color:var(--danger);font-size:0.62rem;">' + _ico('alertCircle', 13, '#f59e0b') + ' Not analyzed</span>';
+    if (p.is_managed || p.ownership_type === 'managed') metaBadges += '<span class="badge" style="background:rgba(96,165,250,0.15);color:#60a5fa;">' + _ico('handshake', 13) + ' Managed</span>';
+
+    // Performance badge: ADR vs market
+    if (!isBuilding && !p.is_research) {
+      var mktKey = ((p.city || '') + ',' + (p.state || '')).toLowerCase();
+      var mktD = (window._marketProfiles || {})[mktKey];
+      var myAdr = actualData ? actualData.adr : (p.analysis_nightly_rate || (p.pl_base_price ? parseInt(p.pl_base_price) : 0));
+      if (mktD && mktD.avg_adr > 0 && myAdr > 0) {
+        var adrDiffPct = Math.round((myAdr - mktD.avg_adr) / mktD.avg_adr * 100);
+        var bColor = adrDiffPct >= 5 ? 'var(--accent)' : adrDiffPct >= -5 ? '#60a5fa' : 'var(--danger)';
+        var bBg = adrDiffPct >= 5 ? 'rgba(16,185,129,0.1)' : adrDiffPct >= -5 ? 'rgba(96,165,250,0.1)' : 'rgba(239,68,68,0.1)';
+        var bLabel = adrDiffPct >= 5 ? '↑' : adrDiffPct >= -5 ? '≈' : '↓';
+        metaBadges += '<span class="badge" style="background:' + bBg + ';color:' + bColor + ';font-size:0.62rem;" title="Your ADR $' + myAdr + ' vs market avg $' + Math.round(mktD.avg_adr) + '">' + bLabel + ' $' + myAdr + ' vs $' + Math.round(mktD.avg_adr) + ' mkt</span>';
+      }
+    }
+
+    return '<div class="property-card" style="position:relative;border-left:' + borderLeft + ';' + indent + buildingStyle + standaloneAccent + '">' +
+      // Edit/Delete — pinned far right
+      '<div style="position:absolute;top:10px;right:10px;display:flex;gap:4px;z-index:2;">' +
+        '<button class="btn btn-xs" onclick="event.stopPropagation();openProperty(' + p.id + ')" title="Edit" style="padding:2px 8px;">✎</button>' +
+        '<button class="btn btn-xs btn-danger" onclick="event.stopPropagation();deleteOneProp(' + p.id + ')" title="Delete" style="padding:2px 8px;">✕</button>' +
+      '</div>' +
+      // Bulk select
+      '<label class="prop-select" onclick="event.stopPropagation()" style="position:absolute;top:12px;left:12px;display:' + (bulkMode ? 'block' : 'none') + ';"><input type="checkbox" onchange="togglePropSelect(' + p.id + ')"' + checked + '></label>' +
+      // Card content
+      '<div style="cursor:pointer;margin-left:' + (bulkMode ? '28' : '0') + 'px;padding-right:70px;" onclick="openProperty(' + p.id + ')">' +
+        // ── ZONE 1: Identity row — thumbnail + name + top-right indicators ──
+        '<div style="display:flex;align-items:center;gap:10px;">' +
+          thumb +
+          '<div style="flex:1;min-width:0;">' +
+            '<div style="display:flex;align-items:center;gap:8px;">' +
+              '<h3 style="font-size:0.92rem;font-weight:700;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;">' + (isBuilding ? '' + _ico('building', 13) + ' ' : '') + (isChild ? '<span style="color:rgb(' + typeRgb + ');">' + esc(p.name || label) + '</span>' : esc(p.name || label)) + ' ' + unitBadge + '</h3>' +
+              (topRightBadges ? '<div style="display:flex;gap:4px;flex-shrink:0;">' + topRightBadges + '</div>' : '') +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+        // ── ZONE 2: Address + specs + secondary badges ──
+        '<div style="margin-top:3px;' + (thumb ? 'margin-left:72px;' : '') + '">' +
+          '<p style="font-size:0.7rem;color:var(--text3);margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + mapLink(p.address, p.city, p.state, p.zip) + (p.unit_number ? ' #' + esc(p.unit_number) : '') + ' · ' + esc(p.city) + ', ' + esc(p.state) + (p.zip ? ' ' + esc(p.zip) : '') + ' ' + coordHtml +
+            (p.zillow_url ? ' · <a href="' + esc(p.zillow_url) + '" target="_blank" onclick="event.stopPropagation();" style="color:var(--text3);text-decoration:none;">' + _ico('home', 13) + '</a>' : '') +
+          '</p>' +
+          '<div class="meta" style="margin-top:3px;">' + metaBadges +
+            '<span>' + (p.bedrooms || 0) + 'BR/' + (p.bathrooms || 0) + 'BA</span>' +
+            (p.sqft ? '<span>' + p.sqft.toLocaleString() + 'sf</span>' : '') +
+            (p.estimated_value ? '<span>$' + p.estimated_value.toLocaleString() + '</span>' : '') +
+            childBadge +
+          '</div>' +
+        '</div>' +
+        // ── ZONE 3: Financial grid ──
+        (finHtml ? '<div style="' + (thumb ? 'margin-left:72px;' : '') + '">' + finHtml + '</div>' : '') +
+      '</div>' +
+    '</div>';
 }
 
 function sortProperties() {
@@ -1758,115 +2152,13 @@ function toggleSelectAll(checked) {
   renderProperties();
 }
 
-async function runPropertyPriceAnalysis() {
-  var editId = (document.getElementById('f_editId') || {}).value;
-  if (!editId) { toast('Save property first', 'error'); return; }
-  var statusEl = document.getElementById('plStrategyStatus');
-  var resultsEl = document.getElementById('plStrategyResults');
-  // Show what AI provider will be used and estimated cost
-  var providerNote = '';
-  try {
-    var keys = await api('/api/admin/api-keys');
-    if (keys.ANTHROPIC_API_KEY) providerNote = '🤖 Using Anthropic Claude (~$0.08/call)';
-    else if (keys.OPENAI_API_KEY) providerNote = '🤖 Using OpenAI GPT-4o (~$0.06/call)';
-    else providerNote = '🤖 Using Workers AI (free, limited accuracy)';
-  } catch {}
-  if (statusEl) statusEl.innerHTML = '⏳ Running price analysis... ' + providerNote;
-  try {
-    var d = await api('/api/properties/' + editId + '/analyze', 'POST', { use_ai: true, analysis_type: 'str' });
-    if (statusEl) statusEl.innerHTML = '';
-
-    if (resultsEl) {
-      var h = '';
-
-      // Data sources used
-      if (d.sources) {
-        h += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">';
-        d.sources.forEach(function(s) {
-          var color = s.status === 'none' || s.status === 'not linked' ? 'var(--text3)' : 'var(--accent)';
-          var icon = s.status === 'none' || s.status === 'not linked' ? '○' : '●';
-          h += '<span style="font-size:0.68rem;color:' + color + ';background:var(--bg);padding:2px 8px;border-radius:4px;border:1px solid var(--border);">' + icon + ' ' + esc(s.name) + ': ' + esc(s.status) + '</span>';
-        });
-        h += '</div>';
-      }
-
-      // Market context
-      if (d.market) {
-        h += '<div style="padding:10px 14px;background:var(--bg);border:1px solid var(--border);border-radius:8px;margin-bottom:10px;">';
-        h += '<div style="font-size:0.72rem;font-weight:600;color:var(--text2);margin-bottom:6px;">MARKET CONTEXT</div>';
-        h += '<div class="market-grid">';
-        if (d.market.avg_daily_rate) h += '<div class="market-stat"><div class="val">$' + Math.round(d.market.avg_daily_rate).toLocaleString() + '</div><div class="lbl">Avg Rent/mo</div></div>';
-        if (d.market.median_daily_rate) h += '<div class="market-stat"><div class="val">$' + Math.round(d.market.median_daily_rate).toLocaleString() + '</div><div class="lbl">Median Rent/mo</div></div>';
-        if (d.market.active_listings) h += '<div class="market-stat"><div class="val">' + d.market.active_listings + '</div><div class="lbl">Active Listings</div></div>';
-        h += '<div class="market-stat"><div class="val">' + (d.comparables_count || 0) + '</div><div class="lbl">Comps Found</div></div>';
-        h += '</div></div>';
-      }
-
-      // Seasonality from analysis
-      if (d.seasonality && d.seasonality.length >= 6) {
-        var mNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-        h += '<div style="padding:10px 14px;background:var(--bg);border:1px solid var(--border);border-radius:8px;margin-bottom:10px;">';
-        h += '<div style="font-size:0.72rem;font-weight:600;color:var(--purple);margin-bottom:6px;">SEASONAL RATE ADJUSTMENTS (from actual booking data)</div>';
-        h += '<div style="display:flex;gap:2px;align-items:flex-end;height:60px;">';
-        var maxM = Math.max.apply(null, d.seasonality.map(function(s) { return s.multiplier || 1; }));
-        d.seasonality.forEach(function(s) {
-          var pct = maxM > 0 ? Math.round((s.multiplier || 1) / maxM * 100) : 50;
-          var clr = (s.multiplier || 1) >= 1.1 ? 'var(--accent)' : (s.multiplier || 1) <= 0.85 ? 'var(--danger)' : '#f59e0b';
-          h += '<div style="flex:1;text-align:center;"><div style="background:' + clr + ';border-radius:3px 3px 0 0;height:' + Math.max(pct, 5) + '%;min-height:3px;opacity:0.7;" title="' + mNames[(s.month_number || 1) - 1] + ': ' + (s.multiplier || 1).toFixed(2) + 'x, $' + Math.round(s.avg_adr || 0) + '/nt, ' + Math.round((s.avg_occupancy || 0) * 100) + '% occ"></div>';
-          h += '<div style="font-size:0.55rem;color:var(--text3);margin-top:2px;">' + mNames[(s.month_number || 1) - 1] + '</div>';
-          h += '<div style="font-size:0.5rem;color:' + clr + ';">' + (s.multiplier || 1).toFixed(1) + 'x</div></div>';
-        });
-        h += '</div></div>';
-      }
-
-      // Strategies
-      if (d.strategies && d.strategies.length > 0) {
-        h += '<div style="font-size:0.78rem;font-weight:600;color:var(--text2);margin-bottom:8px;">PRICING STRATEGIES (' + d.strategies.length + ')</div>';
-        d.strategies.forEach(function(s) {
-          var isAI = s.ai_generated;
-          var borderColor = isAI ? 'var(--purple)' : 'var(--accent)';
-          h += '<div style="padding:12px;background:var(--bg);border:1px solid var(--border);border-left:4px solid ' + borderColor + ';border-radius:8px;margin-bottom:8px;">';
-          h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">';
-          h += '<div><strong style="font-size:0.85rem;">' + esc(s.strategy_name || 'Strategy') + '</strong>';
-          h += ' <span style="font-size:0.6rem;background:rgba(' + (isAI ? '167,139,250' : '16,185,129') + ',0.15);color:' + borderColor + ';padding:1px 6px;border-radius:3px;">' + (isAI ? '🤖 AI' : '📊 Algorithmic') + '</span></div>';
-          h += '<span style="font-family:DM Mono,monospace;font-size:1rem;font-weight:700;color:var(--accent);">$' + Math.round(s.projected_monthly_avg || 0).toLocaleString() + '/mo</span>';
-          h += '</div>';
-
-          h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:6px;margin-bottom:8px;">';
-          h += '<div style="text-align:center;padding:4px;background:var(--surface2);border-radius:4px;"><div style="font-family:DM Mono,monospace;font-weight:700;">$' + (s.base_nightly_rate || 0) + '</div><div style="font-size:0.58rem;color:var(--text3);">Base /nt</div></div>';
-          if (s.weekend_rate) h += '<div style="text-align:center;padding:4px;background:var(--surface2);border-radius:4px;"><div style="font-family:DM Mono,monospace;font-weight:700;">$' + s.weekend_rate + '</div><div style="font-size:0.58rem;color:var(--text3);">Weekend /nt</div></div>';
-          h += '<div style="text-align:center;padding:4px;background:var(--surface2);border-radius:4px;"><div style="font-family:DM Mono,monospace;font-weight:700;">$' + (s.cleaning_fee || 0) + '</div><div style="font-size:0.58rem;color:var(--text3);">Cleaning</div></div>';
-          h += '<div style="text-align:center;padding:4px;background:var(--surface2);border-radius:4px;"><div style="font-family:DM Mono,monospace;font-weight:700;">' + Math.round((s.projected_occupancy || 0) * 100) + '%</div><div style="font-size:0.58rem;color:var(--text3);">Occupancy</div></div>';
-          if (s.peak_season_markup) h += '<div style="text-align:center;padding:4px;background:var(--surface2);border-radius:4px;"><div style="font-family:DM Mono,monospace;font-weight:700;color:var(--accent);">+' + s.peak_season_markup + '%</div><div style="font-size:0.58rem;color:var(--text3);">Peak Season</div></div>';
-          if (s.low_season_discount) h += '<div style="text-align:center;padding:4px;background:var(--surface2);border-radius:4px;"><div style="font-family:DM Mono,monospace;font-weight:700;color:var(--danger);">-' + s.low_season_discount + '%</div><div style="font-size:0.58rem;color:var(--text3);">Low Season</div></div>';
-          h += '<div style="text-align:center;padding:4px;background:var(--surface2);border-radius:4px;"><div style="font-family:DM Mono,monospace;font-weight:700;">$' + Math.round(s.projected_annual_revenue || 0).toLocaleString() + '</div><div style="font-size:0.58rem;color:var(--text3);">Annual Rev</div></div>';
-          h += '</div>';
-
-          if (s.reasoning) h += '<div style="font-size:0.72rem;color:var(--text3);line-height:1.4;">' + esc(s.reasoning).substring(0, 500) + '</div>';
-          if (s.analysis) h += '<div style="font-size:0.72rem;color:var(--text2);margin-top:6px;padding-top:6px;border-top:1px solid var(--border);line-height:1.4;">' + esc(s.analysis).substring(0, 800) + '</div>';
-          h += '</div>';
-        });
-      }
-
-      resultsEl.innerHTML = h;
-    }
-
-    await loadProperties();
-    renderRevenueSnapshot(editId);
-    var lastRunEl = document.getElementById('pricingLastRun');
-    if (lastRunEl) lastRunEl.innerHTML = 'Last analysis: <strong>' + new Date().toISOString().replace('T', ' ').substring(0, 16) + '</strong> · ' + (d.strategies || []).length + ' strategies generated';
-    toast('Price analysis complete — ' + (d.strategies || []).length + ' strategies generated');
-  } catch (err) {
-    if (statusEl) statusEl.innerHTML = '<span style="color:var(--danger);">❌ ' + esc(err.message) + '</span>';
-    toast(err.message, 'error');
-  }
-}
-
 async function loadSavedStrategies(propId) {
-  var resultsEl = document.getElementById('plStrategyResults');
+  var resultsEl = document.getElementById('priceAnalysisResults');
   var lastRunEl = document.getElementById('pricingLastRun');
   if (!resultsEl) return;
-  if (resultsEl.innerHTML.length > 100) return;
+  // Only skip reload if we JUST ran an analysis this session (fresh results on screen)
+  // Check for a data-fresh attribute set by the live analysis runner
+  if (resultsEl.getAttribute('data-fresh') === 'true') { resultsEl.removeAttribute('data-fresh'); return; }
   try {
     var d = await api('/api/properties/' + propId);
     var strats = d.strategies || [];
@@ -1876,20 +2168,20 @@ async function loadSavedStrategies(propId) {
     }
     var runs = {};
     strats.forEach(function(s) {
-      var runKey = (s.created_at || '').substring(0, 16);
+      var runKey = (s.created_at || '').substring(0, 19); // group by second, not minute
       if (!runs[runKey]) runs[runKey] = [];
       runs[runKey].push(s);
     });
     var runKeys = Object.keys(runs).sort().reverse();
     if (lastRunEl && runKeys.length > 0) {
-      var dt = runKeys[0].replace('T', ' ');
+      var dt = fmtUTC(runKeys[0]);
       var ago = Math.round((Date.now() - new Date(runKeys[0]).getTime()) / 86400000);
       var agoText = ago === 0 ? 'today' : ago === 1 ? 'yesterday' : ago + ' days ago';
       lastRunEl.innerHTML = 'Last analysis: <strong>' + dt + '</strong> (' + agoText + ') \u00b7 ' + runKeys.length + ' runs saved';
     }
     var h = '';
     var latestStrats = runs[runKeys[0]] || [];
-    h += '<div style="font-size:0.78rem;font-weight:600;color:var(--accent);margin-bottom:8px;">LATEST ANALYSIS \u2014 ' + runKeys[0].replace('T', ' ') + '</div>';
+    h += '<div style="font-size:0.78rem;font-weight:600;color:var(--accent);margin-bottom:8px;">LATEST ANALYSIS \u2014 ' + fmtUTC(runKeys[0]) + '</div>';
     latestStrats.forEach(function(s) { h += renderStrategyCard(s); });
     if (runKeys.length > 1) {
       var historyRuns = runKeys.slice(1, 5);
@@ -1897,7 +2189,7 @@ async function loadSavedStrategies(propId) {
       historyRuns.forEach(function(rk) {
         var rStrats = runs[rk] || [];
         h += '<div style="margin-top:10px;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;opacity:0.8;">';
-        h += '<div style="font-size:0.72rem;color:var(--text3);margin-bottom:6px;">' + rk.replace('T', ' ') + ' \u00b7 ' + rStrats.length + ' strategies</div>';
+        h += '<div style="font-size:0.72rem;color:var(--text3);margin-bottom:6px;">' + fmtUTC(rk) + ' \u00b7 ' + rStrats.length + ' strategies</div>';
         rStrats.forEach(function(s) {
           h += '<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:0.75rem;border-bottom:1px solid var(--border);">';
           h += '<span>' + (s.ai_generated ? '\ud83e\udd16' : '\ud83d\udcca') + ' ' + esc(s.strategy_name || 'Strategy') + '</span>';
@@ -1916,45 +2208,102 @@ function renderStrategyCard(s, fullReasoning) {
   var isAI = s.ai_generated;
   var isLTR = s.min_nights >= 365 || (s.strategy_name || '').includes('LTR');
   var bc = isAI ? 'var(--purple)' : 'var(--accent)';
-  var provLabel = ({anthropic:'Claude',openai:'GPT-4o',workers_ai:'Workers AI'})[s.ai_provider] || (isAI ? 'AI' : 'Algo');
+  var provLabel = ({anthropic:'Claude',openai:'GPT-4o',workers_ai:'Workers AI (fallback)'})[s.ai_provider] || (isAI ? 'AI' : 'Algorithmic');
+  var uid = 'sc_' + Math.random().toString(36).substring(2,8);
+
   var h = '<div style="padding:12px;background:var(--bg);border:1px solid var(--border);border-left:4px solid ' + bc + ';border-radius:8px;margin-bottom:8px;">';
+
+  // Header
   h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">';
   h += '<div><strong style="font-size:0.85rem;">' + esc(s.strategy_name || 'Strategy') + '</strong>';
-  h += ' <span style="font-size:0.6rem;background:rgba(' + (isAI ? '167,139,250' : '16,185,129') + ',0.15);color:' + bc + ';padding:1px 6px;border-radius:3px;">' + (isAI ? '🤖 ' : '📊 ') + esc(provLabel) + '</span>';
+  h += ' <span style="font-size:0.6rem;background:rgba(' + (isAI ? '167,139,250' : '16,185,129') + ',0.15);color:' + bc + ';padding:1px 6px;border-radius:3px;">' + (isAI ? _ico('sparkle', 11) : _ico('barChart', 11)) + ' ' + esc(provLabel) + '</span>';
   if (isLTR) h += ' <span style="font-size:0.6rem;background:rgba(59,130,246,0.15);color:#60a5fa;padding:1px 6px;border-radius:3px;">LTR</span>';
   h += '</div>';
   h += '<span style="font-family:DM Mono,monospace;font-size:1rem;font-weight:700;color:var(--accent);">$' + Math.round(s.projected_monthly_avg || 0).toLocaleString() + '/mo</span>';
   h += '</div>';
+
+  // Numbers grid
   h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:6px;margin-bottom:8px;">';
   if (isLTR) {
-    h += '<div style="text-align:center;padding:4px;background:var(--surface2);border-radius:4px;"><div style="font-family:DM Mono,monospace;font-weight:700;">$' + (s.base_nightly_rate || 0).toLocaleString() + '</div><div style="font-size:0.55rem;color:var(--text3);">Monthly Rent</div></div>';
+    h += '<div style="text-align:center;padding:4px;background:var(--surface2);border-radius:4px;"><div style="font-family:DM Mono,monospace;font-weight:700;">$' + (s.base_nightly_rate || 0).toLocaleString() + '</div><div style="font-size:0.65rem;color:var(--text3);">Monthly Rent</div></div>';
   } else {
-    h += '<div style="text-align:center;padding:4px;background:var(--surface2);border-radius:4px;"><div style="font-family:DM Mono,monospace;font-weight:700;">$' + (s.base_nightly_rate || 0) + '</div><div style="font-size:0.55rem;color:var(--text3);">Base /nt</div></div>';
-    if (s.weekend_rate) h += '<div style="text-align:center;padding:4px;background:var(--surface2);border-radius:4px;"><div style="font-family:DM Mono,monospace;font-weight:700;">$' + s.weekend_rate + '</div><div style="font-size:0.55rem;color:var(--text3);">Weekend</div></div>';
-    h += '<div style="text-align:center;padding:4px;background:var(--surface2);border-radius:4px;"><div style="font-family:DM Mono,monospace;font-weight:700;">$' + (s.cleaning_fee || 0) + '</div><div style="font-size:0.55rem;color:var(--text3);">Cleaning</div></div>';
+    h += '<div style="text-align:center;padding:4px;background:var(--surface2);border-radius:4px;"><div style="font-family:DM Mono,monospace;font-weight:700;">$' + (s.base_nightly_rate || 0) + '</div><div style="font-size:0.65rem;color:var(--text3);">Base /nt</div></div>';
+    if (s.weekend_rate) h += '<div style="text-align:center;padding:4px;background:var(--surface2);border-radius:4px;"><div style="font-family:DM Mono,monospace;font-weight:700;">$' + s.weekend_rate + '</div><div style="font-size:0.65rem;color:var(--text3);">Weekend</div></div>';
+    h += '<div style="text-align:center;padding:4px;background:var(--surface2);border-radius:4px;"><div style="font-family:DM Mono,monospace;font-weight:700;">$' + (s.cleaning_fee || 0) + '</div><div style="font-size:0.65rem;color:var(--text3);">Cleaning</div></div>';
   }
-  h += '<div style="text-align:center;padding:4px;background:var(--surface2);border-radius:4px;"><div style="font-family:DM Mono,monospace;font-weight:700;">' + Math.round((s.projected_occupancy || 0) * 100) + '%</div><div style="font-size:0.55rem;color:var(--text3);">Occupancy</div></div>';
-  if (s.peak_season_markup) h += '<div style="text-align:center;padding:4px;background:var(--surface2);border-radius:4px;"><div style="font-family:DM Mono,monospace;font-weight:700;color:var(--accent);">+' + s.peak_season_markup + '%</div><div style="font-size:0.55rem;color:var(--text3);">Peak</div></div>';
-  if (s.low_season_discount) h += '<div style="text-align:center;padding:4px;background:var(--surface2);border-radius:4px;"><div style="font-family:DM Mono,monospace;font-weight:700;color:var(--danger);">-' + s.low_season_discount + '%</div><div style="font-size:0.55rem;color:var(--text3);">Low</div></div>';
-  h += '<div style="text-align:center;padding:4px;background:var(--surface2);border-radius:4px;"><div style="font-family:DM Mono,monospace;font-weight:700;">$' + Math.round(s.projected_annual_revenue || 0).toLocaleString() + '</div><div style="font-size:0.55rem;color:var(--text3);">Annual</div></div>';
+  h += '<div style="text-align:center;padding:4px;background:var(--surface2);border-radius:4px;"><div style="font-family:DM Mono,monospace;font-weight:700;">' + Math.round((s.projected_occupancy || 0) * 100) + '%</div><div style="font-size:0.65rem;color:var(--text3);">Occupancy</div></div>';
+  if (s.peak_season_markup) h += '<div style="text-align:center;padding:4px;background:var(--surface2);border-radius:4px;"><div style="font-family:DM Mono,monospace;font-weight:700;color:var(--accent);">+' + s.peak_season_markup + '%</div><div style="font-size:0.65rem;color:var(--text3);">Peak</div></div>';
+  if (s.low_season_discount) h += '<div style="text-align:center;padding:4px;background:var(--surface2);border-radius:4px;"><div style="font-family:DM Mono,monospace;font-weight:700;color:var(--danger);">-' + s.low_season_discount + '%</div><div style="font-size:0.65rem;color:var(--text3);">Low</div></div>';
+  h += '<div style="text-align:center;padding:4px;background:var(--surface2);border-radius:4px;"><div style="font-family:DM Mono,monospace;font-weight:700;">$' + Math.round(s.projected_annual_revenue || 0).toLocaleString() + '</div><div style="font-size:0.65rem;color:var(--text3);">Annual</div></div>';
   h += '</div>';
-  // Full analysis text — show all of it, expandable if long
+
+  // ── HOW WE CALCULATED THIS — always visible, collapsible ──
+  var calcLines = [];
+
+  // Rate source (algorithmic has it in reasoning, AI we extract from analysis)
+  var reasonText = s.reasoning || '';
+  if (!isAI && reasonText) {
+    // Algorithmic: reasoning IS the source note — parse out the key data points
+    var rateMatch = reasonText.match(/PriceLabs\s+(?:base|recommended)\s+price\s+\$(\d+)/i)
+      || reasonText.match(/(\d+)\s+STR comps\s+\(median\s+\$(\d+)/i)
+      || reasonText.match(/Derived from\s+\$(\d+)\/mo/i);
+    var occMatch = reasonText.match(/Occupancy:\s+(.+?)\./);
+    var cleanMatch = reasonText.match(/Cleaning fee:\s+(.+?)\./);
+
+    calcLines.push({ label: 'Base rate source', val: rateMatch ? reasonText.split('.')[0].replace(/^.*(PriceLabs|STR comps|Derived)/,'$1').trim() : reasonText.split('.')[0] });
+    if (occMatch) calcLines.push({ label: 'Occupancy source', val: occMatch[1] });
+    if (cleanMatch) calcLines.push({ label: 'Cleaning source', val: cleanMatch[1] });
+
+    // Show revenue math
+    var nights = Math.round((s.projected_occupancy || 0) * 365);
+    var turnovers = s.cleaning_fee > 0 ? Math.round(nights / 3.5) : 0;
+    var rateRevenue = Math.round((s.base_nightly_rate || 0) * nights);
+    var cleanRevenue = turnovers * (s.cleaning_fee || 0);
+    calcLines.push({ label: 'Revenue math', val: '$' + (s.base_nightly_rate || 0) + '/nt × ' + nights + ' nights/yr (' + Math.round((s.projected_occupancy||0)*100) + '% occ) = $' + rateRevenue.toLocaleString() + (cleanRevenue > 0 ? ' + $' + cleanRevenue.toLocaleString() + ' cleaning = $' + (rateRevenue + cleanRevenue).toLocaleString() + '/yr' : '') });
+  } else if (isAI) {
+    calcLines.push({ label: 'Generated by', val: provLabel + ' — see full analysis below' });
+    if (s.min_price || s.max_price) calcLines.push({ label: 'PriceLabs guardrails', val: (s.min_price ? 'Min $' + s.min_price : '') + (s.max_price ? '  Max $' + s.max_price : '') });
+    if (s.breakeven_rate) calcLines.push({ label: 'Breakeven rate', val: '$' + s.breakeven_rate + '/nt needed to cover expenses' });
+    var nights2 = Math.round((s.projected_occupancy || 0) * 365);
+    calcLines.push({ label: 'Revenue math', val: '$' + (s.base_nightly_rate || 0) + '/nt base × ' + nights2 + ' nights/yr (' + Math.round((s.projected_occupancy||0)*100) + '% occ) → $' + Math.round(s.projected_annual_revenue || 0).toLocaleString() + '/yr' });
+  }
+
+  if (calcLines.length > 0) {
+    h += '<div style="margin-top:6px;padding:8px 10px;background:var(--surface2);border-radius:6px;border:1px solid var(--border);">';
+    h += '<div style="font-size:0.65rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text3);margin-bottom:6px;">' + _ico('target', 13) + ' How we got these numbers</div>';
+    calcLines.forEach(function(cl) {
+      h += '<div style="display:flex;gap:8px;font-size:0.72rem;margin-bottom:3px;line-height:1.4;">';
+      h += '<span style="color:var(--text3);flex-shrink:0;min-width:120px;">' + esc(cl.label) + '</span>';
+      h += '<span style="color:var(--text2);">' + esc(cl.val) + '</span>';
+      h += '</div>';
+    });
+    if (s.recommendations && s.recommendations.length > 0) {
+      h += '<div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border);">';
+      h += '<div style="font-size:0.65rem;font-weight:600;color:var(--text3);margin-bottom:4px;">KEY ACTIONS</div>';
+      s.recommendations.slice(0,3).forEach(function(r) {
+        h += '<div style="font-size:0.72rem;color:var(--text2);margin-bottom:2px;">• ' + esc(r) + '</div>';
+      });
+      h += '</div>';
+    }
+    h += '</div>';
+  }
+
+  // Full analysis text — always expandable, shown by default for fresh results
   var fullText = s.analysis || s.reasoning || '';
   if (fullText) {
-    if (fullReasoning || fullText.length <= 600) {
-      h += '<div style="font-size:0.78rem;color:var(--text2);line-height:1.5;margin-top:6px;">';
+    if (fullReasoning || fullText.length <= 400) {
+      h += '<div style="font-size:0.78rem;color:var(--text2);line-height:1.5;margin-top:8px;">';
       fullText.split(/\n\n|\n/).forEach(function(para) { if (para.trim()) h += '<p style="margin:0 0 6px 0;">' + esc(para.trim()) + '</p>'; });
       h += '</div>';
     } else {
-      var uid = 'sc_' + Math.random().toString(36).substring(2,8);
-      h += '<div style="font-size:0.78rem;color:var(--text2);line-height:1.5;margin-top:6px;">';
-      h += '<span id="' + uid + 's">' + esc(fullText.substring(0, 500)) + '... ';
-      h += '<a href="#" onclick="event.preventDefault();document.getElementById(\'' + uid + 'f\').style.display=\'\';document.getElementById(\'' + uid + 's\').style.display=\'none\';" style="color:var(--purple);">Show full analysis ↓</a></span>';
-      h += '<span id="' + uid + 'f" style="display:none;">';
+      h += '<div style="margin-top:6px;">';
+      h += '<a href="#" onclick="event.preventDefault();toggleCollapsible(\'' + uid + 'f\',null,this,\'▸ Show full analysis\',\'▾ Hide analysis\')" style="font-size:0.72rem;color:var(--purple);">▸ Show full analysis</a>';
+      h += '<div id="' + uid + 'f" style="display:none;font-size:0.78rem;color:var(--text2);line-height:1.5;margin-top:6px;">';
       fullText.split(/\n\n|\n/).forEach(function(para) { if (para.trim()) h += '<p style="margin:0 0 6px 0;">' + esc(para.trim()) + '</p>'; });
-      h += '</span></div>';
+      h += '</div></div>';
     }
   }
+
   h += '</div>';
   return h;
 }
@@ -2274,20 +2623,28 @@ async function fetchZestimate() {
   var editId = document.getElementById('f_editId').value;
   if (!editId) { toast('Save property first', 'error'); return; }
   var zInfo = document.getElementById('zestimateInfo');
-  if (zInfo) zInfo.textContent = '⏳ Searching Zillow...';
+  if (zInfo) zInfo.innerHTML ='' + _ico('clock', 13) + ' Searching Zillow...';
   try {
     var d = await api('/api/properties/' + editId + '/zestimate', 'POST');
     if (d.zestimate) {
       document.getElementById('f_value').value = d.zestimate;
       var zLink = d.zillow_url ? ' · <a href="' + esc(d.zillow_url) + '" target="_blank" style="color:var(--accent);">View on Zillow ↗</a>' : '';
-      if (zInfo) zInfo.innerHTML = '✅ Zestimate: <strong>$' + d.zestimate.toLocaleString() + '</strong> from ' + esc(d.source) + ' (' + d.date + ')' + (d.previous_value ? ' · was $' + d.previous_value.toLocaleString() : '') + zLink;
+      var extra = '';
+      if (d.rent_zestimate) extra += ' · <span style="color:var(--purple);">Rent Zestimate: <strong>$' + Math.round(d.rent_zestimate).toLocaleString() + '/mo</strong></span>';
+      var zd = d.zillow_data || {};
+      var details = [];
+      if (zd.sqft) details.push(zd.sqft.toLocaleString() + ' sqft');
+      if (zd.year_built) details.push('Built ' + zd.year_built);
+      if (zd.price_per_sqft) details.push('$' + zd.price_per_sqft + '/sqft');
+      if (details.length) extra += ' · <span style="color:var(--text3);font-size:0.78rem;">' + details.join(' · ') + '</span>';
+      if (zInfo) zInfo.innerHTML = '' + _ico('check', 13, 'var(--accent)') + ' <strong style="color:var(--accent);">$' + d.zestimate.toLocaleString() + '</strong> home value from ' + esc(d.source) + ' (' + d.date + ')' + extra + (d.previous_value && d.previous_value !== d.zestimate ? ' · <span style="color:var(--text3);">was $' + Math.round(d.previous_value).toLocaleString() + '</span>' : '') + zLink;
       toast('Zestimate: $' + d.zestimate.toLocaleString());
     } else {
-      if (zInfo) zInfo.textContent = '❌ Could not find Zestimate';
+      if (zInfo) zInfo.innerHTML = '' + _ico('x', 13, 'var(--danger)') + ' Could not find Zestimate — try adding Zillow URL to property';
       toast('No Zestimate found', 'error');
     }
   } catch (err) {
-    if (zInfo) zInfo.textContent = '❌ ' + err.message;
+    if (zInfo) zInfo.innerHTML = '' + _ico('x', 13, 'var(--danger)') + ' ' + err.message;
     toast(err.message, 'error');
   }
 }
@@ -2309,13 +2666,13 @@ function renderPropertyExpenses() {
     el.innerHTML = '<div style="font-size:0.78rem;color:var(--text3);padding:4px 0;">No capital expenses recorded yet.</div>';
     return;
   }
-  var catIcons = {closing:'📋',renovation:'🔨',repair:'🔧',furniture:'🛋️',appliance:'⚡',legal:'📜',other:'📌'};
+  var catIcons = {closing:'' + _ico('clipboard', 13) + '',renovation:'' + _ico('tool', 13) + '',repair:_ico('tool',13),furniture:_ico('layers',15),appliance:'' + _ico('zap', 13) + '',legal:'' + _ico('receipt', 13) + '',other:_ico('target',13)};
   var catColors = {closing:'96,165,250',renovation:'167,139,250',repair:'245,158,11',furniture:'16,185,129',appliance:'59,130,246',legal:'148,163,184',other:'107,114,128'};
   var total = 0;
   var h = '';
   propExpenses.forEach(function(e) {
     total += e.amount || 0;
-    var icon = catIcons[e.category] || '📌';
+    var icon = catIcons[e.category] || _ico('target',13);
     var rgb = catColors[e.category] || '107,114,128';
     h += '<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;margin-bottom:3px;background:var(--surface2);border-radius:6px;border:1px solid var(--border);border-left:3px solid rgba(' + rgb + ',0.5);">';
     h += '<span style="font-size:0.9rem;">' + icon + '</span>';
@@ -2555,7 +2912,7 @@ function showCopyDialog(data, targetId, sourceId) {
 
   var h = '<div style="background:var(--bg);border:1px solid var(--border);border-radius:12px;max-width:650px;width:100%;max-height:85vh;overflow-y:auto;padding:24px;">';
   h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">';
-  h += '<h3 style="margin:0;">📋 Copy from ' + esc(data.source.name) + '</h3>';
+  h += '<h3 style="margin:0;">' + _ico('receipt', 13) + ' Copy from ' + esc(data.source.name) + '</h3>';
   h += '<button onclick="document.getElementById(\'copyDialog\').remove()" style="background:none;border:none;color:var(--text3);font-size:1.2rem;cursor:pointer;">✕</button></div>';
   h += '<p style="font-size:0.78rem;color:var(--text3);margin:0 0 14px;">Select what to copy to <strong>' + esc(data.target.name) + '</strong>:</p>';
 
@@ -2571,7 +2928,7 @@ function showCopyDialog(data, targetId, sourceId) {
     h += '<div style="font-size:0.78rem;font-weight:600;color:var(--text2);margin-bottom:6px;">EXPENSES & SETTINGS (' + data.fields.length + ')</div>';
     data.fields.forEach(function(f) {
       var val = f.is_money ? '$' + Number(f.source_value).toLocaleString() : f.source_value;
-      var overwrite = f.would_overwrite ? ' <span style="font-size:0.65rem;color:#f59e0b;">⚠ overwrites: ' + (f.is_money ? '$' + Number(f.target_value).toLocaleString() : f.target_value) + '</span>' : '';
+      var overwrite = f.would_overwrite ? ' <span style="font-size:0.65rem;color:#f59e0b;">' + _ico('alertCircle', 13, '#f59e0b') + ' overwrites: ' + (f.is_money ? '$' + Number(f.target_value).toLocaleString() : f.target_value) + '</span>' : '';
       h += '<label style="display:flex;align-items:center;gap:8px;padding:5px 10px;margin-bottom:2px;border-radius:4px;cursor:pointer;font-size:0.82rem;" onmouseover="this.style.background=\'var(--surface2)\'" onmouseout="this.style.background=\'none\'">';
       h += '<input type="checkbox" class="copy-field" value="' + f.key + '" checked style="width:16px;height:16px;">';
       h += '<span style="flex:1;">' + esc(f.label) + '</span>';
@@ -2673,15 +3030,15 @@ async function loadShareLinks() {
       h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">';
       h += '<div><div style="font-size:0.65rem;color:var(--text3);margin-bottom:2px;">ACCESS CODE — give this to viewer</div>';
       h += '<code style="font-size:1.4rem;font-weight:700;color:var(--accent);letter-spacing:4px;user-select:all;">' + esc(s.share_code) + '</code></div>';
-      h += '<button class="btn btn-xs" onclick="navigator.clipboard.writeText(\'' + esc(s.share_code) + '\');toast(\'Code copied!\')" style="white-space:nowrap;">📋 Copy Code</button>';
+      h += '<button class="btn btn-xs" onclick="navigator.clipboard.writeText(\'' + esc(s.share_code) + '\');toast(\'Code copied!\')" style="white-space:nowrap;">' + _ico('receipt', 13) + ' Copy Code</button>';
       h += '</div>';
       // Instructions
       h += '<div style="font-size:0.72rem;color:var(--text3);padding:6px 10px;background:var(--surface2);border-radius:6px;margin-bottom:8px;">';
-      h += '💡 Share this code — the viewer enters it at <strong>' + window.location.origin + '/share</strong> to view. The code is not in the URL for privacy.';
+      h +='' + _ico('zap', 13) + ' Share this code — the viewer enters it at <strong>' + window.location.origin + '/share</strong> to view. The code is not in the URL for privacy.';
       h += '</div>';
       // Actions
       h += '<div style="display:flex;gap:6px;">';
-      h += '<a href="/share/' + esc(s.share_code) + '" target="_blank" class="btn btn-xs" style="text-decoration:none;">👁 Preview</a>';
+      h += '<a href="/share/' + esc(s.share_code) + '" target="_blank" class="btn btn-xs" style="text-decoration:none;">' + _ico('eye', 13) + ' Preview</a>';
       h += '<button class="btn btn-xs btn-danger" onclick="deleteShareLink(\'' + esc(s.share_code) + '\')" title="Revoke access">Revoke</button>';
       h += '<span style="font-size:0.65rem;color:var(--text3);align-self:center;margin-left:auto;">Created ' + (s.created_at || '').substring(0, 10) + '</span>';
       h += '</div></div>';
@@ -2745,15 +3102,51 @@ async function doBulkDelete() {
   } catch (e) { toast(e.message, 'error'); }
 }
 
+function updateBulkValueInput() {
+  var field = (document.getElementById('bulkField') || {}).value;
+  var wrap = document.getElementById('bulkValueWrap');
+  if (!wrap) return;
+
+  // Fields that should show a dropdown
+  var dropdowns = {
+    listing_status: [['active','Active'],['inactive','Inactive'],['draft','Draft'],['pending','Pending']],
+    property_type: [['single_family','Single Family'],['condo','Condo'],['apartment','Apartment'],['townhouse','Townhouse'],['multi_family','Multi-Family'],['glamping','Glamping'],['studio','Studio']],
+    rental_type: [['str','STR'],['ltr','LTR'],['mtr','MTR']],
+    ownership_type: [['purchased','Purchased'],['rental','Rental'],['managed','Managed for Owner'],['partnership','Partnership']],
+  };
+
+  if (dropdowns[field]) {
+    var opts = dropdowns[field].map(function(o) { return '<option value="' + o[0] + '">' + o[1] + '</option>'; }).join('');
+    wrap.innerHTML = '<select id="bulkValue" style="background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:0.82rem;width:140px;"><option value="">Select...</option>' + opts + '</select>';
+  } else if (field === 'algo_template_id') {
+    // Load templates into dropdown
+    var opts2 = '<option value="">None (remove)</option>';
+    api('/api/algo-templates').then(function(d) {
+      (d.templates || []).forEach(function(t) { opts2 += '<option value="' + t.id + '">' + esc(t.name) + '</option>'; });
+      wrap.innerHTML = '<select id="bulkValue" style="background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:0.82rem;width:140px;">' + opts2 + '</select>';
+    }).catch(function() {});
+  } else {
+    wrap.innerHTML = '<input id="bulkValue" placeholder="Value" style="background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:0.82rem;width:140px;">';
+  }
+}
+
 async function doBulkEdit() {
   if (selectedProps.size === 0) { toast('No properties selected', 'error'); return; }
   var field = document.getElementById('bulkField').value;
-  var value = document.getElementById('bulkValue').value.trim();
+  var value = document.getElementById('bulkValue').value;
   if (!field) { toast('Select a field to edit', 'error'); return; }
-  if (value === '') { toast('Enter a value', 'error'); return; }
-  var numFields = ['bedrooms', 'bathrooms'];
+  if (value === '' && field !== 'algo_template_id') { toast('Enter a value', 'error'); return; }
+
+  var numFields = ['bedrooms', 'bathrooms', 'sqft', 'lot_acres', 'year_built', 'stories', 'parking_spaces', 'purchase_price', 'estimated_value', 'annual_taxes', 'hoa_monthly', 'monthly_mortgage', 'monthly_insurance', 'monthly_rent_cost', 'cleaning_fee', 'cleaning_cost', 'algo_template_id'];
   var updates = {};
-  updates[field] = numFields.indexOf(field) >= 0 ? parseFloat(value) : value;
+  if (numFields.indexOf(field) >= 0) {
+    updates[field] = value === '' ? null : parseFloat(value);
+  } else {
+    updates[field] = value;
+  }
+
+  if (!confirm('Update ' + field.replace(/_/g, ' ') + ' to "' + value + '" for ' + selectedProps.size + ' properties?')) return;
+
   try {
     await api('/api/properties/bulk-edit', 'POST', { ids: Array.from(selectedProps), updates: updates });
     toast(selectedProps.size + ' properties updated');
@@ -2773,6 +3166,8 @@ function showAddProperty() {
   var sv = function(elId, val) { var el = document.getElementById(elId); if (el) el.value = val || ''; };
   var st = function(elId, val) { var el = document.getElementById(elId); if (el) el.textContent = val || ''; };
   sv('f_editId', '');
+  currentPropertyId = null;
+  _propertyImages = [];
   st('formTitle', 'Add New Property');
   var shareBtn = document.getElementById('shareBtn');
   if (shareBtn) shareBtn.style.display = 'none';
@@ -2784,11 +3179,13 @@ function showAddProperty() {
   if (svcList) svcList.innerHTML = '<div style="font-size:0.78rem;color:var(--text3);padding:4px 0;">No services yet. Add Guesty, PriceLabs, lock automation, etc.</div>';
   var expList = document.getElementById('propExpensesList');
   if (expList) expList.innerHTML = '<div style="font-size:0.78rem;color:var(--text3);padding:4px 0;">No capital expenses recorded yet.</div>';
-  ['f_name','f_address','f_city','f_state','f_zip','f_beds','f_baths','f_sqft','f_lot','f_year','f_price','f_value','f_taxes','f_hoa','f_image','f_unit','f_mortgage','f_insurance','f_monthly_rent','f_deposit','f_electric','f_gas','f_water','f_internet','f_trash','f_other_expense','f_cleaning','f_cleaning_cost','f_stories','f_lat','f_lng','f_parking','f_parcel','f_zoning','f_county'].forEach(function(id) { var el = document.getElementById(id); if (el) el.value = ''; });
+  ['f_name','f_address','f_city','f_state','f_zip','f_beds','f_baths','f_sqft','f_lot','f_year','f_price','f_value','f_taxes','f_tax_rate_pct','f_hoa','f_image','f_unit','f_mortgage','f_insurance','f_monthly_rent','f_deposit','f_electric','f_gas','f_water','f_internet','f_trash','f_other_expense','f_cleaning','f_cleaning_cost','f_stories','f_lat','f_lng','f_parking','f_parcel','f_zoning','f_county'].forEach(function(id) { var el = document.getElementById(id); if (el) el.value = ''; });
   sv('f_type', 'single_family');
   setOwnership('purchased');
   toggleUnitField();
   updateImagePreview();
+  renderPropertyGallery();
+  _renderGuestyListingContent(d.guesty_listing);
   updateCostSummary();
   updateNamePreview();
   var coordEl = document.getElementById('coordDisplay'); if (coordEl) { coordEl.innerHTML = ''; coordEl.style.display = 'none'; }
@@ -2800,6 +3197,7 @@ function showAddProperty() {
   var sqftLabel = document.getElementById('sqftLabel'); if (sqftLabel) sqftLabel.textContent = 'Sqft';
   var expLabel = document.getElementById('expenseLabel'); if (expLabel) expLabel.textContent = 'MONTHLY EXPENSES';
   var unitsTab = document.getElementById('unitsTab'); if (unitsTab) unitsTab.style.display = 'none';
+  var propBanner = document.getElementById('propIdentityBanner'); if (propBanner) propBanner.style.display = 'none';
   var amenitiesTab = document.querySelector('#propSubTabs [data-ptab="amenities"]'); if (amenitiesTab) amenitiesTab.style.display = '';
   var histEl = document.getElementById('propHistoryContent'); if (histEl) histEl.innerHTML = '<p style="color:var(--text3);font-size:0.85rem;">Save the property first, then run an analysis to see history here.</p>';
   var amenEl = document.getElementById('propAmenitiesContent'); if (amenEl) amenEl.innerHTML = '<p style="color:var(--text3);font-size:0.85rem;">Save the property first to manage amenities.</p>';
@@ -2809,16 +3207,63 @@ function showAddProperty() {
   switchView('addProperty');
 }
 
-async function openProperty(id) {
+async function openProperty(id, initialTab) {
   showLoading('Loading...');
   try {
     var d = await api('/api/properties/' + id); var p = d.property;
+    _currentPropData = d; // cache for PL customizations etc
     window._propMonthlyActuals = d.monthly_actuals || [];
     window._propSeasonality = d.seasonality || [];
     var sv = function(elId, val) { var el = document.getElementById(elId); if (el) el.value = val || ''; };
     var st = function(elId, val) { var el = document.getElementById(elId); if (el) el.textContent = val || ''; };
     sv('f_editId', p.id);
+    currentPropertyId = p.id;
     st('formTitle', p.parent_id ? 'Edit Unit' : 'Edit Property');
+
+    // Populate persistent identity banner
+    var banner = document.getElementById('propIdentityBanner');
+    if (banner) {
+      banner.style.display = '';
+      var displayName = p.platform_listing_name || p.name || p.address || 'Property #' + p.id;
+      if (p.unit_number) displayName = p.unit_number + ' — ' + displayName;
+      var bannerName = document.getElementById('propBannerName');
+      if (bannerName) bannerName.textContent = displayName;
+      var bannerAddr = document.getElementById('propBannerAddress');
+      if (bannerAddr) {
+        var addrParts = [];
+        if (p.address) addrParts.push(p.address);
+        if (p.city) addrParts.push(p.city + (p.state ? ', ' + p.state : '') + (p.zip ? ' ' + p.zip : ''));
+        bannerAddr.textContent = addrParts.join(' · ');
+      }
+      var bannerMeta = document.getElementById('propBannerMeta');
+      if (bannerMeta) {
+        var mh = '';
+        var typeLabel = (p.property_type || '').replace(/_/g, ' ');
+        if (typeLabel) mh += '<span style="font-size:0.68rem;padding:2px 8px;background:var(--surface3);border-radius:4px;color:var(--text2);">' + _ico('home', 11) + ' ' + typeLabel + '</span>';
+        if (p.bedrooms) mh += '<span style="font-size:0.68rem;padding:2px 8px;background:var(--surface3);border-radius:4px;color:var(--text2);">' + p.bedrooms + 'BR / ' + (p.bathrooms || '?') + 'BA</span>';
+        if (p.sqft) mh += '<span style="font-size:0.68rem;padding:2px 8px;background:var(--surface3);border-radius:4px;color:var(--text3);">' + parseInt(p.sqft).toLocaleString() + ' sqft</span>';
+        var statusColor = (p.listing_status === 'active' || !p.listing_status) ? 'var(--accent)' : p.listing_status === 'inactive' ? 'var(--danger)' : 'var(--text3)';
+        var statusLabel = p.listing_status || 'active';
+        mh += '<span style="font-size:0.62rem;padding:2px 8px;background:' + statusColor + ';color:#fff;border-radius:4px;font-weight:600;text-transform:uppercase;">' + statusLabel + '</span>';
+        if (p.is_managed === 1 || p.ownership_type === 'managed') {
+          mh += '<span style="font-size:0.62rem;padding:2px 8px;background:var(--blue);color:#fff;border-radius:4px;font-weight:600;">' + _ico('handshake', 10, '#fff') + ' Managed</span>';
+        }
+        if (p.is_research === 1) {
+          mh += '<span style="font-size:0.62rem;padding:2px 8px;background:var(--purple);color:#fff;border-radius:4px;font-weight:600;">' + _ico('search', 10, '#fff') + ' Research</span>';
+        }
+        // Latest analysis badge
+        var latestStrat = (d.strategies && d.strategies.length > 0) ? d.strategies[0] : null;
+        if (latestStrat) {
+          var stratAge = Math.round((Date.now() - new Date(latestStrat.created_at).getTime()) / 86400000);
+          var stratAgeLabel = stratAge === 0 ? 'today' : stratAge === 1 ? 'yesterday' : stratAge + 'd ago';
+          var stratColor = stratAge <= 7 ? 'var(--accent)' : stratAge <= 30 ? '#f0b840' : 'var(--text3)';
+          mh += '<span style="font-size:0.62rem;padding:2px 8px;background:var(--surface3);border-radius:4px;color:' + stratColor + ';border:1px solid ' + stratColor + ';">' + _ico('dollarSign', 10, stratColor) + ' $' + (latestStrat.base_nightly_rate || 0) + '/nt · ' + Math.round((latestStrat.projected_occupancy || 0) * 100) + '% · $' + Math.round(latestStrat.projected_monthly_avg || 0).toLocaleString() + '/mo <span style="opacity:0.7;">(' + stratAgeLabel + ')</span></span>';
+        } else {
+          mh += '<span style="font-size:0.62rem;padding:2px 8px;background:rgba(245,158,11,0.1);border-radius:4px;color:#f0b840;border:1px solid rgba(245,158,11,0.2);">' + _ico('alert', 10, '#f0b840') + ' No analysis</span>';
+        }
+        bannerMeta.innerHTML = mh;
+      }
+    }
     var shareBtn = document.getElementById('shareBtn');
     if (shareBtn) shareBtn.style.display = '';
     var sharePanel = document.getElementById('sharePanel');
@@ -2837,8 +3282,10 @@ async function openProperty(id) {
     sv('f_price', p.purchase_price);
     sv('f_value', p.estimated_value);
     sv('f_taxes', p.annual_taxes);
+    sv('f_tax_rate_pct', p.tax_rate_pct);
     sv('f_hoa', p.hoa_monthly);
     sv('f_image', p.image_url);
+    loadPropertyGallery(p.id);
     sv('f_unit', p.unit_number);
     sv('f_mortgage', p.monthly_mortgage);
     sv('f_insurance', p.monthly_insurance);
@@ -2890,9 +3337,22 @@ async function openProperty(id) {
     sv('f_listing_url', p.listing_url);
     sv('f_listing_status', p.listing_status);
     sv('f_rental_type', p.rental_type || 'str');
+    sv('f_owner_name', p.owner_name);
+    sv('f_mgmt_fee_pct', p.management_fee_pct);
+    sv('f_mgmt_base_fee', p.management_base_fee);
+    sv('f_rental_restrictions', p.rental_restrictions);
+    sv('f_hoa_name', p.hoa_name);
+    sv('f_ai_notes', p.ai_notes);
+    // Set fee basis toggle
+    var loadedBasis = p.fee_basis || 'gross';
+    var fbHidden = document.getElementById('f_fee_basis');
+    if (fbHidden) fbHidden.value = loadedBasis;
+    document.querySelectorAll('.fee-basis-btn').forEach(function(b) { b.classList.toggle('active', b.dataset.basis === loadedBasis); });
     var resEl = document.getElementById('f_research');
     if (resEl) resEl.checked = !!p.is_research;
-    setOwnership(p.ownership_type || 'purchased');
+    // Determine ownership: if is_managed, use 'managed'; otherwise existing logic
+    var ownershipType = p.is_managed ? 'managed' : (p.ownership_type || 'purchased');
+    setOwnership(ownershipType);
     toggleUnitField();
     updateImagePreview();
     updateCostSummary();
@@ -3020,64 +3480,58 @@ async function openProperty(id) {
         var propRev = 0;
         var latestStrat = (d.strategies || [])[0];
         if (latestStrat) propRev = latestStrat.projected_monthly_avg || 0;
-        var propCost = 0;
-        if (p.ownership_type === 'rental') {
-          propCost = p.monthly_rent_cost || 0;
-        } else {
-          propCost = (p.monthly_mortgage || 0) + (p.monthly_insurance || 0) + Math.round((p.annual_taxes || 0) / 12) + (p.hoa_monthly || 0);
-        }
-        var propUtil = (p.expense_electric || 0) + (p.expense_gas || 0) + (p.expense_water || 0) + (p.expense_internet || 0) + (p.expense_trash || 0) + (p.expense_other || 0);
-        var propTotalCost = propCost + propUtil;
-        var propNet = propRev - propTotalCost;
+        var propIsManaged = p.is_managed || p.ownership_type === 'managed';
 
-        if (propRev > 0 || propTotalCost > 0) {
-          var ph = '<div style="padding:16px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;">';
-          ph += '<h3 style="font-size:0.92rem;margin-bottom:12px;">Property Overview</h3>';
-          ph += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;padding:12px;background:var(--bg);border-radius:6px;margin-bottom:8px;">';
-          ph += '<div style="text-align:center;"><div style="font-size:0.72rem;color:var(--text3);">Revenue</div><div style="font-weight:700;color:var(--accent);font-family:\'DM Mono\',monospace;font-size:1.05rem;">' + (propRev > 0 ? '$' + Math.round(propRev).toLocaleString() : '—') + '<span style="font-size:0.72rem;font-weight:400;color:var(--text3);">/mo</span></div></div>';
-          ph += '<div style="text-align:center;"><div style="font-size:0.72rem;color:var(--text3);">Costs</div><div style="font-weight:700;color:' + (propTotalCost > 0 ? 'var(--danger)' : 'var(--text3)') + ';font-family:\'DM Mono\',monospace;font-size:1.05rem;">' + (propTotalCost > 0 ? '$' + Math.round(propTotalCost).toLocaleString() : '—') + '<span style="font-size:0.72rem;font-weight:400;color:var(--text3);">/mo</span></div></div>';
-          if (propRev > 0 && propTotalCost > 0) {
-            var pnColor = propNet >= 0 ? 'var(--accent)' : 'var(--danger)';
-            ph += '<div style="text-align:center;"><div style="font-size:0.72rem;color:var(--text3);">Net</div><div style="font-weight:700;color:' + pnColor + ';font-family:\'DM Mono\',monospace;font-size:1.05rem;">' + (propNet >= 0 ? '+' : '-') + '$' + Math.abs(Math.round(propNet)).toLocaleString() + '<span style="font-size:0.72rem;font-weight:400;color:var(--text3);">/mo</span></div></div>';
-          } else {
-            ph += '<div style="text-align:center;"><div style="font-size:0.72rem;color:var(--text3);">Net</div><div style="font-weight:400;color:var(--text3);font-size:0.85rem;">Run analysis</div></div>';
-          }
+        if (propIsManaged) {
+          var ph = '<div style="padding:16px;background:var(--surface2);border:1px solid rgba(96,165,250,0.3);border-radius:8px;">';
+          ph += '<h3 style="font-size:0.92rem;margin-bottom:8px;">' + _ico('handshake', 13) + ' Managed Property</h3>';
+          ph += '<div style="font-size:0.82rem;color:var(--text2);line-height:1.6;">';
+          ph += 'Owner: <strong>' + esc(p.owner_name || 'Not set') + '</strong>';
+          if (p.management_fee_pct) ph += ' · Management fee: <strong>' + p.management_fee_pct + '%</strong>';
           ph += '</div>';
-          // Cost breakdown
-          if (propTotalCost > 0) {
-            ph += '<div style="font-size:0.78rem;color:var(--text2);">';
-            if (propCost > 0) {
-              if (p.ownership_type === 'rental') {
-                ph += '<span>Rent: $' + (p.monthly_rent_cost || 0).toLocaleString() + '</span>';
-              } else {
-                var parts = [];
-                if (p.monthly_mortgage) parts.push('Mortgage $' + p.monthly_mortgage.toLocaleString());
-                if (p.monthly_insurance) parts.push('Ins $' + p.monthly_insurance.toLocaleString());
-                if (p.annual_taxes) parts.push('Tax $' + Math.round(p.annual_taxes / 12).toLocaleString());
-                if (p.hoa_monthly) parts.push('HOA $' + p.hoa_monthly.toLocaleString());
-                ph += '<span>' + parts.join(' · ') + '</span>';
-              }
-            }
-            if (propUtil > 0) ph += (propCost > 0 ? ' · ' : '') + '<span>Utils $' + Math.round(propUtil).toLocaleString() + '</span>';
-            ph += '</div>';
-          }
-          // Annual
-          if (propRev > 0) {
-            var annNet = propNet * 12;
-            var cap = (p.estimated_value || p.purchase_price) ? Math.round(annNet / (p.estimated_value || p.purchase_price) * 10000) / 100 : 0;
-            ph += '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:6px;font-size:0.78rem;color:var(--text2);">';
-            ph += '<span>$' + Math.round(propRev * 12).toLocaleString() + '/yr rev</span>';
-            if (propTotalCost > 0) ph += '<span style="font-weight:600;color:' + (annNet >= 0 ? 'var(--accent)' : 'var(--danger)') + ';">$' + Math.round(annNet).toLocaleString() + '/yr net</span>';
-            if (cap) ph += '<span>Cap: ' + cap + '%</span>';
-            ph += '</div>';
-          }
+          ph += '<div style="font-size:0.72rem;color:var(--text3);margin-top:6px;">Revenue and costs excluded from your portfolio totals.</div>';
           ph += '</div>';
           buildingSumEl.innerHTML = ph;
           buildingSumEl.style.display = '';
         } else {
-          buildingSumEl.style.display = 'none';
-          buildingSumEl.innerHTML = '';
+          var propCost = 0;
+          if (p.ownership_type === 'rental') { propCost = p.monthly_rent_cost || 0; }
+          else { propCost = (p.monthly_mortgage || 0) + (p.monthly_insurance || 0) + Math.round((p.annual_taxes || 0) / 12) + (p.hoa_monthly || 0); }
+          var propUtil = (p.expense_electric || 0) + (p.expense_gas || 0) + (p.expense_water || 0) + (p.expense_internet || 0) + (p.expense_trash || 0) + (p.expense_other || 0);
+          var propTotalCost = propCost + propUtil;
+          var propNet = propRev - propTotalCost;
+          if (propRev > 0 || propTotalCost > 0) {
+            var ph = '<div style="padding:16px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;">';
+            ph += '<h3 style="font-size:0.92rem;margin-bottom:12px;">Property Overview</h3>';
+            ph += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;padding:12px;background:var(--bg);border-radius:6px;margin-bottom:8px;">';
+            ph += '<div style="text-align:center;"><div style="font-size:0.72rem;color:var(--text3);">Revenue</div><div style="font-weight:700;color:var(--accent);font-family:\'DM Mono\',monospace;font-size:1.05rem;">' + (propRev > 0 ? '$' + Math.round(propRev).toLocaleString() : '—') + '<span style="font-size:0.72rem;font-weight:400;color:var(--text3);">/mo</span></div></div>';
+            ph += '<div style="text-align:center;"><div style="font-size:0.72rem;color:var(--text3);">Costs</div><div style="font-weight:700;color:' + (propTotalCost > 0 ? 'var(--danger)' : 'var(--text3)') + ';font-family:\'DM Mono\',monospace;font-size:1.05rem;">' + (propTotalCost > 0 ? '$' + Math.round(propTotalCost).toLocaleString() : '—') + '<span style="font-size:0.72rem;font-weight:400;color:var(--text3);">/mo</span></div></div>';
+            if (propRev > 0 && propTotalCost > 0) {
+              var pnColor = propNet >= 0 ? 'var(--accent)' : 'var(--danger)';
+              ph += '<div style="text-align:center;"><div style="font-size:0.72rem;color:var(--text3);">Net</div><div style="font-weight:700;color:' + pnColor + ';font-family:\'DM Mono\',monospace;font-size:1.05rem;">' + (propNet >= 0 ? '+' : '-') + '$' + Math.abs(Math.round(propNet)).toLocaleString() + '<span style="font-size:0.72rem;font-weight:400;color:var(--text3);">/mo</span></div></div>';
+            } else {
+              ph += '<div style="text-align:center;"><div style="font-size:0.72rem;color:var(--text3);">Net</div><div style="font-weight:400;color:var(--text3);font-size:0.85rem;">Run analysis</div></div>';
+            }
+            ph += '</div>';
+            if (propTotalCost > 0) {
+              ph += '<div style="font-size:0.78rem;color:var(--text2);">';
+              if (propCost > 0) {
+                if (p.ownership_type === 'rental') { ph += '<span>Rent: $' + (p.monthly_rent_cost || 0).toLocaleString() + '</span>'; }
+                else { var parts=[]; if(p.monthly_mortgage)parts.push('Mortgage $'+p.monthly_mortgage.toLocaleString()); if(p.monthly_insurance)parts.push('Ins $'+p.monthly_insurance.toLocaleString()); if(p.annual_taxes)parts.push('Tax $'+Math.round(p.annual_taxes/12).toLocaleString()); if(p.hoa_monthly)parts.push('HOA $'+p.hoa_monthly.toLocaleString()); ph+='<span>'+parts.join(' · ')+'</span>'; }
+              }
+              if (propUtil > 0) ph += (propCost > 0 ? ' · ' : '') + '<span>Utils $' + Math.round(propUtil).toLocaleString() + '</span>';
+              ph += '</div>';
+            }
+            if (propRev > 0) { var annNet=propNet*12; var cap=(p.estimated_value||p.purchase_price)?Math.round(annNet/(p.estimated_value||p.purchase_price)*10000)/100:0; ph+='<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:6px;font-size:0.78rem;color:var(--text2);">'; ph+='<span>$'+Math.round(propRev*12).toLocaleString()+'/yr rev</span>'; if(propTotalCost>0)ph+='<span style="font-weight:600;color:'+(annNet>=0?'var(--accent)':'var(--danger)')+';">$'+Math.round(annNet).toLocaleString()+'/yr net</span>'; if(cap)ph+='<span>Cap: '+cap+'%</span>'; ph+='</div>'; }
+            ph += '</div>';
+            buildingSumEl.innerHTML = ph;
+            buildingSumEl.style.display = '';
+          } else {
+            buildingSumEl.style.display = 'none';
+            buildingSumEl.innerHTML = '';
+          }
         }
+
       } else {
         buildingSumEl.style.display = 'none';
         buildingSumEl.innerHTML = '';
@@ -3088,9 +3542,9 @@ async function openProperty(id) {
     if (coordEl) {
       var coordStr = '';
       if (p.latitude && p.longitude) {
-        coordStr = '📍 ' + p.latitude.toFixed(6) + ', ' + p.longitude.toFixed(6) + ' <a href="https://maps.google.com/?q=' + p.latitude + ',' + p.longitude + '" target="_blank" style="font-size:0.72rem;">Open Map →</a>';
+        coordStr = '' + _ico('mapPin', 13) + ' ' + p.latitude.toFixed(6) + ', ' + p.longitude.toFixed(6) + ' <a href="https://maps.google.com/?q=' + p.latitude + ',' + p.longitude + '" target="_blank" style="font-size:0.72rem;">Open Map →</a>';
       } else {
-        coordStr = '📍 No coordinates — enter manually below or run Lookup';
+        coordStr = '' + _ico('mapPin', 13) + ' No coordinates — enter manually below or run Lookup';
       }
       if (strats.length > 0) {
         var latest = strats[0];
@@ -3111,7 +3565,7 @@ async function openProperty(id) {
         coordStr += '<span style="color:var(--text3);">$' + Math.round(latest.projected_annual_revenue || 0).toLocaleString() + '/yr</span>';
         coordStr += '</div>';
         if (latest.reasoning) {
-          var aiTag = latest.ai_generated ? '<span style="color:var(--purple);font-size:0.72rem;">✦ AI</span> ' : '';
+          var aiTag = latest.ai_generated ? '<span style="color:var(--purple);font-size:0.72rem;">' + _ico('sparkle', 13, 'var(--purple)') + ' AI</span> ' : '';
           coordStr += '<div style="margin-top:8px;font-size:0.78rem;color:var(--text2);line-height:1.5;">' + aiTag + esc(latest.reasoning).substring(0, 250) + (latest.reasoning.length > 250 ? '...' : '') + '</div>';
         }
         coordStr += '<div style="margin-top:6px;font-size:0.72rem;color:var(--text3);">' + strats.length + ' total strateg' + (strats.length === 1 ? 'y' : 'ies') + ' · ' + (d.comparables || []).length + ' comps — <a href="#" onclick="event.preventDefault();switchPropTab(\'history\')" style="color:var(--accent);">View history →</a></div>';
@@ -3154,9 +3608,9 @@ async function openProperty(id) {
         var pl = d.pricelabs;
         plh = '<div style="padding:14px;background:rgba(167,139,250,0.06);border:1px solid rgba(167,139,250,0.2);border-radius:8px;">';
         plh += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">';
-        plh += '<label style="font-size:0.78rem;color:var(--purple);font-weight:600;">📊 PRICELABS — LINKED</label>';
+        plh += '<label style="font-size:0.78rem;color:var(--purple);font-weight:600;">' + _ico('barChart', 13) + ' PRICELABS — LINKED</label>';
         var syncInfo = [];
-        if (pl.last_synced) syncInfo.push('Synced: ' + pl.last_synced.substring(0, 16).replace('T', ' '));
+        if (pl.last_synced) syncInfo.push('Synced: ' + fmtUTC(pl.last_synced));
         if (pl.push_enabled) syncInfo.push('✓ Push enabled');
         if (pl.last_date_pushed) syncInfo.push('Pushed: ' + pl.last_date_pushed.substring(0, 10));
         plh += '<span style="font-size:0.68rem;color:var(--text3);">' + syncInfo.join(' · ') + '</span>';
@@ -3175,7 +3629,7 @@ async function openProperty(id) {
         if (pl.channels && pl.channels.length > 0) {
           plh += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">';
           pl.channels.forEach(function(ch) {
-            var icon = ch.channel_name === 'airbnb' ? '🏠' : ch.channel_name === 'bookingcom' ? '📘' : '📋';
+            var icon = ch.channel_name === 'airbnb' ? '' + _ico('home', 13) + '' : ch.channel_name === 'bookingcom' ? _ico('globe',15) : '' + _ico('clipboard', 13) + '';
             plh += '<span style="font-size:0.72rem;padding:3px 8px;background:var(--surface);border:1px solid var(--border);border-radius:4px;">' + icon + ' ' + esc(ch.channel_name) + ' <span style="color:var(--text3);">#' + esc(String(ch.channel_listing_id)) + '</span></span>';
           });
           plh += '</div>';
@@ -3225,7 +3679,7 @@ async function openProperty(id) {
         // PriceLabs has listings but none linked to this property
         var avail = d.pricelabs.available_listings;
         plh = '<div style="padding:14px;background:rgba(167,139,250,0.04);border:1px solid rgba(167,139,250,0.15);border-radius:8px;">';
-        plh += '<label style="font-size:0.78rem;color:var(--purple);font-weight:600;">📊 PRICELABS</label>';
+        plh += '<label style="font-size:0.78rem;color:var(--purple);font-weight:600;">' + _ico('barChart', 13) + ' PRICELABS</label>';
         if (avail.length > 0) {
           plh += '<div style="font-size:0.78rem;color:var(--text2);margin:8px 0;">Link a PriceLabs listing to see dynamic pricing data here:</div>';
           plh += '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">';
@@ -3244,7 +3698,7 @@ async function openProperty(id) {
         window._plPropertyData = null;
       } else if (d.pl_available) {
         plh = '<div style="padding:10px 14px;background:rgba(167,139,250,0.04);border:1px solid rgba(167,139,250,0.1);border-radius:8px;">';
-        plh += '<span style="font-size:0.78rem;color:var(--text3);">📊 PriceLabs listings available — link one in the PriceLabs tab to see dynamic pricing data here.</span>';
+        plh += '<span style="font-size:0.78rem;color:var(--text3);">' + _ico('barChart', 13) + ' PriceLabs listings available — link one in the PriceLabs tab to see dynamic pricing data here.</span>';
         plh += '</div>';
         window._plPropertyData = null;
       } else {
@@ -3255,14 +3709,24 @@ async function openProperty(id) {
       plEl.style.display = plh ? '' : 'none';
     }
 
-    switchPropTab('details');
+    var _startTab = initialTab || 'details';
+    switchPropTab(_startTab);
     switchView('addProperty');
+    // Inject SVG icons into property section headers (replaces emoji)
+    var _sectionIcons = { '🏷️': 'tag', '📡': 'link', '🏦': 'home', '🔑': 'key', '🤝': 'handshake', '💸': 'wallet', '⚙️': 'settings', '⚠️': 'alert', '🔨': 'layers', '📸': 'eye', '📈': 'trendUp', '🏘️': 'building', '🔍': 'search', '📊': 'barChart', '🏠': 'home', '📋': 'receipt' };
+    document.querySelectorAll('#view-addProperty .prop-section-hdr .icon').forEach(function(el) {
+      var txt = el.textContent.trim();
+      if (_sectionIcons[txt]) el.innerHTML = _ico(_sectionIcons[txt], 15);
+    });
+    // Push to nav history so back button works
+    var _propLabel = (p.name || p.address || ('Property #' + id));
+    _navPush({ type: 'property', id: id, tab: _startTab, label: _propLabel });
   } catch (err) { toast(err.message, 'error'); }
   hideLoading();
 }
 
 function switchPropTab(tab) {
-  ['details','amenities','history','units','platforms','pricing','finance'].forEach(function(t) {
+  ['details','amenities','history','units','platforms','pricing','finance','calendar','research'].forEach(function(t) {
     var el = document.getElementById('propTab-' + t);
     if (el) el.style.display = t === tab ? '' : 'none';
   });
@@ -3273,11 +3737,16 @@ function switchPropTab(tab) {
       renderRevenueSnapshot(editId);
       loadSavedReports(editId);
       loadSavedStrategies(editId);
+      if (typeof loadPLComparePanel === 'function') loadPLComparePanel(editId, null);
+      if (typeof loadPlCustomizations === 'function' && _currentPropData) loadPlCustomizations(_currentPropData);
     }
     var acqBtn = document.getElementById('genAcqBtn');
+    var acqSection = document.getElementById('acquisitionSection');
     if (acqBtn) {
       var resEl = document.getElementById('f_research');
-      acqBtn.style.display = (resEl && resEl.checked) ? '' : 'none';
+      var isResearch = resEl && resEl.checked;
+      acqBtn.style.display = isResearch ? '' : 'none';
+      if (acqSection) acqSection.style.display = isResearch ? '' : 'none';
     }
   }
   if (tab === 'finance') {
@@ -3294,6 +3763,15 @@ function switchPropTab(tab) {
     var editId = (document.getElementById('f_editId') || {}).value;
     if (editId) loadPropertyPlatforms(editId);
   }
+  if (tab === 'calendar') {
+    var calEditId = (document.getElementById('f_editId') || {}).value;
+    if (calEditId) loadPropertyCalendar(calEditId);
+  }
+  if (tab === 'research') {
+    var resEditId = (document.getElementById('f_editId') || {}).value;
+    if (resEditId) renderResearchTab(resEditId);
+  }
+
 }
 
 function renderPropertyHistory(data) {
@@ -3311,7 +3789,7 @@ function renderPropertyHistory(data) {
     h += '<h4 style="margin-bottom:10px;font-size:0.88rem;">Pricing Analyses (' + strats.length + ')</h4>';
     h += '<div style="max-height:350px;overflow-y:auto;margin-bottom:20px;">';
     strats.forEach(function(s, i) {
-      var date = (s.created_at || '').substring(0, 16).replace('T', ' ');
+      var date = fmtUTC(s.created_at);
       var isAi = s.ai_generated === 1;
       var isLTR = s.min_nights >= 365 || (s.strategy_name || '').includes('LTR');
       h += '<div style="padding:10px 14px;margin-bottom:6px;background:' + (isAi ? 'var(--purple-dim)' : 'var(--surface2)') + ';border:1px solid ' + (isAi ? 'rgba(167,139,250,0.2)' : 'var(--border)') + ';border-radius:8px;font-size:0.82rem;">';
@@ -3360,7 +3838,7 @@ async function autoFetchAmenities() {
   if (!editId) { toast('Save property first', 'error'); return; }
   var btn = document.getElementById('autoAmenBtn');
   var status = document.getElementById('autoAmenStatus');
-  if (btn) { btn.disabled = true; btn.textContent = '⏳ Scanning...'; }
+  if (btn) { btn.disabled = true; btn.innerHTML ='' + _ico('clock', 13) + ' Scanning...'; }
   if (status) status.innerHTML = 'Scanning platform listings and web for amenities...';
   try {
     var d = await api('/api/properties/' + editId + '/auto-amenities', 'POST');
@@ -3382,50 +3860,130 @@ async function autoFetchAmenities() {
     if (status) status.innerHTML = '<span style="color:var(--danger);">' + esc(err.message) + '</span>';
     toast(err.message, 'error');
   }
-  if (btn) { btn.disabled = false; btn.textContent = '🔍 Auto-Detect Amenities'; }
+  if (btn) { btn.disabled = false; btn.innerHTML ='' + _ico('search', 13) + ' Auto-Detect Amenities'; }
 }
 
 function renderPropertyAmenities(currentAmenities, propertyId) {
   var el = document.getElementById('propAmenitiesContent');
   if (!el) return;
   propAmenitySet = new Set(currentAmenities.map(function(a) { return a.id; }));
-  var h = '<div style="margin-bottom:14px;">';
-  h += '<label style="font-size:0.78rem;color:var(--text2);display:block;margin-bottom:8px;">SELECTED: ' + propAmenitySet.size + ' amenities</label>';
-  h += '<div class="chip-container">';
+
+  // Group amenities by category
+  var catOrder = ['outdoor','kitchen','entertainment','comfort','safety','workspace','location','parking','unique'];
+  var catLabels = {outdoor:_ico('home',13) + ' Outdoor',kitchen:_ico('home',13) + ' Kitchen',entertainment:_ico('zap',13) + ' Entertainment',comfort:_ico('home',13) + ' Comfort',safety:_ico('shield',13) + ' Safety',workspace:_ico('cpu',13) + ' Workspace',location:_ico('mapPin',13) + ' Location',parking:_ico('mapPin',13) + ' Parking',unique:_ico('sparkle',13) + ' Unique / Special'};
+  var grouped = {};
   amenities.forEach(function(a) {
-    var sel = propAmenitySet.has(a.id) ? ' selected' : '';
-    h += '<div class="chip' + sel + '" onclick="togglePropAmenity(' + a.id + ',' + propertyId + ')">' + esc(a.name) + '<span class="score">+' + a.impact_score + '%</span></div>';
+    var c = a.category || 'unique';
+    if (!grouped[c]) grouped[c] = [];
+    grouped[c].push(a);
   });
-  h += '</div></div>';
+
   var totalBoost = 0;
   propAmenitySet.forEach(function(id) {
     var am = amenities.find(function(a) { return a.id === id; });
-    if (am) totalBoost += am.impact_score;
+    if (am) totalBoost += (am.impact_score || 0);
   });
-  h += '<div style="padding:12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;margin-bottom:14px;">';
-  h += '<div style="display:flex;justify-content:space-between;align-items:center;">';
-  h += '<span style="font-size:0.85rem;">Total Price Impact</span>';
-  h += '<span style="color:var(--accent);font-weight:700;font-size:1.1em;">+' + totalBoost + '%</span>';
-  h += '</div>';
-  if (propAmenitySet.size > 0) {
-    h += '<div style="margin-top:6px;font-size:0.78rem;color:var(--text3);">';
-    var selectedNames = [];
-    propAmenitySet.forEach(function(id) { var am = amenities.find(function(a) { return a.id === id; }); if (am) selectedNames.push(am.name); });
-    h += selectedNames.join(', ');
+
+  var h = '';
+
+  // ── Top bar: summary + bulk actions ──────────────────────────────────────
+  h += '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">';
+  h += '<span style="font-size:0.82rem;font-weight:600;color:var(--text2);"><span id="amenSelCount">' + propAmenitySet.size + '</span> selected · <span style="color:var(--accent);">+<span id="amenBoostTotal">' + Math.round(totalBoost) + '</span>% impact</span></span>';
+  h += '<div style="margin-left:auto;display:flex;gap:6px;align-items:center;">';
+  h += '<input id="amenSearch" oninput="filterAmenityChips()" placeholder="Search amenities…" style="font-size:0.75rem;padding:4px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);width:160px;" autocomplete="off">';
+  h += '<button class="btn btn-xs" onclick="bulkSelectAmenities(' + propertyId + ', true)">✓ All</button>';
+  h += '<button class="btn btn-xs" onclick="bulkSelectAmenities(' + propertyId + ', false)">✕ None</button>';
+  h += '<button class="btn btn-primary btn-sm" onclick="savePropAmenities(' + propertyId + ')">' + _ico('database', 13) + ' Save</button>';
+  h += '<span id="propAmenSaveStatus" style="font-size:0.72rem;color:var(--accent);"></span>';
+  h += '</div></div>';
+
+  // ── Category sections ─────────────────────────────────────────────────────
+  h += '<div id="amenCategoryList">';
+  catOrder.forEach(function(cat) {
+    var items = grouped[cat];
+    if (!items || items.length === 0) return;
+    var catSel = items.filter(function(a) { return propAmenitySet.has(a.id); }).length;
+    h += '<div class="amen-cat-section" data-cat="' + cat + '" style="margin-bottom:14px;">';
+    // Category header with toggle-all
+    h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">';
+    h += '<span style="font-size:0.78rem;font-weight:600;color:var(--text2);">' + (catLabels[cat] || cat) + '</span>';
+    h += '<span style="font-size:0.68rem;color:var(--text3);">(' + catSel + '/' + items.length + ')</span>';
+    h += '<button class="btn btn-xs" style="padding:1px 6px;font-size:0.62rem;" onclick="bulkSelectCategory(&quot;' + cat + '&quot;,' + propertyId + ',true)">all</button>';
+    h += '<button class="btn btn-xs" style="padding:1px 6px;font-size:0.62rem;" onclick="bulkSelectCategory(&quot;' + cat + '&quot;,' + propertyId + ',false)">none</button>';
     h += '</div>';
-  }
+    h += '<div class="chip-container">';
+    items.forEach(function(a) {
+      var sel = propAmenitySet.has(a.id) ? ' selected' : '';
+      h += '<div class="chip' + sel + '" data-name="' + esc(a.name.toLowerCase()) + '" data-cat="' + cat + '" data-id="' + a.id + '" onclick="togglePropAmenity(' + a.id + ',' + propertyId + ')">' + esc(a.name) + '<span class="score">+' + a.impact_score + '%</span></div>';
+    });
+    h += '</div></div>';
+  });
   h += '</div>';
-  h += '<button class="btn btn-primary btn-sm" onclick="savePropAmenities(' + propertyId + ')">Save Amenities</button>';
-  h += ' <span id="propAmenSaveStatus" style="font-size:0.78rem;color:var(--accent);"></span>';
+
   el.innerHTML = h;
+}
+
+function filterAmenityChips() {
+  var q = (document.getElementById('amenSearch') || {}).value || '';
+  q = q.toLowerCase().trim();
+  document.querySelectorAll('#amenCategoryList .chip').forEach(function(chip) {
+    var name = chip.getAttribute('data-name') || '';
+    chip.style.display = (!q || name.includes(q)) ? '' : 'none';
+  });
+  // Hide empty category sections
+  document.querySelectorAll('.amen-cat-section').forEach(function(sec) {
+    var visible = sec.querySelectorAll('.chip:not([style*="display: none"]):not([style*="display:none"])').length;
+    sec.style.display = visible ? '' : 'none';
+  });
+}
+
+function bulkSelectAmenities(propertyId, select) {
+  amenities.forEach(function(a) {
+    if (select) propAmenitySet.add(a.id);
+    else propAmenitySet.delete(a.id);
+  });
+  var currentList = [];
+  propAmenitySet.forEach(function(id) { var am = amenities.find(function(a) { return a.id === id; }); if (am) currentList.push(am); });
+  renderPropertyAmenities(currentList, propertyId);
+}
+
+function bulkSelectCategory(cat, propertyId, select) {
+  amenities.filter(function(a) { return a.category === cat; }).forEach(function(a) {
+    if (select) propAmenitySet.add(a.id);
+    else propAmenitySet.delete(a.id);
+  });
+  var currentList = [];
+  propAmenitySet.forEach(function(id) { var am = amenities.find(function(a) { return a.id === id; }); if (am) currentList.push(am); });
+  renderPropertyAmenities(currentList, propertyId);
 }
 
 function togglePropAmenity(amenityId, propertyId) {
   if (propAmenitySet.has(amenityId)) propAmenitySet.delete(amenityId);
   else propAmenitySet.add(amenityId);
-  var currentList = [];
-  propAmenitySet.forEach(function(id) { var am = amenities.find(function(a) { return a.id === id; }); if (am) currentList.push(am); });
-  renderPropertyAmenities(currentList, propertyId);
+  // Update chip visual in place (avoid full re-render which loses search state)
+  var chip = document.querySelector('#amenCategoryList .chip[data-id="' + amenityId + '"]');
+  if (chip) {
+    if (propAmenitySet.has(amenityId)) chip.classList.add('selected');
+    else chip.classList.remove('selected');
+  }
+  // Update summary counts
+  var totalBoost = 0;
+  propAmenitySet.forEach(function(id) { var am = amenities.find(function(a) { return a.id === id; }); if (am) totalBoost += (am.impact_score || 0); });
+  var selCount = document.getElementById('amenSelCount');
+  var boostTotal = document.getElementById('amenBoostTotal');
+  if (selCount) selCount.textContent = propAmenitySet.size;
+  if (boostTotal) boostTotal.textContent = Math.round(totalBoost);
+  // Update category sub-count
+  if (chip) {
+    var cat = chip.getAttribute('data-cat');
+    var catSec = document.querySelector('.amen-cat-section[data-cat="' + cat + '"]');
+    if (catSec) {
+      var catItems = amenities.filter(function(a) { return a.category === cat; });
+      var catSel = catItems.filter(function(a) { return propAmenitySet.has(a.id); }).length;
+      var countSpan = catSec.querySelector('span[style*="color:var(--text3)"]');
+      if (countSpan) countSpan.textContent = '(' + catSel + '/' + catItems.length + ')';
+    }
+  }
 }
 
 async function savePropAmenities(propertyId) {
@@ -3453,7 +4011,7 @@ function renderPropertyUnits(children, parent) {
     var rev = c.est_monthly_revenue || 0;
     totalRev += rev;
     var unitLabel = getPropertyLabel(c);
-    var thumb = c.image_url ? '<img src="' + esc(c.image_url) + '" style="width:64px;height:64px;object-fit:cover;border-radius:6px;flex-shrink:0;" onerror="this.style.display=\'none\'">' : '<div style="width:64px;height:64px;background:var(--bg);border-radius:6px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:1.2rem;color:var(--text3);">🏠</div>';
+    var thumb = c.image_url ? '<img src="' + esc(c.image_url) + '" style="width:64px;height:64px;object-fit:cover;border-radius:6px;flex-shrink:0;" onerror="this.style.display=\'none\'">' : '<div style="width:64px;height:64px;background:var(--bg);border-radius:6px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:1.2rem;color:var(--text3);">' + _ico('home', 13) + '</div>';
     // Per-unit costs
     var uRentCost = c.monthly_rent_cost || 0;
     var uUtil = (c.expense_electric || 0) + (c.expense_gas || 0) + (c.expense_water || 0) + (c.expense_internet || 0) + (c.expense_trash || 0) + (c.expense_other || 0);
@@ -3583,9 +4141,17 @@ async function saveProperty() {
     sqft: parseInt(gv('f_sqft')) || null, lot_acres: parseFloat(gv('f_lot')) || null,
     year_built: parseInt(gv('f_year')) || null,
     purchase_price: parseFloat(gv('f_price')) || null, estimated_value: parseFloat(gv('f_value')) || null,
-    annual_taxes: parseFloat(gv('f_taxes')) || null, hoa_monthly: parseFloat(gv('f_hoa')) || 0,
+    annual_taxes: parseFloat(gv('f_taxes')) || null, tax_rate_pct: parseFloat(gv('f_tax_rate_pct')) || null, hoa_monthly: parseFloat(gv('f_hoa')) || 0,
     image_url: gv('f_image').trim() || null, unit_number: gv('f_unit') || null,
-    ownership_type: currentOwnership,
+    ownership_type: currentOwnership === 'managed' ? 'managed' : currentOwnership,
+    is_managed: currentOwnership === 'managed' ? 1 : 0,
+    owner_name: gv('f_owner_name').trim() || null,
+    management_fee_pct: parseFloat(gv('f_mgmt_fee_pct')) || null,
+    management_base_fee: parseFloat(gv('f_mgmt_base_fee')) || 0,
+    fee_basis: (document.getElementById('f_fee_basis') || {}).value || 'gross',
+    rental_restrictions: gv('f_rental_restrictions').trim() || null,
+    hoa_name: gv('f_hoa_name').trim() || null,
+    ai_notes: gv('f_ai_notes').trim() || null,
     monthly_mortgage: parseFloat(gv('f_mortgage')) || 0,
     monthly_insurance: parseFloat(gv('f_insurance')) || 0,
     monthly_rent_cost: parseFloat(gv('f_monthly_rent')) || 0,
@@ -3666,11 +4232,7 @@ function toggleUnitField() {
 }
 
 function updateImagePreview() {
-  var url = (document.getElementById('f_image') || {}).value || '';
-  var area = document.getElementById('imagePreviewArea');
-  var img = document.getElementById('imagePreview');
-  if (url && area && img) { img.src = url; area.style.display = 'block'; img.onerror = function() { area.style.display = 'none'; }; }
-  else if (area) { area.style.display = 'none'; }
+  // Legacy — gallery handles previews now
 }
 
 function updateNamePreview() {
@@ -3685,30 +4247,170 @@ function updateNamePreview() {
   el.textContent = 'Auto: ' + auto;
 }
 
-async function handleImageUpload(input) {
-  var file = input.files[0];
-  if (!file) return;
-  var statusEl = document.getElementById('uploadStatus');
-  if (file.size > 2 * 1024 * 1024) { if (statusEl) statusEl.textContent = 'File too large (max 2MB)'; toast('File too large', 'error'); return; }
-  if (statusEl) statusEl.textContent = 'Uploading...';
-  var formData = new FormData();
-  formData.append('file', file);
+// Property photo gallery
+var _propertyImages = []; // { id, image_url, caption, source, sort_order }
+var currentPropertyId = null;
+
+async function loadPropertyGallery(propId) {
+  _propertyImages = [];
+  var el = document.getElementById('propertyGallery');
+  if (!el) return;
+  if (!propId) { renderPropertyGallery(); return; }
   try {
-    var res = await fetch('/api/images/upload', {
-      method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + authToken },
-      body: formData
-    });
-    var data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Upload failed');
-    document.getElementById('f_image').value = data.url;
-    updateImagePreview();
-    if (statusEl) statusEl.textContent = 'Uploaded: ' + file.name;
-    toast('Image uploaded');
-  } catch (err) {
-    if (statusEl) statusEl.textContent = err.message;
-    toast(err.message, 'error');
+    var d = await api('/api/properties/' + propId + '/images');
+    _propertyImages = d.images || [];
+  } catch {}
+  renderPropertyGallery();
+}
+
+function _renderGuestyListingContent(gl) {
+  var section = document.getElementById('guestyListingSection');
+  var el = document.getElementById('guestyListingContent');
+  var srcEl = document.getElementById('guestyListingSource');
+  if (!section || !el) return;
+  if (!gl) { section.style.display = 'none'; return; }
+  section.style.display = '';
+  if (srcEl) srcEl.textContent = 'from Guesty' + (gl.guesty_listing_id ? ' · ' + gl.guesty_listing_id : '');
+
+  var h = '';
+
+  // Quick stats row
+  var stats = [];
+  if (gl.accommodates) stats.push(_ico('users', 12) + ' Sleeps ' + gl.accommodates);
+  if (gl.bedrooms) stats.push(_ico('home', 12) + ' ' + gl.bedrooms + ' bed');
+  if (gl.bathrooms) stats.push(gl.bathrooms + ' bath');
+  if (gl.property_type) stats.push(_ico('tag', 12) + ' ' + esc(gl.property_type));
+  if (stats.length > 0) {
+    h += '<div style="display:flex;gap:10px;flex-wrap:wrap;font-size:0.75rem;color:var(--text2);margin-bottom:10px;">' + stats.join('<span style="color:var(--border);">·</span>') + '</div>';
   }
+
+  // Description
+  if (gl.description) {
+    var desc = gl.description;
+    var isLong = desc.length > 400;
+    h += '<div style="margin-bottom:10px;">';
+    h += '<div style="font-size:0.7rem;font-weight:600;color:var(--text3);margin-bottom:4px;">LISTING DESCRIPTION <span style="font-weight:400;">(' + desc.length + ' chars)</span></div>';
+    h += '<div id="guestyDescText" style="font-size:0.78rem;color:var(--text);line-height:1.6;white-space:pre-wrap;' + (isLong ? 'max-height:120px;overflow:hidden;' : '') + '">' + esc(desc) + '</div>';
+    if (isLong) {
+      h += '<a href="#" onclick="event.preventDefault();var t=document.getElementById(\'guestyDescText\');if(t.style.maxHeight){t.style.maxHeight=\'\';this.textContent=\'Show less\'}else{t.style.maxHeight=\'120px\';this.textContent=\'Show more (' + desc.length + ' chars)\'}" style="font-size:0.7rem;color:var(--accent);">Show more (' + desc.length + ' chars)</a>';
+    }
+    h += '</div>';
+  } else {
+    h += '<div style="padding:8px;background:var(--surface2);border-radius:6px;border-left:3px solid var(--danger);margin-bottom:10px;">';
+    h += '<div style="font-size:0.75rem;color:var(--danger);font-weight:600;">' + _ico('alertTriangle', 12, 'var(--danger)') + ' No description</div>';
+    h += '<div style="font-size:0.7rem;color:var(--text3);margin-top:2px;">This listing has no description from Guesty. Sync your Guesty listings to pull it in, or write one directly in Guesty.</div>';
+    h += '</div>';
+  }
+
+  // Guesty photos (if any, and different from local gallery)
+  if (gl.photos && gl.photos.length > 0) {
+    h += '<div style="font-size:0.7rem;font-weight:600;color:var(--text3);margin-bottom:4px;">GUESTY PHOTOS <span style="font-weight:400;">(' + gl.photos.length + ')</span></div>';
+    h += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;max-height:140px;overflow:hidden;" id="guestyPhotoGrid">';
+    gl.photos.slice(0, 12).forEach(function(url) {
+      h += '<img src="' + esc(url) + '" style="width:60px;height:60px;object-fit:cover;border-radius:4px;border:1px solid var(--border);cursor:pointer;" onclick="window.open(\'' + esc(url).replace(/'/g, "\\'") + '\')" onerror="this.style.display=\'none\'" loading="lazy">';
+    });
+    if (gl.photos.length > 12) {
+      h += '<div style="width:60px;height:60px;background:var(--surface2);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:0.68rem;color:var(--text3);border:1px solid var(--border);">+' + (gl.photos.length - 12) + '</div>';
+    }
+    h += '</div>';
+  }
+
+  el.innerHTML = h;
+}
+
+function renderPropertyGallery() {
+  var el = document.getElementById('propertyGallery');
+  if (!el) return;
+  if (_propertyImages.length === 0) {
+    el.innerHTML = '<div style="font-size:0.75rem;color:var(--text3);padding:8px;">No photos yet. Upload or pull from Guesty.</div>';
+    return;
+  }
+  var h = '';
+  _propertyImages.forEach(function(img, idx) {
+    var isMain = idx === 0;
+    h += '<div style="position:relative;width:100px;height:100px;border-radius:8px;overflow:hidden;border:2px solid ' + (isMain ? 'var(--accent)' : 'var(--border)') + ';flex-shrink:0;">';
+    h += '<img src="' + esc(img.image_url) + '" style="width:100%;height:100%;object-fit:cover;" onerror="this.parentElement.style.opacity=\'0.3\'">';
+    // Delete button
+    h += '<button onclick="deletePropertyImage(' + img.id + ')" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,0.6);color:white;border:none;border-radius:50%;width:20px;height:20px;font-size:0.65rem;cursor:pointer;display:flex;align-items:center;justify-content:center;" title="Remove photo">✕</button>';
+    // Main badge
+    if (isMain) h += '<div style="position:absolute;bottom:0;left:0;right:0;background:rgba(16,185,129,0.85);color:white;font-size:0.6rem;text-align:center;padding:1px;">Main</div>';
+    // Source badge
+    if (img.source === 'guesty') h += '<div style="position:absolute;top:2px;left:2px;background:rgba(96,165,250,0.85);color:white;font-size:0.65rem;padding:0 3px;border-radius:2px;">G</div>';
+    h += '</div>';
+  });
+  el.innerHTML = h;
+  // Update hidden f_image with first image URL
+  var hidden = document.getElementById('f_image');
+  if (hidden && _propertyImages.length > 0) hidden.value = _propertyImages[0].image_url;
+  else if (hidden) hidden.value = '';
+}
+
+async function deletePropertyImage(imageId) {
+  if (!confirm('Remove this photo?')) return;
+  try {
+    await api('/api/properties/' + currentPropertyId + '/images/' + imageId, 'DELETE');
+    _propertyImages = _propertyImages.filter(function(i) { return i.id !== imageId; });
+    renderPropertyGallery();
+    toast('Photo removed');
+  } catch (err) { toast(err.message, 'error'); }
+}
+
+async function addImageFromUrl() {
+  var input = document.getElementById('f_image_url_input');
+  var url = (input || {}).value || '';
+  if (!url) { toast('Paste a URL first', 'error'); return; }
+  if (!currentPropertyId) {
+    // New property — just add to hidden field, gallery not persisted yet
+    var hidden = document.getElementById('f_image');
+    if (hidden) hidden.value = url;
+    toast('Image URL set — will be saved with property');
+    if (input) input.value = '';
+    return;
+  }
+  try {
+    var d = await api('/api/properties/' + currentPropertyId + '/images', 'POST', { image_url: url, source: 'url' });
+    _propertyImages.push({ id: d.id, image_url: url, source: 'url', sort_order: _propertyImages.length });
+    renderPropertyGallery();
+    toast('Photo added');
+    if (input) input.value = '';
+  } catch (err) { toast(err.message, 'error'); }
+}
+
+async function handleImageUpload(input) {
+  var files = input.files;
+  if (!files || files.length === 0) return;
+  var statusEl = document.getElementById('uploadStatus');
+  
+  for (var i = 0; i < files.length; i++) {
+    var file = files[i];
+    if (file.size > 5 * 1024 * 1024) { toast('File too large: ' + file.name + ' (max 5MB)', 'error'); continue; }
+    if (statusEl) statusEl.textContent = 'Uploading ' + (i + 1) + ' of ' + files.length + '...';
+    var formData = new FormData();
+    formData.append('file', file);
+    try {
+      var res = await fetch('/api/images/upload', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + authToken },
+        body: formData
+      });
+      var data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Upload failed');
+      
+      if (currentPropertyId) {
+        // Save to property_images
+        var d = await api('/api/properties/' + currentPropertyId + '/images', 'POST', { image_url: data.url, source: 'upload' });
+        _propertyImages.push({ id: d.id, image_url: data.url, source: 'upload', sort_order: _propertyImages.length });
+      } else {
+        // New property — set as main image
+        var hidden = document.getElementById('f_image');
+        if (hidden && !hidden.value) hidden.value = data.url;
+      }
+    } catch (err) { toast(err.message, 'error'); }
+  }
+  
+  renderPropertyGallery();
+  if (statusEl) statusEl.textContent = files.length > 1 ? files.length + ' photos uploaded' : 'Photo uploaded';
+  toast(files.length > 1 ? files.length + ' photos uploaded' : 'Photo uploaded');
   input.value = '';
 }
 
@@ -3717,9 +4419,269 @@ function setOwnership(type) {
   document.querySelectorAll('.ownership-btn').forEach(function(b) { b.classList.toggle('active', b.dataset.own === type); });
   var fp = document.getElementById('financePurchased');
   var fr = document.getElementById('financeRental');
+  var fm = document.getElementById('financeManaged');
   if (fp) fp.style.display = type === 'purchased' ? '' : 'none';
   if (fr) fr.style.display = type === 'rental' ? '' : 'none';
+  if (fm) fm.style.display = type === 'managed' ? '' : 'none';
+  if (type === 'managed') updateManagedPreview();
   updateCostSummary();
+}
+
+function setFeeBasis(basis) {
+  document.querySelectorAll('.fee-basis-btn').forEach(function(b) { b.classList.toggle('active', b.dataset.basis === basis); });
+  var hidden = document.getElementById('f_fee_basis');
+  if (hidden) hidden.value = basis;
+  updateManagedPreview();
+  updateCostSummary();
+}
+
+// ─── PriceLabs Customizations ────────────────────────────────────────────────
+function loadPlCustomizations(propData) {
+  var section = document.getElementById('plCustomizationsSection');
+  if (!section) return;
+  var p = propData.property || propData;
+  // Show section if PriceLabs is linked or property has saved customizations
+  var hasPl = propData.pricelabs && propData.pricelabs.linked;
+  var hasCustom = p.pl_customizations_json;
+  section.style.display = (hasPl || hasCustom) ? '' : 'none';
+
+  if (hasCustom) {
+    try {
+      var rules = JSON.parse(p.pl_customizations_json);
+      var fields = {plc_group:'group_name',plc_demand:'demand_sensitivity',plc_last_minute:'last_minute',plc_far_out:'far_out_premium',plc_recency:'booking_recency',plc_weekly:'weekly_discount',plc_monthly:'monthly_discount',plc_occ_adj:'occupancy_adjustment',plc_portfolio:'portfolio_occupancy',plc_orphan:'orphan_day',plc_minstay:'min_stay_rules',plc_seasonal:'seasonal_profile',plc_dow:'day_of_week',plc_notes:'notes'};
+      for (var fId in fields) {
+        var el = document.getElementById(fId);
+        if (el && rules[fields[fId]]) el.value = rules[fields[fId]];
+      }
+      // Weekend days checkboxes
+      if (rules.weekend_days) {
+        var days = rules.weekend_days.split(',').map(function(d) { return d.trim(); });
+        document.querySelectorAll('.plc-wd').forEach(function(cb) { cb.checked = days.indexOf(cb.value) >= 0; });
+      }
+      var status = document.getElementById('plCustomStatus');
+      if (status) status.textContent = Object.values(rules).filter(Boolean).length + ' rules configured';
+    } catch {}
+  }
+
+  // Load action items if available
+  loadPlActionItems(p.id || (document.getElementById('f_editId') || {}).value);
+}
+
+function savePlCustomizations(btnEl) {
+  var editId = (document.getElementById('f_editId') || {}).value;
+  if (!editId) return;
+  var rules = _getPlcRulesFromForm();
+  if (btnEl) btnEl.disabled = true;
+  api('/api/properties/' + editId, 'PATCH', { pl_customizations_json: JSON.stringify(rules) }).then(function() {
+    var status = document.getElementById('plcSaveStatus');
+    if (status) { status.textContent = 'Saved ✓'; setTimeout(function() { status.textContent = ''; }, 2000); }
+    var countEl = document.getElementById('plCustomStatus');
+    if (countEl) countEl.textContent = Object.values(rules).filter(Boolean).length + ' rules configured';
+    toast('PriceLabs customizations saved');
+  }).catch(function(err) { toast(err.message, 'error'); }).finally(function() { if (btnEl) btnEl.disabled = false; });
+}
+
+function _getPlcRulesFromForm() {
+  var fields = {plc_group:'group_name',plc_demand:'demand_sensitivity',plc_last_minute:'last_minute',plc_far_out:'far_out_premium',plc_recency:'booking_recency',plc_weekly:'weekly_discount',plc_monthly:'monthly_discount',plc_occ_adj:'occupancy_adjustment',plc_portfolio:'portfolio_occupancy',plc_orphan:'orphan_day',plc_minstay:'min_stay_rules',plc_seasonal:'seasonal_profile',plc_dow:'day_of_week',plc_notes:'notes'};
+  var rules = {};
+  for (var fId in fields) {
+    var el = document.getElementById(fId);
+    if (el && el.value.trim()) rules[fields[fId]] = el.value.trim();
+  }
+  // Weekend days from checkboxes
+  var weekendDays = [];
+  document.querySelectorAll('.plc-wd:checked').forEach(function(cb) { weekendDays.push(cb.value); });
+  if (weekendDays.length > 0) rules.weekend_days = weekendDays.join(', ');
+  return rules;
+}
+
+function applyPlCustomizationsToAll(mode) {
+  var rules = _getPlcRulesFromForm();
+  var ruleCount = Object.values(rules).filter(Boolean).length;
+  if (ruleCount === 0) { toast('Fill in the customizations first', 'error'); return; }
+  var groupName = rules.group_name || '';
+  var currentPropId = (document.getElementById('f_editId') || {}).value;
+
+  // Fetch all PL-linked properties to show the preview
+  showLoading('Loading properties...');
+  api('/api/pricelabs/bulk-customizations-preview', 'POST', { rules: rules, mode: mode, group_name: groupName }).then(function(d) {
+    hideLoading();
+    if (!d.properties || d.properties.length === 0) { toast('No matching PriceLabs-linked properties found', 'error'); return; }
+    _showPlcApplyModal(d.properties, rules, currentPropId);
+  }).catch(function(err) { hideLoading(); toast(err.message, 'error'); });
+}
+
+function _showPlcApplyModal(properties, rules, currentPropId) {
+  // Build the rule summary
+  var ruleLabels = {group_name:'Group',demand_sensitivity:'Demand Factor',last_minute:'Last Minute',far_out_premium:'Far Out Premium',booking_recency:'Booking Recency',weekly_discount:'Weekly Discount',monthly_discount:'Monthly Discount',weekend_days:'Weekend Days',occupancy_adjustment:'Occupancy Adj.',portfolio_occupancy:'Portfolio Occ.',orphan_day:'Orphan Day',min_stay_rules:'Min Stay',seasonal_profile:'Seasonal Profile',day_of_week:'Day of Week Adj.',notes:'Notes'};
+  var ruleEntries = Object.entries(rules).filter(function(e) { return e[1]; });
+
+  var h = '<div style="max-height:70vh;overflow-y:auto;">';
+
+  // Rules being applied
+  h += '<div style="padding:10px 12px;background:var(--purple-dim);border:1px solid rgba(167,139,250,0.2);border-radius:8px;margin-bottom:14px;">';
+  h += '<div style="font-size:0.72rem;font-weight:600;color:var(--purple);margin-bottom:6px;">Rules to apply (' + ruleEntries.length + '):</div>';
+  h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:0.72rem;">';
+  ruleEntries.forEach(function(e) {
+    var label = ruleLabels[e[0]] || e[0];
+    if (e[0] === 'notes') return; // show notes separately
+    h += '<div><span style="color:var(--text3);">' + esc(label) + ':</span> <strong>' + esc(String(e[1]).substring(0, 40)) + '</strong></div>';
+  });
+  h += '</div>';
+  if (rules.notes) {
+    h += '<div style="margin-top:4px;font-size:0.68rem;color:var(--text3);">Notes will NOT be overwritten on properties that already have their own notes.</div>';
+  }
+  h += '</div>';
+
+  // Property selection table
+  h += '<div style="font-size:0.75rem;font-weight:600;color:var(--text2);margin-bottom:8px;">Select properties to update:</div>';
+  h += '<div style="display:flex;gap:8px;margin-bottom:8px;">';
+  h += '<button class="btn btn-xs" onclick="document.querySelectorAll(\'.plc-apply-cb\').forEach(function(c){c.checked=true})">Select All</button>';
+  h += '<button class="btn btn-xs" onclick="document.querySelectorAll(\'.plc-apply-cb\').forEach(function(c){c.checked=false})">Deselect All</button>';
+  h += '<span style="font-size:0.68rem;color:var(--text3);align-self:center;">' + properties.length + ' PriceLabs-linked properties</span>';
+  h += '</div>';
+
+  h += '<div style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;">';
+  h += '<table class="comp-table" style="font-size:0.72rem;margin:0;"><thead><tr><th style="width:30px;"></th><th>Property</th><th>Current Group</th><th>Current Rules</th><th>Changes</th></tr></thead><tbody>';
+
+  properties.forEach(function(p) {
+    var isCurrent = String(p.id) === String(currentPropId);
+    var existingRules = p.existing_rules || {};
+    var existingCount = Object.values(existingRules).filter(Boolean).length;
+
+    // Calculate what's changing
+    var changes = [];
+    ruleEntries.forEach(function(e) {
+      if (e[0] === 'notes' && existingRules.notes) return; // preserve existing notes
+      var oldVal = existingRules[e[0]] || '';
+      if (oldVal !== e[1]) changes.push(ruleLabels[e[0]] || e[0]);
+    });
+    var changeLabel = changes.length === 0 ? '<span style="color:var(--accent);">No changes</span>' : '<span style="color:var(--purple);">' + changes.length + ' change' + (changes.length > 1 ? 's' : '') + '</span>';
+
+    var label = p.unit_number ? p.unit_number + ' — ' + (p.name || p.address) : (p.name || p.address || 'Property #' + p.id);
+    h += '<tr style="' + (isCurrent ? 'background:rgba(167,139,250,0.05);' : '') + '">';
+    h += '<td style="text-align:center;"><input type="checkbox" class="plc-apply-cb" value="' + p.id + '" ' + (changes.length > 0 ? 'checked' : '') + '></td>';
+    h += '<td style="font-weight:600;">' + esc(label).substring(0, 35) + (isCurrent ? ' <span style="font-size:0.6rem;color:var(--purple);">(current)</span>' : '') + '</td>';
+    h += '<td style="font-size:0.68rem;">' + esc(p.pl_group || '—') + '</td>';
+    h += '<td style="font-size:0.68rem;">' + (existingCount > 0 ? existingCount + ' rules' : '<span style="color:var(--text3);">None</span>') + '</td>';
+    h += '<td style="font-size:0.68rem;">' + changeLabel + '</td>';
+    h += '</tr>';
+
+    // Show specific changes on hover/expand
+    if (changes.length > 0) {
+      h += '<tr class="plc-change-detail" style="display:none;"><td></td><td colspan="4" style="padding:4px 8px;font-size:0.65rem;background:var(--bg);">';
+      changes.forEach(function(c) { h += '<span style="padding:1px 6px;background:var(--surface2);border-radius:3px;margin-right:4px;">' + esc(c) + '</span>'; });
+      h += '</td></tr>';
+    }
+  });
+  h += '</tbody></table></div>';
+
+  // Actions
+  h += '<div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end;">';
+  h += '<button class="btn btn-sm" onclick="closeGenericModal()">Cancel</button>';
+  h += '<button class="btn btn-sm btn-purple" onclick="_executePlcBulkApply()">Apply to Selected</button>';
+  h += '</div>';
+  h += '</div>';
+
+  // Store rules for the execute function
+  window._plcBulkRules = rules;
+  showModal('Apply PriceLabs Customizations', h);
+}
+
+function _executePlcBulkApply() {
+  var checkboxes = document.querySelectorAll('.plc-apply-cb:checked');
+  var ids = [];
+  checkboxes.forEach(function(cb) { ids.push(parseInt(cb.value)); });
+  if (ids.length === 0) { toast('Select at least one property', 'error'); return; }
+  var rules = window._plcBulkRules;
+  if (!rules) return;
+
+  // Disable the apply button
+  var applyBtn = document.querySelector('.plc-bulk-apply-btn');
+  if (applyBtn) applyBtn.disabled = true;
+
+  closeGenericModal();
+  showLoading('Applying PriceLabs rules to ' + ids.length + ' properties...');
+  api('/api/pricelabs/bulk-customizations', 'POST', { rules: rules, property_ids: ids }).then(function(d) {
+    hideLoading();
+    toast('Applied to ' + (d.updated || 0) + ' of ' + ids.length + ' properties', 'success');
+  }).catch(function(err) { hideLoading(); toast(err.message, 'error'); }).finally(function() { if (applyBtn) applyBtn.disabled = false; });
+}
+
+function loadPlActionItems(propId) {
+  if (!propId) return;
+  var el = document.getElementById('plActionItems');
+  if (!el) return;
+  // Check latest pl_strategy report for pricelabs_action_items
+  api('/api/properties/' + propId + '/reports').then(function(d) {
+    var latest = d.latest || {};
+    var items = [];
+    // From PL Strategy
+    if (latest.pl_strategy && latest.pl_strategy.data) {
+      var strat = latest.pl_strategy.data.strategy || latest.pl_strategy.data;
+      if (strat.pricelabs_action_items) items = items.concat(strat.pricelabs_action_items);
+    }
+    // From Revenue Optimization (pricing_adjustments)
+    if (latest.revenue_optimization && latest.revenue_optimization.data && latest.revenue_optimization.data.optimization) {
+      var opt = latest.revenue_optimization.data.optimization;
+      if (opt.pricing_adjustments) {
+        opt.pricing_adjustments.forEach(function(adj) {
+          items.push({ setting: adj.setting, current: adj.current, recommended: adj.recommended, reason: adj.reason, priority: 2, source: 'rev_opt' });
+        });
+      }
+    }
+    if (items.length === 0) { el.innerHTML = ''; return; }
+    var h = '<div style="border-top:1px solid var(--border);padding-top:10px;">';
+    h += '<div style="font-size:0.75rem;font-weight:600;color:var(--purple);margin-bottom:8px;">' + _ico('zap', 13, 'var(--purple)') + ' PriceLabs Action Items (' + items.length + ')</div>';
+    items.sort(function(a,b) { return (a.priority || 99) - (b.priority || 99); });
+    items.forEach(function(item, idx) {
+      h += '<div style="display:flex;gap:8px;align-items:flex-start;padding:6px 8px;margin-bottom:4px;background:var(--bg);border-radius:6px;border-left:2px solid var(--purple);font-size:0.75rem;">';
+      h += '<div style="flex:1;">';
+      h += '<strong>' + esc(item.setting || 'Setting') + '</strong>';
+      if (item.current) h += '<span style="color:var(--text3);"> · Current: ' + esc(String(item.current)) + '</span>';
+      h += '<div style="color:var(--accent);font-weight:600;">→ ' + esc(String(item.recommended || '')) + '</div>';
+      if (item.reason) h += '<div style="color:var(--text3);font-size:0.7rem;margin-top:2px;">' + esc(item.reason) + '</div>';
+      h += '</div></div>';
+    });
+    h += '<div style="font-size:0.65rem;color:var(--text3);margin-top:6px;">Apply these changes in your PriceLabs dashboard. Run a new analysis after applying to see updated recommendations.</div>';
+    h += '</div>';
+    el.innerHTML = h;
+  }).catch(function() {});
+}
+
+function updateManagedPreview() {
+  var preview = document.getElementById('managedSplitPreview');
+  if (!preview) return;
+  var gv = function(id) { return parseFloat((document.getElementById(id) || {}).value) || 0; };
+  var feePct = gv('f_mgmt_fee_pct');
+  var baseFee = gv('f_mgmt_base_fee');
+  var basis = (document.getElementById('f_fee_basis') || {}).value || 'gross';
+  var ownerN = (document.getElementById('f_owner_name') || {}).value || 'Owner';
+  if (feePct <= 0 && baseFee <= 0) { preview.innerHTML = '<span style="color:var(--text3);">Enter a fee % or base fee to see the split preview.</span>'; return; }
+
+  var h = '';
+  var baseLabel = baseFee > 0 ? ' + $' + baseFee + '/mo base fee' : '';
+  if (basis === 'gross') {
+    var youGet = Math.round(1000 * feePct / 100) + baseFee;
+    h += '<div style="font-weight:600;margin-bottom:4px;">' + feePct + '% of Gross' + baseLabel + ' <span style="font-size:0.68rem;color:var(--text3);">(industry standard)</span></div>';
+    h += '<div>For every <strong>$1,000</strong> gross: ';
+    h += '<span style="color:var(--accent);font-weight:700;">You earn $' + youGet + '</span> · ';
+    h += '<span style="color:var(--text2);">' + esc(ownerN) + ' receives $' + (1000 - youGet) + ' minus expenses</span></div>';
+    if (baseFee > 0) h += '<div style="font-size:0.68rem;color:var(--text3);margin-top:4px;">Base fee of $' + baseFee + '/mo charged every month regardless of bookings. Months with $0 revenue: owner owes $' + Math.round(baseFee) + ' + expenses.</div>';
+    else h += '<div style="font-size:0.68rem;color:var(--text3);margin-top:4px;">Your fee is guaranteed regardless of expenses. Owner covers property costs from their share.</div>';
+  } else {
+    var expenses = gv('f_mortgage') + gv('f_insurance') + Math.round(gv('f_taxes') / 12) + gv('f_hoa') + gv('f_monthly_rent') + gv('f_electric') + gv('f_gas') + gv('f_water') + gv('f_internet') + gv('f_trash') + gv('f_other_expense');
+    var netProfit = Math.max(0, 1000 - expenses);
+    var youGet = Math.round(netProfit * feePct / 100) + baseFee;
+    h += '<div style="font-weight:600;margin-bottom:4px;">' + feePct + '% of Net Profit' + baseLabel + ' <span style="font-size:0.68rem;color:var(--text3);">(profit-share)</span></div>';
+    h += '<div>$1,000 gross';
+    if (expenses > 0) h += ' − $' + expenses + ' expenses = $' + netProfit + ' net profit';
+    h += '</div>';
+    h += '<div><span style="color:var(--accent);font-weight:700;">You earn $' + youGet + '</span> · ';
+    h += '<span style="color:var(--text2);">' + esc(ownerN) + ' keeps $' + (netProfit - youGet) + '</span></div>';
+    if (baseFee > 0) h += '<div style="font-size:0.68rem;color:var(--text3);margin-top:4px;">Base fee of $' + baseFee + '/mo charged every month. Months with no profit: owner still owes $' + Math.round(baseFee) + '.</div>';
+  }
+  preview.innerHTML = h;
 }
 
 function updateCostSummary() {
@@ -3732,19 +4694,26 @@ function updateCostSummary() {
     var ins = gv('f_insurance'); if (ins) { items.push('Insurance $' + ins.toLocaleString()); fixed += ins; }
     var tax = Math.round(gv('f_taxes') / 12); if (tax) { items.push('Taxes $' + tax.toLocaleString() + '/mo'); fixed += tax; }
     var hoa = gv('f_hoa'); if (hoa) { items.push('HOA $' + hoa.toLocaleString()); fixed += hoa; }
-  } else {
+  } else if (currentOwnership === 'rental') {
     var rent = gv('f_monthly_rent'); if (rent) { items.push('Rent $' + rent.toLocaleString()); fixed += rent; }
+  } else if (currentOwnership === 'managed') {
+    var feePct = gv('f_mgmt_fee_pct');
+    var basis = (document.getElementById('f_fee_basis') || {}).value || 'gross';
+    items.push('Managed @ ' + (feePct || 0) + '% of ' + (basis === 'net_profit' ? 'net profit' : 'gross'));
   }
   var util = gv('f_electric') + gv('f_gas') + gv('f_water') + gv('f_internet') + gv('f_trash') + gv('f_other_expense');
   if (util) items.push('Utilities $' + util.toLocaleString());
-  // Service subscriptions (dynamic)
   var svcCost = getServicesCost();
   if (svcCost > 0) items.push('Services $' + Math.round(svcCost));
   var total = fixed + util + svcCost;
-  if (total > 0) {
+  if (total > 0 || currentOwnership === 'managed') {
     var h = '<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;align-items:center;">';
     h += '<div style="font-size:0.82rem;color:var(--text3);">' + items.join(' + ') + '</div>';
-    h += '<div style="font-weight:600;color:var(--accent);font-size:1.05em;">$' + total.toLocaleString() + '/mo total cost</div></div>';
+    if (currentOwnership !== 'managed') {
+      h += '<div style="font-weight:600;color:var(--accent);font-size:1.05em;">$' + total.toLocaleString() + '/mo total cost</div></div>';
+    } else {
+      h += '<div style="font-weight:600;color:#a78bfa;font-size:1.05em;">Management fee revenue model</div></div>';
+    }
     if (svcCost > 0) {
       var svcNames = propServices.map(function(s) { return s.name + ' $' + s.monthly_cost; }).join(' · ');
       h += '<div style="font-size:0.68rem;color:var(--text3);margin-top:4px;">Services: ' + svcNames + '</div>';
@@ -3758,7 +4727,7 @@ function updateCostSummary() {
 // ── Property Price Analysis Dialog ──
 var propDialogAnalysisType = 'str';
 var propDialogAiEnabled = true;
-var propDialogAiProvider = null; // null = use global aiProvider
+var propDialogQuality = null; // null = use global aiQuality
 
 async function showPropAnalysisDialog() {
   var editId = (document.getElementById('f_editId') || {}).value;
@@ -3766,7 +4735,7 @@ async function showPropAnalysisDialog() {
 
   // Sync to current global AI state
   propDialogAiEnabled = aiEnabled;
-  propDialogAiProvider = aiProvider;
+  propDialogQuality = aiQuality;
   propDialogAnalysisType = 'str';
 
   // Open dialog first so user sees it loading
@@ -3798,7 +4767,7 @@ async function showPropAnalysisDialog() {
   var opts = document.getElementById('propDialogAiOptions');
   if (opts) opts.style.display = propDialogAiEnabled ? 'flex' : 'none';
   document.querySelectorAll('#propDialogAiOptions .ai-option').forEach(function(o) {
-    o.classList.toggle('selected', o.dataset.provider === propDialogAiProvider);
+    o.classList.toggle('selected', o.dataset.quality === propDialogQuality);
   });
 
   // Reset type buttons
@@ -3836,10 +4805,10 @@ function togglePropDialogAI() {
   if (opts) opts.style.display = propDialogAiEnabled ? 'flex' : 'none';
 }
 
-function setPropDialogProvider(provider) {
-  propDialogAiProvider = provider;
+function setPropDialogQuality(q) {
+  propDialogQuality = q;
   document.querySelectorAll('#propDialogAiOptions .ai-option').forEach(function(o) {
-    o.classList.toggle('selected', o.dataset.provider === provider);
+    o.classList.toggle('selected', o.dataset.quality === q);
   });
 }
 
@@ -3878,19 +4847,19 @@ async function runPropAnalysisFromDialog() {
   if (!editId) { toast('Save property first', 'error'); return; }
   var btn = document.getElementById('propAnalysisRunBtn');
   var statusEl = document.getElementById('propAnalysisDialogStatus');
-  if (btn) { btn.disabled = true; btn.textContent = '⏳ Running...'; }
+  if (btn) { btn.disabled = true; btn.innerHTML ='' + _ico('clock', 13) + ' Running...'; }
   if (statusEl) statusEl.textContent = 'Fetching market data and running analysis...';
 
   try {
     var d = await api('/api/properties/' + editId + '/analyze', 'POST', {
       use_ai: propDialogAiEnabled,
-      ai_provider: propDialogAiProvider || aiProvider,
+      quality: propDialogQuality || aiQuality,
       analysis_type: propDialogAnalysisType
     });
 
     closePropAnalysisDialog();
 
-    var resultsEl = document.getElementById('plStrategyResults');
+    var resultsEl = document.getElementById('priceAnalysisResults');
     var statusOut = document.getElementById('plStrategyStatus');
     if (statusOut) statusOut.innerHTML = '';
     if (resultsEl) {
@@ -3902,7 +4871,7 @@ async function runPropAnalysisFromDialog() {
       if (usedProviders.size > 0) {
         var provLabels = { anthropic: 'Claude (Anthropic)', openai: 'GPT-4o (OpenAI)', workers_ai: 'Workers AI (Cloudflare)' };
         h += '<div style="font-size:0.72rem;color:var(--text3);margin-bottom:8px;padding:6px 10px;background:var(--bg);border-radius:6px;border:1px solid var(--border);">';
-        h += '🤖 AI by: <strong>' + Array.from(usedProviders).map(function(p) { return provLabels[p] || p; }).join(', ') + '</strong>';
+        h +='' + _ico('sparkle', 13) + ' AI by: <strong>' + Array.from(usedProviders).map(function(p) { return provLabels[p] || p; }).join(', ') + '</strong>';
         h += ' · Analysis type: <strong>' + propDialogAnalysisType.toUpperCase() + '</strong>';
         h += '</div>';
       }
@@ -3941,59 +4910,536 @@ async function runPropAnalysisFromDialog() {
           var pct = maxM > 0 ? Math.round((s.multiplier || 1) / maxM * 100) : 50;
           var clr = (s.multiplier || 1) >= 1.1 ? 'var(--accent)' : (s.multiplier || 1) <= 0.85 ? 'var(--danger)' : '#f59e0b';
           h += '<div style="flex:1;text-align:center;"><div style="background:' + clr + ';border-radius:3px 3px 0 0;height:' + Math.max(pct, 5) + '%;min-height:3px;opacity:0.7;" title="' + mNames[(s.month_number || 1) - 1] + ': ' + (s.multiplier || 1).toFixed(2) + 'x"></div>';
-          h += '<div style="font-size:0.55rem;color:var(--text3);margin-top:2px;">' + mNames[(s.month_number || 1) - 1] + '</div>';
+          h += '<div style="font-size:0.65rem;color:var(--text3);margin-top:2px;">' + mNames[(s.month_number || 1) - 1] + '</div>';
           h += '<div style="font-size:0.5rem;color:' + clr + ';">' + (s.multiplier || 1).toFixed(1) + 'x</div></div>';
         });
         h += '</div></div>';
       }
 
-      // Strategies
+      // AI error banner — show prominently if AI was requested but failed
+      if (d.ai_error) {
+        h += '<div style="padding:10px 14px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);border-radius:8px;margin-bottom:10px;display:flex;gap:10px;align-items:flex-start;">';
+        h += '<span style="font-size:1.1rem;">' + _ico('alertCircle', 13, '#f59e0b') + '</span>';
+        h += '<div><div style="font-size:0.82rem;font-weight:600;color:var(--danger);margin-bottom:2px;">AI Strategy Failed</div>';
+        h += '<div style="font-size:0.78rem;color:var(--text2);">' + esc(d.ai_error) + '</div></div></div>';
+      }
+
+      // Strategies — use renderStrategyCard which properly shows full AI analysis text
       if (d.strategies && d.strategies.length > 0) {
         h += '<div style="font-size:0.78rem;font-weight:600;color:var(--text2);margin-bottom:8px;">PRICING STRATEGIES (' + d.strategies.length + ')</div>';
-        d.strategies.forEach(function(s) {
-          var isAI = s.ai_generated;
-          var isLTR = s.min_nights >= 365 || (s.strategy_name || '').includes('LTR');
-          var borderColor = isAI ? 'var(--purple)' : 'var(--accent)';
-          var provLabel = { anthropic: 'Claude', openai: 'GPT-4o', workers_ai: 'Workers AI' }[s.ai_provider] || s.ai_provider || '';
-          h += '<div style="padding:12px;background:var(--bg);border:1px solid var(--border);border-left:4px solid ' + borderColor + ';border-radius:8px;margin-bottom:8px;">';
-          h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">';
-          h += '<div><strong style="font-size:0.85rem;">' + esc(s.strategy_name || 'Strategy') + '</strong>';
-          if (isAI) h += ' <span style="font-size:0.6rem;background:rgba(167,139,250,0.15);color:var(--purple);padding:1px 6px;border-radius:3px;">🤖 ' + esc(provLabel) + '</span>';
-          else h += ' <span style="font-size:0.6rem;background:rgba(16,185,129,0.15);color:var(--accent);padding:1px 6px;border-radius:3px;">📊 Algorithmic</span>';
-          if (isLTR) h += ' <span style="font-size:0.6rem;background:rgba(59,130,246,0.15);color:var(--blue);padding:1px 6px;border-radius:3px;">LTR</span>';
-          h += '</div>';
-          h += '<span style="font-family:DM Mono,monospace;font-size:1rem;font-weight:700;color:var(--accent);">$' + Math.round(s.projected_monthly_avg || 0).toLocaleString() + '/mo</span>';
-          h += '</div>';
-          h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:6px;margin-bottom:8px;">';
-          if (isLTR) {
-            h += '<div style="text-align:center;padding:4px;background:var(--surface2);border-radius:4px;"><div style="font-family:DM Mono,monospace;font-weight:700;">$' + (s.base_nightly_rate || 0).toLocaleString() + '</div><div style="font-size:0.58rem;color:var(--text3);">Monthly Rent</div></div>';
-          } else {
-            h += '<div style="text-align:center;padding:4px;background:var(--surface2);border-radius:4px;"><div style="font-family:DM Mono,monospace;font-weight:700;">$' + (s.base_nightly_rate || 0) + '</div><div style="font-size:0.58rem;color:var(--text3);">Base /nt</div></div>';
-            if (s.weekend_rate) h += '<div style="text-align:center;padding:4px;background:var(--surface2);border-radius:4px;"><div style="font-family:DM Mono,monospace;font-weight:700;">$' + s.weekend_rate + '</div><div style="font-size:0.58rem;color:var(--text3);">Weekend /nt</div></div>';
-            h += '<div style="text-align:center;padding:4px;background:var(--surface2);border-radius:4px;"><div style="font-family:DM Mono,monospace;font-weight:700;">$' + (s.cleaning_fee || 0) + '</div><div style="font-size:0.58rem;color:var(--text3);">Cleaning</div></div>';
-          }
-          h += '<div style="text-align:center;padding:4px;background:var(--surface2);border-radius:4px;"><div style="font-family:DM Mono,monospace;font-weight:700;">' + Math.round((s.projected_occupancy || 0) * 100) + '%</div><div style="font-size:0.58rem;color:var(--text3);">Occupancy</div></div>';
-          h += '<div style="text-align:center;padding:4px;background:var(--surface2);border-radius:4px;"><div style="font-family:DM Mono,monospace;font-weight:700;">$' + Math.round(s.projected_annual_revenue || 0).toLocaleString() + '</div><div style="font-size:0.58rem;color:var(--text3);">Annual Rev</div></div>';
-          h += '</div>';
-          if (s.reasoning) h += '<div style="font-size:0.72rem;color:var(--text3);line-height:1.4;">' + esc(s.reasoning).substring(0, 500) + '</div>';
-          if (s.analysis) h += '<div style="font-size:0.72rem;color:var(--text2);margin-top:6px;padding-top:6px;border-top:1px solid var(--border);line-height:1.4;">' + esc(s.analysis).substring(0, 800) + '</div>';
-          h += '</div>';
-        });
+        d.strategies.forEach(function(s) { h += renderStrategyCard(s, true); });
       }
 
       resultsEl.innerHTML = h;
+      resultsEl.setAttribute('data-fresh', 'true');
     }
 
     await loadProperties();
+    // Invalidate research tab cache so it shows fresh analysis
+    if (typeof _researchCache !== 'undefined' && _researchCache[editId]) delete _researchCache[editId];
     renderRevenueSnapshot(editId);
+    // Refresh PL compare panel with latest analysis results
+    if (typeof loadPLComparePanel === 'function') loadPLComparePanel(editId, d);
     var lastRunEl = document.getElementById('pricingLastRun');
-    if (lastRunEl) lastRunEl.innerHTML = 'Last analysis: <strong>' + new Date().toISOString().replace('T', ' ').substring(0, 16) + '</strong> · ' + (d.strategies || []).length + ' strategies · ' + propDialogAnalysisType.toUpperCase();
+    if (lastRunEl) lastRunEl.innerHTML = 'Last analysis: <strong>' + fmtUTC(new Date().toISOString()) + '</strong> · ' + (d.strategies || []).length + ' strategies · ' + propDialogAnalysisType.toUpperCase();
     toast('Price analysis complete — ' + (d.strategies || []).length + ' strategies generated');
   } catch (err) {
-    if (statusEl) statusEl.textContent = '❌ ' + err.message;
+    if (statusEl) statusEl.innerHTML = '' + _ico('x', 13, 'var(--danger)') + ' ' + err.message;
     if (btn) { btn.disabled = false; btn.textContent = 'Run Analysis'; }
     toast(err.message, 'error');
     return;
   }
   if (btn) { btn.disabled = false; btn.textContent = 'Run Analysis'; }
+}
+
+// ─── Property Research Tab ──────────────────────────────────────────────────
+var _researchCache = {};
+var _currentPropData = null; // cached property data for PL customizations etc
+
+async function renderResearchTab(propertyId) {
+  var el = document.getElementById('propResearchContent');
+  if (!el) return;
+
+  var prop = null;
+  try {
+    if (_researchCache[propertyId] && (Date.now() - _researchCache[propertyId]._ts < 60000)) {
+      prop = _researchCache[propertyId];
+    } else {
+      el.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text3);">' + _ico('refresh', 16) + ' Loading research data...</div>';
+      prop = await api('/api/properties/' + propertyId);
+      prop._ts = Date.now();
+      _researchCache[propertyId] = prop;
+    }
+  } catch (err) {
+    el.innerHTML = '<div style="color:var(--danger);padding:20px;">Error: ' + esc(err.message) + '</div>';
+    return;
+  }
+
+  var p = prop.property || {};
+  var strategies = prop.strategies || [];
+  var comps = prop.comparables || [];
+  var actuals = prop.monthly_actuals || [];
+  var pl = prop.pricelabs || {};
+  var seasonality = prop.seasonality || [];
+  var h = '';
+
+  // ── Section 1: Performance Trend ──────────────────────────────────────
+  if (actuals.length > 0) {
+    h += _researchSection(
+      _ico('activity', 16, 'var(--accent)'), 'Performance Trend', 'var(--accent)',
+      'Actual revenue from Guesty bookings. Each bar represents one month — <strong style="color:var(--accent);">green</strong> = 60%+ occupancy, <strong style="color:#f0b840;">amber</strong> = 40-59%, <strong style="color:var(--danger);">red</strong> = below 40%. Hover any bar for exact numbers.'
+    );
+
+    var totalRev = 0, totalNights = 0, totalAvail = 0, monthCount = actuals.length;
+    actuals.forEach(function(a) { totalRev += (a.total_revenue || 0); totalNights += (a.booked_nights || 0); totalAvail += (a.available_nights || 0); });
+    var avgMonthlyRev = monthCount > 0 ? Math.round(totalRev / monthCount) : 0;
+    var overallOcc = totalAvail > 0 ? Math.round(totalNights / totalAvail * 100) : 0;
+    var overallAdr = totalNights > 0 ? Math.round(totalRev / totalNights) : 0;
+    var recent3 = actuals.slice(-3);
+    var prior3 = actuals.slice(-6, -3);
+    var r3Rev = 0; recent3.forEach(function(a) { r3Rev += a.total_revenue || 0; });
+    var p3Rev = 0; prior3.forEach(function(a) { p3Rev += a.total_revenue || 0; });
+    var revTrend = p3Rev > 0 ? Math.round((r3Rev - p3Rev) / p3Rev * 100) : null;
+
+    h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:12px;">';
+    h += _researchKpi('Avg Monthly', '$' + avgMonthlyRev.toLocaleString(), monthCount + ' months of data');
+    h += _researchKpi('Occupancy', overallOcc + '%', totalNights + ' booked / ' + totalAvail + ' available');
+    h += _researchKpi('ADR', '$' + overallAdr, 'Average daily rate earned');
+    h += _researchKpi('Total Revenue', '$' + Math.round(totalRev).toLocaleString(), 'Lifetime from Guesty');
+    if (revTrend !== null) {
+      var trendColor = revTrend > 0 ? 'var(--accent)' : revTrend < 0 ? 'var(--danger)' : 'var(--text3)';
+      h += _researchKpi('3-Month Trend', (revTrend >= 0 ? '+' : '') + revTrend + '%', 'Recent 3mo vs prior 3mo', trendColor);
+    }
+    h += '</div>';
+
+    // Bar chart
+    var maxRev = Math.max.apply(null, actuals.map(function(a) { return a.total_revenue || 0; }));
+    h += '<div style="overflow-x:auto;margin-bottom:4px;">';
+    h += '<div style="display:flex;gap:3px;align-items:flex-end;min-height:100px;padding:4px 0;">';
+    actuals.slice(-18).forEach(function(a) {
+      var rev = a.total_revenue || 0;
+      var pct = maxRev > 0 ? Math.max(4, Math.round(rev / maxRev * 90)) : 4;
+      var occ = Math.round((a.occupancy_pct || 0) * 100);
+      var occColor = occ >= 60 ? 'var(--accent)' : occ >= 40 ? '#f0b840' : 'var(--danger)';
+      h += '<div style="flex:1;min-width:32px;text-align:center;" title="' + a.month + ': $' + Math.round(rev).toLocaleString() + ' revenue | ' + occ + '% occupancy | $' + Math.round(a.avg_nightly_rate || 0) + ' ADR | ' + (a.booked_nights || 0) + ' nights booked">';
+      h += '<div style="font-size:0.65rem;color:var(--text3);margin-bottom:2px;">$' + (rev >= 1000 ? Math.round(rev / 1000) + 'k' : Math.round(rev)) + '</div>';
+      h += '<div style="height:' + pct + 'px;background:' + occColor + ';border-radius:3px 3px 0 0;opacity:0.8;"></div>';
+      var _mn = parseInt(a.month.substring(5));
+      var _mNames = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      var _mLabel = _mNames[_mn] || a.month.substring(5);
+      if (_mn === 1) _mLabel += '<br><span style="font-size:0.55rem;opacity:0.7;">\'' + a.month.substring(2,4) + '</span>';
+      h += '<div style="font-size:0.62rem;color:var(--text3);margin-top:2px;line-height:1.2;">' + _mLabel + '</div>';
+      h += '</div>';
+    });
+    h += '</div></div>';
+    h += '</div>';
+  }
+
+  // ── Section 2: Listing Health ─────────────────────────────────────────
+  h += _researchSection(
+    _ico('sparkle', 16, '#e879f9'), 'Listing Health', '#e879f9',
+    'How your listing quality compares to best practices. Scores are based on photos, description, amenities, reviews, and platform coverage. Run a <strong>Revenue Optimization</strong> analysis on the Pricing tab to get AI-powered improvement suggestions.'
+  );
+  h += '<div id="listingHealthContent" style="text-align:center;padding:16px;color:var(--text3);font-size:0.78rem;">' + _ico('refresh', 14) + ' Loading listing health...</div>';
+  h += '</div>';
+
+  // Load listing health data asynchronously
+  (function(pid) {
+    api('/api/properties/' + pid + '/listing-health').then(function(lh) {
+      var el = document.getElementById('listingHealthContent');
+      if (!el) return;
+      el.innerHTML = _renderListingHealth(lh, pid);
+    }).catch(function(err) {
+      var el = document.getElementById('listingHealthContent');
+      if (el) el.innerHTML = '<div style="color:var(--text3);font-size:0.78rem;">Unable to load listing health: ' + esc(err.message || 'unknown error') + '</div>';
+    });
+  })(propertyId);
+
+  // ── Section 3: Competitive Position ───────────────────────────────────
+  var strComps = comps.filter(function(c) { return c.comp_type === 'str' && c.nightly_rate > 0 && !(c.source || '').includes('Estimate'); });
+  if (strComps.length > 0 || (pl && pl.linked)) {
+    h += _researchSection(
+      _ico('target', 16, '#5b8def'), 'Competitive Position', '#5b8def',
+      'How your pricing compares to real competitors in the area. Comp data comes from Airbnb crawls and manual fetches. "Your Rate" is from your latest pricing strategy or PriceLabs base price.'
+    );
+
+    if (strComps.length > 0) {
+      var compRates = strComps.map(function(c) { return c.nightly_rate; }).sort(function(a, b) { return a - b; });
+      var compAvg = Math.round(compRates.reduce(function(s, r) { return s + r; }, 0) / compRates.length);
+      var compMedian = compRates[Math.floor(compRates.length / 2)];
+      var compMin = compRates[0];
+      var compMax = compRates[compRates.length - 1];
+      var latestStrat = strategies.length > 0 ? strategies[0] : null;
+      var yourRate = latestStrat ? latestStrat.base_nightly_rate : (pl.base_price || null);
+
+      h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:10px;">';
+      h += _researchKpi('Comp Average', '$' + compAvg + '/nt', strComps.length + ' comparable listings');
+      h += _researchKpi('Comp Median', '$' + compMedian + '/nt', '50th percentile rate');
+      h += _researchKpi('Market Range', '$' + compMin + ' – $' + compMax, 'Lowest to highest');
+      if (yourRate) {
+        var vsAvg = Math.round((yourRate - compAvg) / compAvg * 100);
+        var vsColor = Math.abs(vsAvg) <= 10 ? 'var(--accent)' : vsAvg > 10 ? '#f0b840' : 'var(--danger)';
+        var vsLabel = vsAvg > 10 ? 'Above market — room to increase bookings?' : vsAvg < -10 ? 'Below market — room to raise rates?' : 'Well positioned within market range';
+        h += _researchKpi('Your Rate', '$' + yourRate + '/nt', vsLabel, vsColor);
+      }
+      h += '</div>';
+
+      // Comp source breakdown
+      var bySrc = {};
+      strComps.forEach(function(c) { var s = c.source || 'Unknown'; if (!bySrc[s]) bySrc[s] = []; bySrc[s].push(c.nightly_rate); });
+      var srcEntries = Object.entries(bySrc);
+      if (srcEntries.length > 0) {
+        h += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">';
+        srcEntries.forEach(function(e) {
+          var srcAvg = Math.round(e[1].reduce(function(s, r) { return s + r; }, 0) / e[1].length);
+          h += '<span style="font-size:0.68rem;padding:3px 8px;background:var(--surface2);border-radius:4px;color:var(--text2);">' + esc(e[0]) + ': $' + srcAvg + ' avg (' + e[1].length + ')</span>';
+        });
+        h += '</div>';
+      }
+    }
+
+    if (pl && pl.linked) {
+      h += '<div style="padding:10px 12px;background:var(--purple-dim);border:1px solid rgba(167,139,250,0.2);border-radius:8px;font-size:0.75rem;">';
+      h += '<div style="font-weight:600;color:var(--purple);margin-bottom:4px;">' + _ico('barChart', 13, 'var(--purple)') + ' PriceLabs Live Data</div>';
+      h += '<div style="display:flex;gap:14px;flex-wrap:wrap;color:var(--text2);">';
+      if (pl.base_price) h += '<span>Base: <strong>$' + pl.base_price + '</strong>/nt</span>';
+      if (pl.recommended_base_price) h += '<span>Recommended: <strong>$' + pl.recommended_base_price + '</strong>/nt</span>';
+      if (pl.min_price && pl.max_price) h += '<span>Range: $' + pl.min_price + '–$' + pl.max_price + '</span>';
+      if (pl.occupancy_next_30) h += '<span>Your Occ 30d: <strong>' + String(pl.occupancy_next_30).replace(/%/g, '') + '%</strong></span>';
+      if (pl.market_occupancy_next_30) h += '<span>Market Occ: ' + String(pl.market_occupancy_next_30).replace(/%/g, '') + '%</span>';
+      h += '</div></div>';
+    }
+    h += '</div>';
+  }
+
+  // ── Section 4: Seasonality ────────────────────────────────────────────
+  if (seasonality.length >= 6) {
+    h += _researchSection(
+      _ico('calendar', 16, '#f0b840'), 'Seasonality — Pricing Power by Month', '#f0b840',
+      'How nightly rates vary by month in this market, based on your actual booking data. Each bar shows the average ADR for that month. <strong style="color:var(--accent);">Green</strong> = rates run above average (charge more), <strong style="color:var(--danger);">red</strong> = rates run below average (compete harder). The % shows how far above or below the annual average.'
+    );
+    var monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    var maxMult = Math.max.apply(null, seasonality.map(function(s) { return s.multiplier || 1; }));
+    h += '<div style="display:flex;gap:3px;align-items:flex-end;min-height:80px;">';
+    seasonality.forEach(function(s) {
+      var mult = s.multiplier || 1;
+      var pct = Math.max(8, Math.round(mult / maxMult * 70));
+      var color = mult >= 1.1 ? 'var(--accent)' : mult <= 0.85 ? 'var(--danger)' : '#f0b840';
+      var diffPct = Math.round((mult - 1) * 100);
+      var diffLabel = diffPct > 0 ? '+' + diffPct + '%' : diffPct === 0 ? 'avg' : diffPct + '%';
+      h += '<div style="flex:1;text-align:center;" title="' + monthNames[s.month_number - 1] + ': ' + (s.avg_adr ? '$' + Math.round(s.avg_adr) + '/nt average' : 'no data') + ' (' + diffLabel + ' vs annual avg)">';
+      h += '<div style="font-size:0.6rem;color:' + color + ';font-weight:600;margin-bottom:1px;">' + (s.avg_adr ? '$' + Math.round(s.avg_adr) : '—') + '</div>';
+      h += '<div style="height:' + pct + 'px;background:' + color + ';border-radius:3px 3px 0 0;opacity:0.7;margin:0 auto;width:80%;"></div>';
+      h += '<div style="font-size:0.62rem;color:var(--text3);margin-top:2px;">' + monthNames[s.month_number - 1] + '</div>';
+      h += '<div style="font-size:0.52rem;color:' + color + ';">' + diffLabel + '</div>';
+      h += '</div>';
+    });
+    h += '</div></div>';
+  }
+
+  // ── Section 5: Analysis Timeline ──────────────────────────────────────
+  if (strategies.length > 0) {
+    h += _researchSection(
+      _ico('clock', 16, 'var(--text2)'), 'Analysis Timeline (' + strategies.length + ')', 'var(--text2)',
+      'History of all pricing analyses run for this property. Each entry shows the recommended rate, projected occupancy, and estimated monthly revenue. The most recent analysis is what drives the "vs Predicted" comparison on the property card.'
+    );
+
+    strategies.slice(0, 8).forEach(function(s, i) {
+      var date = fmtUTC(s.created_at);
+      var isAi = s.ai_generated === 1;
+      var borderColor = isAi ? 'var(--purple)' : 'var(--border)';
+      var bgColor = isAi ? 'var(--purple-dim)' : 'var(--surface2)';
+      h += '<div style="padding:10px 12px;margin-bottom:6px;background:' + bgColor + ';border-left:3px solid ' + borderColor + ';border-radius:0 8px 8px 0;font-size:0.78rem;">';
+      h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">';
+      h += '<span style="font-weight:600;color:var(--text);">' + esc(s.strategy_name || 'Analysis') + '</span>';
+      h += '<span style="font-size:0.68rem;color:var(--text3);">' + date + (isAi ? ' · ' + _ico('sparkle', 11, 'var(--purple)') + ' AI' : '') + '</span>';
+      h += '</div>';
+      h += '<div style="display:flex;gap:12px;flex-wrap:wrap;font-size:0.75rem;color:var(--text2);">';
+      h += '<span style="color:var(--accent);font-weight:600;">$' + (s.base_nightly_rate || 0) + '/nt</span>';
+      if (s.weekend_rate) h += '<span>Wknd: $' + s.weekend_rate + '</span>';
+      h += '<span>Occ: ' + Math.round((s.projected_occupancy || 0) * 100) + '%</span>';
+      h += '<span style="font-weight:600;">$' + Math.round(s.projected_monthly_avg || 0).toLocaleString() + '/mo</span>';
+      if (s.cleaning_fee) h += '<span>Clean: $' + s.cleaning_fee + '</span>';
+      h += '</div>';
+      if (s.reasoning && i === 0) {
+        var preview = s.reasoning.substring(0, 200).replace(/\n/g, ' ');
+        h += '<div style="margin-top:6px;font-size:0.72rem;color:var(--text3);line-height:1.45;">' + esc(preview) + (s.reasoning.length > 200 ? '... <em>(full text in History tab)</em>' : '') + '</div>';
+      }
+      h += '</div>';
+    });
+    if (strategies.length > 8) h += '<div style="font-size:0.72rem;color:var(--text3);text-align:center;padding:4px;">+' + (strategies.length - 8) + ' more — see History tab for full list</div>';
+    h += '</div>';
+  }
+
+  // ── Section 6: Market Context Card ────────────────────────────────────
+  if (p.city && p.state) {
+    h += _researchSection(
+      _ico('globe', 16, '#60a5fa'), 'Market Context — ' + esc(p.city) + ', ' + esc(p.state), '#60a5fa',
+      'How this property\'s local market is performing overall. Data aggregated from crawled Airbnb listings and your portfolio actuals. Click through to the full Market Profile for demographics, AI analysis, and competitive landscape.'
+    );
+    h += '<div id="researchMarketContext" style="padding:12px;background:var(--surface2);border-radius:8px;border:1px solid var(--border);font-size:0.78rem;color:var(--text3);">' + _ico('refresh', 14) + ' Loading market data...</div>';
+    h += '</div>';
+
+    api('/api/market/profile?city=' + encodeURIComponent(p.city) + '&state=' + encodeURIComponent(p.state)).then(function(mkt) {
+      var mc = document.getElementById('researchMarketContext');
+      if (!mc) return;
+      var mp = mkt.profile || {};
+      if (!mp.str_listing_count && !mp.str_avg_adr) {
+        mc.innerHTML = '<div style="color:var(--text3);">No market data available yet for ' + esc(p.city) + '. <a href="#" onclick="event.preventDefault();switchView(\'market\')" style="color:var(--accent);">Go to Market tab to build a profile →</a></div>';
+        return;
+      }
+      var mh = '';
+      mh += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px;margin-bottom:10px;">';
+      mh += _researchKpi('Listings', mp.str_listing_count || '—', 'Active STRs in area');
+      mh += _researchKpi('Market ADR', '$' + Math.round(mp.str_avg_adr || 0), 'Average nightly rate');
+      mh += _researchKpi('Median ADR', '$' + Math.round(mp.str_median_adr || 0), '50th percentile');
+      if (mp.str_avg_occupancy) mh += _researchKpi('Market Occ', mp.str_avg_occupancy + '%', 'Area average');
+      mh += _researchKpi('Avg Rating', (mp.str_avg_rating || '—') + '★', (mp.str_superhost_pct || 0) + '% superhosts');
+      if (mp.new_listings_30d) mh += _researchKpi('New 30d', mp.new_listings_30d, 'New competitors');
+      mh += '</div>';
+
+      if (mp.your_property_count > 0 && mp.your_avg_adr > 0) {
+        var adrDiff = Math.round(mp.your_avg_adr - (mp.str_avg_adr || 0));
+        var adrColor = adrDiff >= 0 ? 'var(--accent)' : 'var(--danger)';
+        mh += '<div style="padding:8px 10px;background:var(--bg);border-radius:6px;margin-bottom:8px;">';
+        mh += '<span style="font-size:0.72rem;color:var(--text3);">Your ADR vs Market: </span>';
+        mh += '<span style="font-weight:700;color:' + adrColor + ';">' + (adrDiff >= 0 ? '+' : '') + '$' + adrDiff + '</span>';
+        mh += '<span style="font-size:0.72rem;color:var(--text3);"> ($' + Math.round(mp.your_avg_adr) + ' yours vs $' + Math.round(mp.str_avg_adr || 0) + ' market)</span>';
+        mh += '</div>';
+      }
+
+      mh += '<div style="margin-top:8px;text-align:right;"><a href="#" onclick="event.preventDefault();switchView(\'market\');setTimeout(function(){openMarketProfile(\'' + esc(p.city).replace(/'/g, "\\'") + '\',\'' + esc(p.state).replace(/'/g, "\\'") + '\')},300)" style="color:var(--accent);font-size:0.72rem;">' + _ico('externalLink', 12, 'var(--accent)') + ' View Full Market Profile →</a></div>';
+      mc.innerHTML = mh;
+    }).catch(function() {
+      var mc = document.getElementById('researchMarketContext');
+      if (mc) mc.innerHTML = '<div style="color:var(--text3);">Unable to load market data.</div>';
+    });
+  }
+
+  // ── Empty state ───────────────────────────────────────────────────────
+  if (!h) {
+    h = '<div style="padding:30px;text-align:center;color:var(--text3);">';
+    h += '<div style="margin-bottom:8px;">' + _ico('search', 24, 'var(--text3)') + '</div>';
+    h += '<div style="font-size:0.88rem;margin-bottom:4px;">No research data yet</div>';
+    h += '<div style="font-size:0.78rem;">Run a <strong>Pricing Analysis</strong> on the Pricing tab and <strong>Fetch Comps</strong> on the Comparables tab to start building intelligence for this property.</div>';
+    h += '</div>';
+  }
+
+  el.innerHTML = h;
+}
+
+// Research tab helpers
+function _agoText(dateStr) {
+  if (!dateStr) return '';
+  var ago = Math.round((Date.now() - new Date(dateStr).getTime()) / 86400000);
+  return ago === 0 ? 'today' : ago === 1 ? 'yesterday' : ago + ' days ago';
+}
+
+function _researchSection(icon, title, color, description) {
+  return '<div style="margin-bottom:20px;border:1px solid var(--border);border-radius:10px;padding:14px 16px;background:var(--card);">' +
+    '<div style="font-size:0.82rem;font-weight:700;color:' + color + ';margin-bottom:6px;display:flex;align-items:center;gap:6px;">' + icon + ' ' + title + '</div>' +
+    '<div style="font-size:0.7rem;color:var(--text3);line-height:1.5;margin-bottom:12px;border-left:2px solid ' + color + ';padding-left:10px;">' + description + '</div>';
+}
+
+function _researchKpi(label, value, sub, color) {
+  return '<div style="padding:8px 10px;background:var(--surface2);border-radius:6px;text-align:center;">' +
+    '<div style="font-family:DM Mono,monospace;font-weight:700;font-size:0.95rem;color:' + (color || 'var(--text)') + ';">' + value + '</div>' +
+    '<div style="font-size:0.62rem;font-weight:600;color:var(--text2);margin-top:2px;">' + esc(label) + '</div>' +
+    (sub ? '<div style="font-size:0.65rem;color:var(--text3);margin-top:1px;">' + esc(sub) + '</div>' : '') +
+    '</div>';
+}
+
+// ─── Listing Health Renderer ────────────────────────────────────────────────
+function _lhStatusColor(status) {
+  if (status === 'good') return 'var(--accent)';
+  if (status === 'needs_work') return '#f0b840';
+  return 'var(--danger)';
+}
+function _lhStatusLabel(status) {
+  if (status === 'good') return 'Good';
+  if (status === 'needs_work') return 'Needs Work';
+  return 'Critical';
+}
+function _lhStatusIcon(status) {
+  if (status === 'good') return _ico('check', 12, 'var(--accent)');
+  if (status === 'needs_work') return _ico('alert', 12, '#f0b840');
+  return _ico('alert', 12, 'var(--danger)');
+}
+function _lhScoreRing(score, size) {
+  size = size || 52;
+  var r = (size - 6) / 2;
+  var circ = 2 * Math.PI * r;
+  var offset = circ - (score / 100) * circ;
+  var color = score >= 70 ? 'var(--accent)' : score >= 40 ? '#f0b840' : 'var(--danger)';
+  return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 ' + size + ' ' + size + '" style="display:block;">' +
+    '<circle cx="' + (size/2) + '" cy="' + (size/2) + '" r="' + r + '" fill="none" stroke="var(--border)" stroke-width="3"/>' +
+    '<circle cx="' + (size/2) + '" cy="' + (size/2) + '" r="' + r + '" fill="none" stroke="' + color + '" stroke-width="3" stroke-linecap="round" stroke-dasharray="' + circ + '" stroke-dashoffset="' + offset + '" transform="rotate(-90 ' + (size/2) + ' ' + (size/2) + ')"/>' +
+    '<text x="' + (size/2) + '" y="' + (size/2 + 1) + '" text-anchor="middle" dominant-baseline="central" style="font-family:DM Mono,monospace;font-size:' + (size < 50 ? '0.65rem' : '0.82rem') + ';font-weight:700;fill:' + color + ';">' + score + '</text>' +
+    '</svg>';
+}
+
+function _renderListingHealth(lh, propertyId) {
+  if (!lh || !lh.categories) return '<div style="color:var(--text3);font-size:0.78rem;">No listing health data available.</div>';
+
+  var h = '';
+  var c = lh.categories;
+  var ai = lh.ai_recommendations;
+
+  // ── Overall Score Ring + Category Scores Bar ──────────────────────────
+  h += '<div style="display:flex;gap:16px;align-items:center;margin-bottom:16px;">';
+  h += '<div style="text-align:center;">';
+  h += _lhScoreRing(lh.overall_score, 64);
+  h += '<div style="font-size:0.62rem;font-weight:600;color:var(--text3);margin-top:3px;">OVERALL</div>';
+  h += '</div>';
+
+  // Category score mini-bars
+  h += '<div style="flex:1;display:grid;grid-template-columns:repeat(5,1fr);gap:6px;">';
+  var cats = [
+    { key: 'photos', label: 'Photos', icon: 'eye' },
+    { key: 'description', label: 'Description', icon: 'edit' },
+    { key: 'amenities', label: 'Amenities', icon: 'settings' },
+    { key: 'reviews', label: 'Reviews', icon: 'star' },
+    { key: 'platform_coverage', label: 'Platforms', icon: 'globe' }
+  ];
+  cats.forEach(function(cat) {
+    var d = c[cat.key] || {};
+    var sc = d.score || 0;
+    var col = _lhStatusColor(d.status || 'critical');
+    h += '<div style="text-align:center;">';
+    h += '<div style="font-size:0.6rem;color:var(--text3);margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + _ico(cat.icon, 10, col) + ' ' + cat.label + '</div>';
+    h += '<div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;">';
+    h += '<div style="height:100%;width:' + sc + '%;background:' + col + ';border-radius:3px;transition:width 0.5s;"></div>';
+    h += '</div>';
+    h += '<div style="font-family:DM Mono,monospace;font-size:0.62rem;font-weight:600;color:' + col + ';margin-top:2px;">' + sc + '</div>';
+    h += '</div>';
+  });
+  h += '</div></div>';
+
+  // ── Detailed Category Cards (Current vs Recommended grid) ─────────────
+  // Each row: category | current state | recommendation | action
+  h += '<div style="display:flex;flex-direction:column;gap:8px;">';
+
+  // ── Photos ─────────────────────────────────────────────────────────────
+  var ph = c.photos;
+  h += _lhRow(
+    _ico('eye', 14, _lhStatusColor(ph.status)) + ' Photos',
+    ph.status,
+    '<span style="font-family:DM Mono,monospace;font-weight:700;font-size:0.88rem;">' + ph.count + '</span> <span style="color:var(--text3);">/ ' + ph.target + ' target</span>' +
+      (ph.local_count !== ph.guesty_count ? '<div style="font-size:0.65rem;color:var(--text3);margin-top:2px;">Local: ' + ph.local_count + ' · Guesty: ' + ph.guesty_count + '</div>' : ''),
+    ph.count < ph.target
+      ? 'Add ' + (ph.target - ph.count) + ' more photos' + (ph.missing_types.length > 0 ? '. Missing types: <strong>' + ph.missing_types.join(', ') + '</strong>' : '')
+      : 'Photo count is excellent',
+    (ai && ai.listing_health && ai.listing_health.photos) ? ai.listing_health.photos.recommendation : null,
+    ph.count < ph.target ? '<a href="#" onclick="event.preventDefault();switchPropTab(\'details\');setTimeout(function(){var el=document.getElementById(\'propImagesSection\');if(el)el.scrollIntoView({behavior:\'smooth\'})},200)" style="color:var(--accent);font-size:0.7rem;white-space:nowrap;">' + _ico('camera', 11, 'var(--accent)') + ' Add photos</a>' : null
+  );
+
+  // ── Description ────────────────────────────────────────────────────────
+  var desc = c.description;
+  h += _lhRow(
+    _ico('edit', 14, _lhStatusColor(desc.status)) + ' Description',
+    desc.status,
+    desc.has_description
+      ? '<span style="font-family:DM Mono,monospace;font-weight:700;">' + desc.current_length + '</span> <span style="color:var(--text3);">chars / ' + desc.target_length + ' target</span>' +
+        (desc.preview ? '<div style="font-size:0.68rem;color:var(--text3);margin-top:3px;line-height:1.4;font-style:italic;">"' + esc(desc.preview) + '"</div>' : '')
+      : '<span style="color:var(--danger);font-weight:600;">No description</span> — sync from Guesty',
+    desc.issues.length > 0 ? desc.issues.map(function(i) { return '• ' + esc(i); }).join('<br>') : 'Description meets best practices',
+    (ai && ai.listing_health && ai.listing_health.description)
+      ? (ai.listing_health.description.suggested_opener ? '<strong>Suggested opener:</strong> "' + esc(ai.listing_health.description.suggested_opener) + '"' : null)
+      : null,
+    null
+  );
+
+  // ── Amenities ──────────────────────────────────────────────────────────
+  var am = c.amenities;
+  h += _lhRow(
+    _ico('settings', 14, _lhStatusColor(am.status)) + ' Amenities',
+    am.status,
+    '<span style="font-family:DM Mono,monospace;font-weight:700;font-size:0.88rem;">' + am.count + '</span> <span style="color:var(--text3);">tracked / ' + am.target + ' target</span>',
+    am.missing_high_impact.length > 0
+      ? 'Missing high-impact: <strong>' + am.missing_high_impact.slice(0, 5).join(', ') + '</strong>'
+      : 'All high-impact amenities covered',
+    (ai && ai.listing_health && ai.listing_health.amenities) ? ai.listing_health.amenities.recommendation : null,
+    am.count < am.target ? '<a href="#" onclick="event.preventDefault();switchPropTab(\'amenities\')" style="color:var(--accent);font-size:0.7rem;white-space:nowrap;">' + _ico('settings', 11, 'var(--accent)') + ' Edit amenities</a>' : null
+  );
+
+  // ── Reviews ────────────────────────────────────────────────────────────
+  var rv = c.reviews;
+  h += _lhRow(
+    _ico('star', 14, _lhStatusColor(rv.status)) + ' Reviews',
+    rv.status,
+    '<span style="font-family:DM Mono,monospace;font-weight:700;font-size:0.88rem;">' + rv.total_count + '</span> <span style="color:var(--text3);">reviews / ' + rv.target_count + ' target</span>' +
+      (rv.avg_rating > 0 ? '<div style="font-size:0.72rem;margin-top:2px;">' + rv.avg_rating + '★ avg' + (rv.per_platform.length > 0 ? ' · ' + rv.per_platform.map(function(p) { return esc(p.platform) + ': ' + (p.rating || '—') + '★ (' + p.count + ')'; }).join(', ') : '') + '</div>' : ''),
+    rv.total_count < rv.target_count
+      ? 'Need ' + (rv.target_count - rv.total_count) + ' more reviews to reach target'
+      : 'Strong review count — focus on maintaining quality',
+    (ai && ai.listing_health && ai.listing_health.reviews) ? ai.listing_health.reviews.strategy : null,
+    rv.per_platform.length > 0 ? '<a href="#" onclick="event.preventDefault();switchPropTab(\'platforms\')" style="color:var(--accent);font-size:0.7rem;white-space:nowrap;">' + _ico('globe', 11, 'var(--accent)') + ' View platforms</a>' : null
+  );
+
+  // ── Platform Coverage ──────────────────────────────────────────────────
+  var pl = c.platform_coverage;
+  h += _lhRow(
+    _ico('globe', 14, _lhStatusColor(pl.status)) + ' Platforms',
+    pl.status,
+    '<span style="font-family:DM Mono,monospace;font-weight:700;font-size:0.88rem;">' + pl.active_count + '</span> <span style="color:var(--text3);">linked</span>' +
+      (pl.platforms.length > 0 ? '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:3px;">' + pl.platforms.map(function(p) { return '<span style="font-size:0.65rem;padding:1px 6px;background:var(--surface2);border-radius:3px;">' + esc(p.name) + (p.rate ? ' $' + Math.round(p.rate) : '') + '</span>'; }).join('') + '</div>' : ''),
+    pl.missing.length > 0
+      ? 'Not listed on: <strong>' + pl.missing.join(', ') + '</strong>'
+      : 'Good multi-platform coverage',
+    (ai && ai.listing_health && ai.listing_health.pricing_position) ? ai.listing_health.pricing_position.recommendation : null,
+    pl.missing.length > 0 ? '<a href="#" onclick="event.preventDefault();switchPropTab(\'platforms\')" style="color:var(--accent);font-size:0.7rem;white-space:nowrap;">' + _ico('link', 11, 'var(--accent)') + ' Add platform</a>' : null
+  );
+
+  h += '</div>';
+
+  // ── AI Recommendations Banner ──────────────────────────────────────────
+  if (ai && ai.listing_improvements && ai.listing_improvements.length > 0 && !ai.listing_health) {
+    // Fallback: show flat listing_improvements from revenue optimization
+    h += '<div style="margin-top:12px;padding:10px 12px;background:var(--purple-dim);border:1px solid rgba(167,139,250,0.2);border-radius:8px;">';
+    h += '<div style="font-size:0.72rem;font-weight:600;color:var(--purple);margin-bottom:6px;">' + _ico('sparkle', 12, 'var(--purple)') + ' AI Listing Suggestions</div>';
+    ai.listing_improvements.forEach(function(imp) {
+      h += '<div style="font-size:0.75rem;color:var(--text2);margin:3px 0;">• ' + esc(imp) + '</div>';
+    });
+    h += '</div>';
+  }
+
+  if (ai && ai._created_at) {
+    h += '<div style="text-align:right;margin-top:8px;font-size:0.62rem;color:var(--text3);">AI recommendations from ' + fmtUTC(ai._created_at) + (ai._provider ? ' · ' + ai._provider : '') + '</div>';
+  }
+
+  return h;
+}
+
+function _lhRow(label, status, currentHtml, recommendHtml, aiHtml, actionHtml) {
+  var borderColor = _lhStatusColor(status);
+  var h = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;padding:10px 12px;background:var(--surface2);border-radius:8px;border-left:3px solid ' + borderColor + ';align-items:start;font-size:0.78rem;">';
+
+  // Col 1: Category label + status badge
+  h += '<div>';
+  h += '<div style="font-weight:600;color:var(--text);margin-bottom:3px;display:flex;align-items:center;gap:4px;">' + label + '</div>';
+  h += '<span style="font-size:0.6rem;padding:1px 6px;border-radius:3px;font-weight:600;background:' + borderColor + '20;color:' + borderColor + ';">' + _lhStatusIcon(status) + ' ' + _lhStatusLabel(status) + '</span>';
+  h += '</div>';
+
+  // Col 2: Current state
+  h += '<div>';
+  h += '<div style="font-size:0.6rem;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:3px;">Current</div>';
+  h += '<div style="color:var(--text2);line-height:1.4;">' + currentHtml + '</div>';
+  h += '</div>';
+
+  // Col 3: Recommendation
+  h += '<div>';
+  h += '<div style="font-size:0.6rem;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:3px;">Recommendation</div>';
+  h += '<div style="color:var(--text2);line-height:1.4;">' + recommendHtml + '</div>';
+  if (aiHtml) {
+    h += '<div style="margin-top:4px;padding:4px 8px;background:var(--purple-dim);border-radius:4px;font-size:0.7rem;color:var(--purple);line-height:1.4;">' + _ico('sparkle', 10, 'var(--purple)') + ' ' + aiHtml + '</div>';
+  }
+  h += '</div>';
+
+  // Col 4: Action link
+  h += '<div style="text-align:right;">';
+  if (actionHtml) h += actionHtml;
+  h += '</div>';
+
+  h += '</div>';
+  return h;
 }

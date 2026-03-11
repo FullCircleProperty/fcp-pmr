@@ -1,0 +1,120 @@
+-- ============================================================
+-- Migration 0005: Expanded amenity catalog
+-- ============================================================
+
+INSERT OR IGNORE INTO amenities (name, category, impact_score) VALUES
+  -- Outdoor (additions)
+  ('Private Beach / Beachfront', 'outdoor', 30.0),
+  ('Rooftop Deck / Terrace', 'outdoor', 10.0),
+  ('Infinity Pool', 'outdoor', 20.0),
+  ('Plunge Pool / Splash Pool', 'outdoor', 8.0),
+  ('Pool Heating (year-round)', 'outdoor', 5.0),
+  ('Outdoor Fireplace', 'outdoor', 5.0),
+  ('Pergola / Gazebo', 'outdoor', 3.0),
+  ('Hammock / Swing', 'outdoor', 2.0),
+  ('Bocce Ball / Cornhole', 'outdoor', 2.0),
+  ('Basketball Hoop', 'outdoor', 2.0),
+  ('Ping Pong Table', 'outdoor', 3.0),
+  ('Horseshoes', 'outdoor', 1.0),
+  ('Playground / Swing Set', 'outdoor', 4.0),
+  ('Outdoor Movie Screen', 'outdoor', 5.0),
+  ('BBQ Smoker', 'outdoor', 3.0),
+  ('Pizza Oven', 'outdoor', 4.0),
+  ('Boat / Kayak / Paddleboard', 'outdoor', 10.0),
+  ('Fishing Gear Provided', 'outdoor', 4.0),
+  ('Golf Cart Included', 'outdoor', 6.0),
+  ('Mountain / Ski Access', 'outdoor', 20.0),
+  ('Ski-in / Ski-out', 'outdoor', 25.0),
+  ('Snowshoes / Sleds', 'outdoor', 3.0),
+  ('Bikes Provided', 'outdoor', 4.0),
+  ('Tennis Court', 'outdoor', 8.0),
+  ('Pickleball Court', 'outdoor', 6.0),
+
+  -- Kitchen (additions)
+  ('Wine / Beverage Fridge', 'kitchen', 3.0),
+  ('Keurig / Pod Coffee Maker', 'kitchen', 1.5),
+  ('Outdoor Fridge / Bar', 'kitchen', 2.0),
+  ('Wet Bar', 'kitchen', 4.0),
+  ('Instant Pot / Air Fryer', 'kitchen', 1.0),
+  ('Blender / Juicer', 'kitchen', 1.0),
+
+  -- Entertainment (additions)
+  ('Theater Room / Projector', 'entertainment', 8.0),
+  ('Video Game Console', 'entertainment', 3.0),
+  ('Karaoke Machine', 'entertainment', 4.0),
+  ('Foosball Table', 'entertainment', 3.0),
+  ('Shuffleboard Table', 'entertainment', 4.0),
+  ('Hot Tub (indoor)', 'entertainment', 13.0),
+  ('Putting Green', 'entertainment', 5.0),
+  ('Poker / Card Table', 'entertainment', 3.0),
+  ('Children''s Play Area (indoor)', 'entertainment', 4.0),
+  ('Library / Reading Room', 'entertainment', 2.0),
+  ('Yoga Room / Meditation Space', 'entertainment', 3.0),
+  ('Exercise / Fitness Room', 'entertainment', 6.0),
+
+  -- Comfort (additions)
+  ('Blackout Curtains', 'comfort', 1.5),
+  ('Smart Home / Voice Control', 'comfort', 2.0),
+  ('Heated Floors', 'comfort', 3.0),
+  ('Soaking / Jetted Tub', 'comfort', 5.0),
+  ('Steam Shower', 'comfort', 4.0),
+  ('Walk-in Closet', 'comfort', 1.5),
+  ('Baby / Toddler Gear (crib, highchair)', 'comfort', 4.0),
+  ('Pack-n-Play / Portable Crib', 'comfort', 2.0),
+  ('Rollaway / Extra Beds', 'comfort', 1.5),
+  ('Bunk Beds', 'comfort', 3.0),
+  ('Murphy / Pull-down Bed', 'comfort', 2.0),
+  ('Air Purifier / HEPA Filter', 'comfort', 1.5),
+  ('Ceiling Fans', 'comfort', 1.0),
+  ('Mini Split A/C', 'comfort', 2.0),
+  ('Central Heat', 'comfort', 1.5),
+  ('Electric Vehicle (EV) Outlet 240V', 'comfort', 3.0),
+
+  -- Safety (additions)
+  ('Ring / Smart Doorbell', 'safety', 1.5),
+  ('Smart Lock / Keyless Entry', 'safety', 1.5),
+  ('First Aid Kit', 'safety', 0.5),
+  ('Pool Fence / Safety Gate', 'safety', 2.0),
+  ('Carbon Monoxide Detector', 'safety', 0.5),
+
+  -- Workspace (additions)
+  ('Standing Desk', 'workspace', 2.0),
+  ('Dual Monitors / External Display', 'workspace', 2.5),
+  ('Printer / Scanner', 'workspace', 1.5),
+  ('Meeting Room / Conference Setup', 'workspace', 4.0),
+  ('Fiber Internet (500Mbps+)', 'workspace', 4.0),
+
+  -- Location / Access
+  ('Walkable to Restaurants / Shops', 'location', 5.0),
+  ('Near Public Transit', 'location', 3.0),
+  ('Gated / Private Community', 'location', 5.0),
+  ('Private / Secluded Setting', 'location', 6.0),
+  ('Downtown / City Center', 'location', 4.0),
+  ('Golf Course Community', 'location', 5.0),
+  ('Marina / Waterfront Community', 'location', 8.0),
+  ('Horse Property / Ranch', 'location', 6.0),
+
+  -- Unique (additions)
+  ('Solar / Green Energy', 'unique', 2.0),
+  ('Hot Springs / Natural Pool', 'unique', 15.0),
+  ('Treehouse', 'unique', 20.0),
+  ('Tiny Home / Container Home', 'unique', 10.0),
+  ('A-Frame / Cabin', 'unique', 8.0),
+  ('Farm Stay / Working Farm', 'unique', 10.0),
+  ('Vineyard / Winery Access', 'unique', 12.0),
+  ('Artist Studio', 'unique', 4.0),
+  ('Recording Studio', 'unique', 8.0),
+  ('Wheelchair Accessible', 'unique', 5.0),
+  ('Private Entrance / Separate Unit', 'unique', 4.0),
+  ('Concierge / Property Management On-site', 'unique', 5.0),
+  ('Long-Term Stay Friendly (28+ nights)', 'unique', 3.0),
+  ('Self Check-in / Smart Lock', 'unique', 2.0),
+  ('Luggage Storage Available', 'unique', 1.0),
+
+  -- Parking
+  ('Driveway Parking (2+ cars)', 'parking', 3.0),
+  ('Garage (1-car)', 'parking', 4.0),
+  ('Garage (2+ cars)', 'parking', 6.0),
+  ('RV / Boat Parking', 'parking', 4.0),
+  ('Street Parking (free)', 'parking', 1.5),
+  ('EV Charging Station', 'parking', 4.0);

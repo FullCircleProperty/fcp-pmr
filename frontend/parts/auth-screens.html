@@ -1,51 +1,51 @@
-<!-- AUTH: Init Admin -->
-<div id="screen-init" class="auth-wrapper" style="display:none;">
-  <div class="auth-box">
-    <h1>Welcome to PMR</h1>
-    <p class="auth-sub">First time setup — create your admin account</p>
-    <div id="initMsg"></div>
-    <div class="form-group"><label>Admin Email</label><input type="email" id="init_email" placeholder="admin@fullcircle-property.com"></div>
-    <div class="form-group"><label>Display Name</label><input type="text" id="init_name" placeholder="Admin"></div>
-    <button class="btn btn-primary" onclick="doInit()">Create Admin Account</button>
+<!-- Auth Screens -->
+<div id="screen-init" style="display:none;justify-content:center;align-items:center;min-height:100vh;flex-direction:column;gap:20px;">
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:40px;max-width:400px;width:90%;text-align:center;">
+    <h1 style="margin-bottom:12px;">Welcome to FCP-PMR</h1>
+    <p style="color:var(--text2);margin-bottom:20px;">Set up your admin account to get started.</p>
+    <div class="form-group"><label>Name</label><input type="text" id="init_name" placeholder="Your name"></div>
+    <div class="form-group"><label>Email</label><input type="email" id="init_email" placeholder="admin@example.com"></div>
+    <div class="form-group"><label>Password</label><input type="password" id="init_pass" placeholder="Min 8 characters"></div>
+    <button class="btn btn-primary" onclick="doInit()" style="width:100%;margin-top:10px;">Create Admin Account</button>
+    <div id="initMsg" style="margin-top:10px;font-size:0.85rem;"></div>
   </div>
 </div>
 
-<!-- AUTH: Login -->
-<div id="screen-login" class="auth-wrapper" style="display:none;">
-  <div class="auth-box">
-    <h1>Property Market Research</h1>
-    <p class="auth-sub">by Full Circle Property</p>
-    <div id="loginMsg"></div>
+<div id="screen-login" style="display:none;justify-content:center;align-items:center;min-height:100vh;flex-direction:column;gap:20px;">
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:40px;max-width:400px;width:90%;text-align:center;">
+    <h1 style="margin-bottom:4px;">Property Market Research</h1>
+    <div style="font-size:0.78rem;color:var(--text3);margin-bottom:24px;">Full Circle Property</div>
     <div class="form-group"><label>Email</label><input type="email" id="login_email" placeholder="you@example.com" onkeydown="if(event.key==='Enter')doLogin()"></div>
-    <div class="form-group"><label>Password</label><input type="password" id="login_pass" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()"></div>
-    <button class="btn btn-primary" onclick="doLogin()">Sign In</button>
-    <div class="auth-link">Need access? <a onclick="showScreen('register')">Request an account</a></div>
+    <div class="form-group"><label>Password</label><input type="password" id="login_pass" placeholder="Password" onkeydown="if(event.key==='Enter')doLogin()"></div>
+    <button class="btn btn-primary" onclick="doLogin()" style="width:100%;margin-top:10px;">Sign In</button>
+    <div id="loginMsg" style="margin-top:10px;font-size:0.85rem;"></div>
+    <div style="margin-top:16px;font-size:0.82rem;color:var(--text3);">
+      <a href="#" onclick="event.preventDefault();showScreen('register')" style="color:var(--accent);">Create account</a>
+    </div>
   </div>
 </div>
 
-<!-- AUTH: Register -->
-<div id="screen-register" class="auth-wrapper" style="display:none;">
-  <div class="auth-box">
-    <h1>Request Access</h1>
-    <p class="auth-sub">Your account will be reviewed by an admin</p>
-    <div id="registerMsg"></div>
-    <div class="form-group"><label>Display Name</label><input type="text" id="reg_name" placeholder="Your full name"></div>
+<div id="screen-register" style="display:none;justify-content:center;align-items:center;min-height:100vh;flex-direction:column;gap:20px;">
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:40px;max-width:400px;width:90%;text-align:center;">
+    <h1 style="margin-bottom:12px;">Create Account</h1>
+    <div class="form-group"><label>Name</label><input type="text" id="reg_name" placeholder="Your name"></div>
     <div class="form-group"><label>Email</label><input type="email" id="reg_email" placeholder="you@example.com"></div>
-    <div class="form-group"><label>Password</label><input type="password" id="reg_pass" placeholder="Min 8 characters"><div class="pw-req">Must be at least 8 characters</div></div>
-    <button class="btn btn-primary" onclick="doRegister()">Submit Request</button>
-    <div class="auth-link">Already have an account? <a onclick="showScreen('login')">Sign in</a></div>
+    <div class="form-group"><label>Password</label><input type="password" id="reg_pass" placeholder="Min 8 characters"></div>
+    <button class="btn btn-primary" onclick="doRegister()" style="width:100%;margin-top:10px;">Register</button>
+    <div id="registerMsg" style="margin-top:10px;font-size:0.85rem;"></div>
+    <div style="margin-top:16px;font-size:0.82rem;color:var(--text3);">
+      <a href="#" onclick="event.preventDefault();showScreen('login')" style="color:var(--accent);">← Back to login</a>
+    </div>
   </div>
 </div>
 
-<!-- AUTH: Forced Password Change -->
-<div id="screen-changepw" class="auth-wrapper" style="display:none;">
-  <div class="auth-box">
-    <h1>Change Password</h1>
-    <p class="auth-sub">You must set a new password before continuing</p>
-    <div id="changepwMsg"></div>
-    <div class="auth-message warn">Your account was created with a default password. Please choose a new password now.</div>
-    <div class="form-group"><label>New Password</label><input type="password" id="cp_new" placeholder="Min 8 characters" onkeydown="if(event.key==='Enter')doChangePassword()"><div class="pw-req">At least 8 characters, cannot be the default</div></div>
-    <div class="form-group"><label>Confirm Password</label><input type="password" id="cp_confirm" placeholder="Type it again" onkeydown="if(event.key==='Enter')doChangePassword()"></div>
-    <button class="btn btn-primary" onclick="doChangePassword()">Set New Password</button>
+<div id="screen-changepw" style="display:none;justify-content:center;align-items:center;min-height:100vh;flex-direction:column;gap:20px;">
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:40px;max-width:400px;width:90%;text-align:center;">
+    <h1 style="margin-bottom:12px;">Change Password</h1>
+    <p style="color:var(--text2);margin-bottom:16px;">Please set a new password to continue.</p>
+    <div class="form-group"><label>New Password</label><input type="password" id="cp_new" placeholder="Min 8 characters"></div>
+    <div class="form-group"><label>Confirm</label><input type="password" id="cp_confirm" placeholder="Confirm password" onkeydown="if(event.key==='Enter')doChangePassword()"></div>
+    <button class="btn btn-primary" onclick="doChangePassword()" style="width:100%;margin-top:10px;">Set Password</button>
+    <div id="changepwMsg" style="margin-top:10px;font-size:0.85rem;"></div>
   </div>
 </div>

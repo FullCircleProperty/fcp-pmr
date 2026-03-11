@@ -27,6 +27,17 @@ bucket_name = "fcp-pmr-images"
 ENVIRONMENT = "production"
 APP_NAME = "FCP — Property Market Research (PMR)"
 
+# ─── Cron Triggers (Scheduled Sync) ───
+# Every 6 hours: Guesty incremental reservation sync
+# Daily at 6am UTC: PriceLabs prices + Guesty calendar + actuals rebuild
+# Weekly Monday 7am UTC: Guesty listings + PriceLabs listings refresh
+[triggers]
+crons = [
+  "0 */6 * * *",
+  "0 6 * * *",
+  "0 7 * * 1"
+]
+
 # ─── Secrets (set via wrangler secret put) ───
 # ANTHROPIC_API_KEY       — for Claude AI analysis
 # OPENAI_API_KEY          — for OpenAI analysis (alternative)

@@ -14,6 +14,8 @@
 
 set -e
 
+DEPLOY_START=$(date +%s)
+
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
 CYAN='\033[0;36m'; BOLD='\033[1m'; DIM='\033[2m'; NC='\033[0m'
 
@@ -25,12 +27,14 @@ WORKER_NAME="fcp-pmr"
 CUSTOM_DOMAIN="pmr.fullcircle-property.com"
 ZONE_NAME="fullcircle-property.com"
 TOTAL_STEPS=8
+APP_VERSION=$(node -e "try{console.log(require('./package.json').version)}catch{console.log('?.?.?')}" 2>/dev/null || echo "?.?.?")
 
 info()    { echo -e "${CYAN}▸${NC} $1"; }
 success() { echo -e "${GREEN}✔${NC} $1"; }
 warn()    { echo -e "${YELLOW}⚠${NC} $1"; }
 fail()    { echo -e "${RED}✖${NC} $1"; exit 1; }
-step()    { echo -e "\n${BOLD}${CYAN}[$1/$TOTAL_STEPS]${NC} ${BOLD}$2${NC}"; }
+step()    { STEP_START=$(date +%s); echo -e "\n${BOLD}${CYAN}[$1/$TOTAL_STEPS]${NC} ${BOLD}$2${NC}"; }
+step_done() { local elapsed=$(( $(date +%s) - STEP_START )); echo -e "${DIM}   ⏱ ${elapsed}s${NC}"; }
 divider() { echo -e "${DIM}────────────────────────────────────────────${NC}"; }
 
 prompt_yn() {
@@ -47,7 +51,7 @@ prompt_yn() {
 echo ""
 echo -e "${BOLD}╔══════════════════════════════════════════════╗${NC}"
 echo -e "${BOLD}║  FCP — Property Market Research (PMR)        ║${NC}"
-echo -e "${BOLD}║  Deploy to ${CUSTOM_DOMAIN}      ║${NC}"
+echo -e "${BOLD}║  v${APP_VERSION} → ${CUSTOM_DOMAIN}   ║${NC}"
 echo -e "${BOLD}╚══════════════════════════════════════════════╝${NC}"
 echo ""
 
@@ -86,6 +90,7 @@ done
 [[ ! -d "$SCRIPT_DIR/frontend/parts/js" ]] && echo -e "  ${RED}✖${NC} Missing: frontend/parts/js/" && MISSING=1
 [[ $MISSING -eq 1 ]] && fail "Missing required files."
 success "All project files present"
+step_done
 
 # ============================================================
 # STEP 2: D1 database
@@ -129,6 +134,7 @@ else
   DB_ID="$CURRENT_DB_ID"
   success "Database already configured: $DB_ID"
 fi
+step_done
 
 # ============================================================
 # STEP 3: R2 image bucket
@@ -153,73 +159,29 @@ else
 fi
 
 # ============================================================
-# STEP 4: Schema + seed
-# - CREATE TABLE IF NOT EXISTS: won't alter existing tables
-# - INSERT OR IGNORE: won't duplicate existing rows
+# STEP 4: Database bootstrap (fresh installs only)
+# The worker runs ensureSchema() on every cold start — it uses
+# CREATE TABLE IF NOT EXISTS + ALTER TABLE IF NOT EXISTS to
+# self-migrate. No manual column tracking needed here.
+# This step only seeds the two foundation tables that must
+# exist before the worker can serve its first request.
 # ============================================================
-step 4 "Database schema"
+step 4 "Database bootstrap"
 
-# Check if tables already exist before running migrations
-TABLE_CHECK=$($WRANGLER d1 execute "$DB_NAME" --remote --yes --command "SELECT name FROM sqlite_master WHERE type='table' AND name='properties'" --json 2>/dev/null || echo "[]")
-HAS_TABLES=$(echo "$TABLE_CHECK" | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{try{const r=JSON.parse(d);console.log(r[0]&&r[0].results&&r[0].results.length>0?'yes':'no')}catch{console.log('no')}})" 2>/dev/null)
+# Check whether the DB is completely fresh (no tables yet)
+TABLE_CHECK=$($WRANGLER d1 execute "$DB_NAME" --remote --yes --command "SELECT COUNT(*) as c FROM sqlite_master WHERE type='table'" --json 2>/dev/null || echo "[]")
+TABLE_COUNT=$(echo "$TABLE_CHECK" | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{try{const r=JSON.parse(d);console.log(r[0]&&r[0].results?r[0].results[0].c:0)}catch{console.log(0)}})" 2>/dev/null)
 
-if [[ "$HAS_TABLES" == "yes" ]]; then
-  # Check if auth tables exist too
-  AUTH_CHECK=$($WRANGLER d1 execute "$DB_NAME" --remote --yes --command "SELECT name FROM sqlite_master WHERE type='table' AND name='users'" --json 2>/dev/null || echo "[]")
-  HAS_AUTH=$(echo "$AUTH_CHECK" | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{try{const r=JSON.parse(d);console.log(r[0]&&r[0].results&&r[0].results.length>0?'yes':'no')}catch{console.log('no')}})" 2>/dev/null)
-
-  if [[ "$HAS_AUTH" == "yes" ]]; then
-    # Check if image_url column exists (added in 0003)
-    IMG_CHECK=$($WRANGLER d1 execute "$DB_NAME" --remote --yes --command "SELECT COUNT(*) as c FROM pragma_table_info('properties') WHERE name='image_url'" --json 2>/dev/null || echo "[]")
-    HAS_IMG=$(echo "$IMG_CHECK" | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{try{const r=JSON.parse(d);console.log(r[0]&&r[0].results&&r[0].results[0]&&r[0].results[0].c>0?'yes':'no')}catch{console.log('no')}})" 2>/dev/null)
-
-    if [[ "$HAS_IMG" == "yes" ]]; then
-      # Check if name column exists (added in 0004)
-      NAME_CHECK=$($WRANGLER d1 execute "$DB_NAME" --remote --yes --command "SELECT COUNT(*) as c FROM pragma_table_info('properties') WHERE name='name'" --json 2>/dev/null || echo "[]")
-      HAS_NAME=$(echo "$NAME_CHECK" | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{try{const r=JSON.parse(d);console.log(r[0]&&r[0].results&&r[0].results[0]&&r[0].results[0].c>0?'yes':'no')}catch{console.log('no')}})" 2>/dev/null)
-
-      if [[ "$HAS_NAME" == "yes" ]]; then
-        success "Schema already up to date (all columns present)"
-      else
-        info "Adding new columns (name, county, parking, parcel, zoning)..."
-        for COL in name:TEXT county:TEXT cleaning_fee:REAL parent_id:INTEGER latitude:REAL longitude:REAL parking_spaces:INTEGER total_units_count:INTEGER parcel_id:TEXT zoning:TEXT; do
-          CNAME="${COL%%:*}"; CTYPE="${COL##*:}"
-          if [[ "$CTYPE" == "TEXT" ]]; then
-            DEF="''"
-          else
-            DEF="0"
-          fi
-          $WRANGLER d1 execute "$DB_NAME" --remote --yes --command "ALTER TABLE properties ADD COLUMN $CNAME $CTYPE DEFAULT $DEF" 2>/dev/null || true
-        done
-        success "Schema updated with new columns"
-      fi
-    else
-      info "Adding new columns (image_url, unit_number, expenses)..."
-      for COL in image_url:TEXT unit_number:TEXT ownership_type:TEXT monthly_mortgage:REAL monthly_insurance:REAL monthly_rent_cost:REAL security_deposit:REAL expense_electric:REAL expense_gas:REAL expense_water:REAL expense_internet:REAL expense_trash:REAL expense_other:REAL; do
-        CNAME="${COL%%:*}"; CTYPE="${COL##*:}"
-        if [[ "$CTYPE" == "TEXT" ]]; then
-          DEF="''"
-        else
-          DEF="0"
-        fi
-        $WRANGLER d1 execute "$DB_NAME" --remote --yes --command "ALTER TABLE properties ADD COLUMN $CNAME $CTYPE DEFAULT $DEF" 2>/dev/null || true
-      done
-      # Create images table if not exists
-      $WRANGLER d1 execute "$DB_NAME" --remote --yes --command "CREATE TABLE IF NOT EXISTS images (id INTEGER PRIMARY KEY AUTOINCREMENT, filename TEXT NOT NULL, mime_type TEXT NOT NULL, data TEXT NOT NULL, size_bytes INTEGER, created_at TEXT DEFAULT (datetime('now')))" 2>/dev/null || true
-      success "Schema updated"
-    fi
-  else
-    info "Auth tables missing — running 0002_auth.sql..."
-    $WRANGLER d1 execute "$DB_NAME" --remote --yes --file=./migrations/0002_auth.sql 2>&1 || warn "Auth migration may have partially applied"
-    success "Auth schema applied"
-  fi
+if [[ "$TABLE_COUNT" -eq 0 ]]; then
+  info "Fresh database — running foundation migrations..."
+  $WRANGLER d1 execute "$DB_NAME" --remote --yes --file=./migrations/0001_init.sql 2>&1 \
+    || warn "0001_init may have partially applied — worker will fill gaps on first request"
+  $WRANGLER d1 execute "$DB_NAME" --remote --yes --file=./migrations/0002_auth.sql 2>&1 \
+    || warn "0002_auth may have partially applied — worker will fill gaps on first request"
+  success "Foundation schema created — worker auto-migrates remaining tables on first request"
 else
-  info "Fresh database — running all migrations..."
-  $WRANGLER d1 execute "$DB_NAME" --remote --yes --file=./migrations/0001_init.sql 2>&1 || warn "0001 may have partially applied"
-  $WRANGLER d1 execute "$DB_NAME" --remote --yes --file=./migrations/0002_auth.sql 2>&1 || warn "0002 may have partially applied"
-  success "Schema created"
+  success "Database has $TABLE_COUNT tables — worker will auto-migrate any missing columns on first request"
 fi
-
 # ============================================================
 # STEP 5: Build (local only — no Cloudflare interaction)
 # ============================================================
@@ -228,6 +190,7 @@ step 5 "Build"
 node build.js
 [[ ! -f "dist/worker.js" ]] && fail "Build failed"
 success "Built dist/worker.js ($(( $(wc -c < dist/worker.js) / 1024 )) KB)"
+step_done
 
 # ============================================================
 # STEP 6: Deploy worker
@@ -245,6 +208,7 @@ if echo "$DEPLOY_OUTPUT" | grep -qi "error"; then
 else
   success "Worker deployed"
 fi
+step_done
 
 # ============================================================
 # STEP 7: Custom domain DNS
@@ -328,55 +292,12 @@ else
 fi
 
 # ============================================================
-# STEP 8: API keys (optional, only affects fcp-pmr worker)
+# STEP 8: Done — API keys managed in Admin UI
 # ============================================================
-step 8 "API keys (optional)"
-
-# Check which secrets already exist by listing them
-EXISTING_SECRETS=$($WRANGLER secret list 2>/dev/null || echo "")
-
+step 8 "API keys"
 echo ""
-if echo "$EXISTING_SECRETS" | grep -q "ANTHROPIC_API_KEY\|OPENAI_API_KEY\|AI_PROVIDER_SET"; then
-  success "AI provider already configured"
-else
-  if prompt_yn "Set up AI provider? (Claude / GPT / Workers AI)" "n"; then
-    echo -e "  ${BOLD}1)${NC} Anthropic (Claude)   ${BOLD}2)${NC} OpenAI   ${BOLD}3)${NC} Workers AI (free)   ${BOLD}4)${NC} Skip"
-    read -rp "$(echo -e "${CYAN}?${NC} Choose [1-4]: ")" AI_CHOICE
-    case "$AI_CHOICE" in
-      1) $WRANGLER secret put ANTHROPIC_API_KEY; success "Anthropic key saved" ;;
-      2) $WRANGLER secret put OPENAI_API_KEY; success "OpenAI key saved" ;;
-      3) echo "workers_ai" | $WRANGLER secret put AI_PROVIDER_SET 2>/dev/null; success "Workers AI selected — no key needed (bound in wrangler.toml)" ;;
-      *) info "Skipped" ;;
-    esac
-  else
-    info "Skipped — add later: $WRANGLER secret put ANTHROPIC_API_KEY"
-  fi
-fi
-
-echo ""
-if echo "$EXISTING_SECRETS" | grep -q "GOOGLE_PLACES_API_KEY"; then
-  success "Google Places API key already configured"
-else
-  if prompt_yn "Set up Google Places API key? (address autocomplete)" "n"; then
-    $WRANGLER secret put GOOGLE_PLACES_API_KEY
-    success "Google Places key saved"
-  else
-    info "Skipped — add later: $WRANGLER secret put GOOGLE_PLACES_API_KEY"
-  fi
-fi
-
-echo ""
-if echo "$EXISTING_SECRETS" | grep -q "RENTCAST_API_KEY"; then
-  success "RentCast API key already configured"
-else
-  if prompt_yn "Set up RentCast API key? (property data: beds/baths/sqft/value — free 50 calls/mo)" "n"; then
-    $WRANGLER secret put RENTCAST_API_KEY
-    success "RentCast key saved"
-  else
-    info "Skipped — add later: $WRANGLER secret put RENTCAST_API_KEY"
-    info "Get free key at: rentcast.io/api"
-  fi
-fi
+success "API keys are managed in the Admin UI — go to Admin → API Keys after first login"
+info "Do NOT use wrangler secret put for API keys — the Admin UI is the only source of truth"
 
 # ============================================================
 # Done
@@ -386,10 +307,14 @@ divider
 echo ""
 echo -e "${GREEN}${BOLD}  ✔ FCP Property Market Research — deployed!${NC}"
 echo ""
+echo -e "  ${BOLD}Version:${NC}    v${APP_VERSION}"
 echo -e "  ${BOLD}URL:${NC}        https://${CUSTOM_DOMAIN}"
 echo -e "  ${BOLD}Database:${NC}   ${DB_NAME} (${DB_ID})"
 echo ""
 echo -e "  ${DIM}${WRANGLER} tail              # live logs${NC}"
 echo -e "  ${DIM}${WRANGLER} secret put ...    # add API keys later${NC}"
+DEPLOY_TOTAL=$(( $(date +%s) - DEPLOY_START ))
+echo ""
+echo -e "  ${DIM}Total deploy time: ${DEPLOY_TOTAL}s${NC}"
 echo ""
 divider

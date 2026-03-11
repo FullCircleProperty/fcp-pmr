@@ -80,7 +80,7 @@ async function loadPropertyComps(pid) {
       h += buildCompTable(estComps, rateLabel);
       if (platformComps.length === 0) {
         h += '<div style="padding:10px 14px;background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.25);border-radius:8px;font-size:0.82rem;color:var(--text2);margin-top:8px;">';
-        h += '⚠ These are <strong>estimated</strong> rates based on regional data. Add real comps from ' + (isSTR ? 'Airbnb/VRBO/Booking.com' : 'Zillow/Apartments.com/Realtor.com') + ' using "+ Manual" or the search links for more accurate pricing.';
+        h +='' + _ico('alertTriangle', 13, '#f59e0b') + ' These are <strong>estimated</strong> rates based on regional data. Add real comps from ' + (isSTR ? 'Airbnb/VRBO/Booking.com' : 'Zillow/Apartments.com/Realtor.com') + ' using "+ Manual" or the search links for more accurate pricing.';
         h += '</div>';
       }
       h += '</div>';
@@ -127,22 +127,22 @@ function buildCompTable(comps, rateLabel) {
 function formatCompSource(source) {
   if (!source) return '';
   var s = source.toLowerCase();
-  if (s.includes('airbnb')) return '🏡 Airbnb';
-  if (s.includes('vrbo')) return '🏖️ VRBO';
-  if (s.includes('booking')) return '📘 Booking';
-  if (s.includes('furnished')) return '🛋️ Furnished Finder';
-  if (s === 'estimated (ltr→str)') return '📊 STR Estimate';
-  if (s.includes('estimate (low)')) return '📉 Low Estimate';
-  if (s.includes('estimate (market)')) return '📊 Market Estimate';
-  if (s.includes('estimate (high)')) return '📈 High Estimate';
-  if (s.includes('estimate')) return '📊 Estimate';
-  if (s.includes('rentcast')) return '🔑 RentCast';
-  if (s.includes('zillow')) return '🏠 Zillow';
-  if (s.includes('apartments')) return '🏢 Apartments.com';
-  if (s.includes('realtor')) return '📋 Realtor.com';
-  if (s.includes('rent.com')) return '🔑 Rent.com';
-  if (s.includes('redfin')) return '📊 Redfin';
-  if (s.includes('hotpads')) return '📍 HotPads';
+  if (s.includes('airbnb')) return '' + _ico('home', 13) + ' Airbnb';
+  if (s.includes('vrbo')) return '' + _ico('home', 13) + ' VRBO';
+  if (s.includes('booking')) return '' + _ico('globe', 13) + ' Booking';
+  if (s.includes('furnished')) return '' + _ico('home', 13) + ' Furnished Finder';
+  if (s === 'estimated (ltr→str)') return '' + _ico('barChart', 13) + ' STR Estimate';
+  if (s.includes('estimate (low)')) return '' + _ico('trendDown', 13) + ' Low Estimate';
+  if (s.includes('estimate (market)')) return '' + _ico('barChart', 13) + ' Market Estimate';
+  if (s.includes('estimate (high)')) return '' + _ico('trendUp', 13) + ' High Estimate';
+  if (s.includes('estimate')) return '' + _ico('barChart', 13) + ' Estimate';
+  if (s.includes('rentcast')) return '' + _ico('key', 13) + ' RentCast';
+  if (s.includes('zillow')) return '' + _ico('home', 13) + ' Zillow';
+  if (s.includes('apartments')) return '' + _ico('building', 13) + ' Apartments.com';
+  if (s.includes('realtor')) return '' + _ico('receipt', 13) + ' Realtor.com';
+  if (s.includes('rent.com')) return '' + _ico('key', 13) + ' Rent.com';
+  if (s.includes('redfin')) return '' + _ico('barChart', 13) + ' Redfin';
+  if (s.includes('hotpads')) return '' + _ico('mapPin', 13) + ' HotPads';
   return esc(source);
 }
 
@@ -158,7 +158,7 @@ async function fetchCompsFromAPI() {
     var msg = d.message || 'Done';
     var srcHtml = '<div style="margin-top:6px;">';
     (d.sources || []).forEach(function(s) {
-      var icon = s.status === 'ok' ? '✓' : s.status === 'skip' ? '∅' : s.status === 'limit' ? '⚠' : s.status === 'info' ? 'ℹ' : '✗';
+      var icon = s.status === 'ok' ? '✓' : s.status === 'skip' ? '∅' : s.status === 'limit' ? '' + _ico('alertCircle', 13, '#f59e0b') + '' : s.status === 'info' ? 'ℹ' : '✗';
       var color = s.status === 'ok' ? 'var(--accent)' : s.status === 'limit' ? '#fbbf24' : s.status === 'info' ? 'var(--blue,#60a5fa)' : 'var(--text3)';
       srcHtml += '<div style="font-size:0.78rem;color:' + color + ';">' + icon + ' ' + esc(s.name) + (s.detail ? ' — ' + esc(s.detail).substring(0, 150) : '') + '</div>';
     });
@@ -168,7 +168,7 @@ async function fetchCompsFromAPI() {
     // AI analysis
     var aiSource = (d.sources || []).find(function(s) { return s.name === 'AI Analysis' && s.status === 'ok'; });
     if (aiSource && aiSource.detail) {
-      statusEl.innerHTML += '<div style="margin-top:10px;padding:12px;background:var(--purple-dim);border:1px solid rgba(167,139,250,0.25);border-radius:8px;color:var(--text);font-size:0.85rem;line-height:1.55;"><strong style="color:var(--purple);">✦ AI Analysis:</strong> ' + esc(aiSource.detail) + '</div>';
+      statusEl.innerHTML += '<div style="margin-top:10px;padding:12px;background:var(--purple-dim);border:1px solid rgba(167,139,250,0.25);border-radius:8px;color:var(--text);font-size:0.85rem;line-height:1.55;"><strong style="color:var(--purple);">' + _ico('sparkle', 13, 'var(--purple)') + ' AI Analysis:</strong> ' + esc(aiSource.detail) + '</div>';
     }
 
     // Search links
@@ -177,7 +177,7 @@ async function fetchCompsFromAPI() {
       linkHtml += '<label style="font-size:0.78rem;color:var(--text2);display:block;margin-bottom:6px;">' + (isSTR ? 'SEARCH STR PLATFORMS — add real comps from these:' : 'SEARCH LTR PLATFORMS:') + '</label>';
       linkHtml += '<div style="display:flex;gap:8px;flex-wrap:wrap;">';
       d.searchLinks.forEach(function(l) {
-        linkHtml += '<a href="' + esc(l.url) + '" target="_blank" style="display:inline-flex;align-items:center;gap:4px;padding:6px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;text-decoration:none;color:var(--text);font-size:0.82rem;transition:border-color 0.15s;" onmouseover="this.style.borderColor=\'var(--accent)\'" onmouseout="this.style.borderColor=\'var(--border)\'">' + (l.icon || '🔗') + ' ' + esc(l.name) + ' →</a>';
+        linkHtml += '<a href="' + esc(l.url) + '" target="_blank" style="display:inline-flex;align-items:center;gap:4px;padding:6px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;text-decoration:none;color:var(--text);font-size:0.82rem;transition:border-color 0.15s;" onmouseover="this.style.borderColor=\'var(--accent)\'" onmouseout="this.style.borderColor=\'var(--border)\'">' + _ico(l.icon || 'link', 13) + ' ' + esc(l.name) + ' →</a>';
       });
       linkHtml += '</div></div>';
       statusEl.innerHTML += linkHtml;
