@@ -640,6 +640,29 @@ function renderMarketProfile(d) {
     h += '</div></div>';
   }
 
+  // Rate Matrix — bed/bath breakdown
+  var rateMatrix = _mktJson(p.rate_matrix_json, null);
+  if (rateMatrix && rateMatrix.entries && rateMatrix.entries.length > 0) {
+    h += '<div style="margin-top:12px;margin-bottom:12px;">';
+    h += '<div style="font-size:0.72rem;font-weight:600;color:var(--text2);margin-bottom:6px;">' + _ico('dollarSign', 13) + ' Rate Matrix <span style="color:var(--text3);font-weight:400;">(' + rateMatrix.total_listings + ' listings)</span></div>';
+    h += '<table style="width:100%;border-collapse:collapse;font-size:0.75rem;">';
+    h += '<thead><tr style="border-bottom:1px solid var(--border);"><th style="text-align:left;padding:4px 8px;color:var(--text3);font-weight:500;">Beds/Baths</th><th style="text-align:right;padding:4px 8px;color:var(--text3);font-weight:500;">Median</th><th style="text-align:right;padding:4px 8px;color:var(--text3);font-weight:500;">Range (p25-p75)</th><th style="text-align:right;padding:4px 8px;color:var(--text3);font-weight:500;">Listings</th></tr></thead><tbody>';
+    rateMatrix.entries.forEach(function(e) {
+      h += '<tr style="border-bottom:1px solid var(--border2);"><td style="padding:4px 8px;font-weight:600;">' + e.beds + 'BR / ' + e.baths + 'BA</td>';
+      h += '<td style="text-align:right;padding:4px 8px;font-family:DM Mono,monospace;color:var(--accent);font-weight:600;">$' + e.median + '</td>';
+      h += '<td style="text-align:right;padding:4px 8px;font-family:DM Mono,monospace;color:var(--text2);">$' + e.p25 + ' – $' + e.p75 + '</td>';
+      h += '<td style="text-align:right;padding:4px 8px;color:var(--text3);">' + e.count + '</td></tr>';
+    });
+    h += '</tbody></table>';
+    if (rateMatrix.increments && (rateMatrix.increments.per_bedroom || rateMatrix.increments.per_bathroom)) {
+      h += '<div style="margin-top:6px;font-size:0.72rem;color:var(--text3);">';
+      if (rateMatrix.increments.per_bedroom) h += _ico('plus', 11) + ' <strong>$' + rateMatrix.increments.per_bedroom + '</strong>/bedroom  ';
+      if (rateMatrix.increments.per_bathroom) h += _ico('plus', 11) + ' <strong>$' + rateMatrix.increments.per_bathroom + '</strong>/bathroom';
+      h += '</div>';
+    }
+    h += '</div>';
+  }
+
   // Top hosts in market
   var topHosts = d.top_hosts || [];
   if (topHosts.length > 0) {

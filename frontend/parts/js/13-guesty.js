@@ -609,7 +609,7 @@ function renderGuestyConnectionPanel() {
 
   if (d.configured && d.connected_at) {
     // Connected state
-    var syncAge = d.last_sync ? timeSince(new Date(d.last_sync)) : 'never';
+    var syncAge = d.last_sync ? timeSince(new Date(d.last_sync + (d.last_sync.includes('Z') ? '' : 'Z'))) : 'never';
     var tokenColor = d.token_valid ? 'var(--accent)' : '#f59e0b';
     var tokenLabel = d.token_valid ? '✓ Valid' :'' + _ico('alertTriangle', 13, '#f59e0b') + ' Expired (will auto-refresh)';
 

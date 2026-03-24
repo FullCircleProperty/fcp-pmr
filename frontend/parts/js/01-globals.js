@@ -628,6 +628,23 @@ function goBack() {
   _updateBackBtn();
 }
 
+async function refreshCurrentView() {
+  var btn = document.getElementById('refreshBtn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '↻ ...'; }
+  try {
+    // Reload core data
+    await loadProperties();
+    // Re-trigger current view's data load
+    var activeView = document.querySelector('.view.active');
+    var name = activeView ? activeView.id.replace('view-', '') : 'dashboard';
+    switchView(name);
+    toast('Data refreshed');
+  } catch (err) {
+    toast('Refresh failed: ' + err.message, 'error');
+  }
+  if (btn) { btn.disabled = false; btn.innerHTML = '↻ Refresh'; }
+}
+
 function switchView(name) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   const el = document.getElementById('view-' + name);
@@ -1473,6 +1490,9 @@ function toggleMobileMore() {
         { label: 'Integrations', icon: 'link', view: 'pms' },
         { label: 'Admin', icon: 'settings', view: 'admin' },
       ];
+      if (currentUser && currentUser.role === 'admin') {
+        items.splice(5, 0, { label: 'Marketing', icon: 'star', view: 'marketing' });
+      }
       grid.innerHTML = items.map(function(item) {
         return '<button class="more-item" onclick="switchView(\'' + item.view + '\');setMobileActive(null);toggleMobileMore()">' + _ico(item.icon, 18) + '<span>' + item.label + '</span></button>';
       }).join('');

@@ -234,7 +234,7 @@ async function callAIWithFallback(env, taskName, prompt, maxTokensMain, maxToken
       let text = null;
       const maxTok = provider === 'workers_ai' ? (maxTokensWorkers || 4000) : (maxTokensMain || 3000);
       if (provider === 'anthropic') {
-        const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' }, body: JSON.stringify({ model: 'claude-sonnet-4-5', max_tokens: maxTok, messages: [{ role: 'user', content: prompt }] }) });
+        const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' }, body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: maxTok, messages: [{ role: 'user', content: prompt }] }) });
         const d = await r.json();
         if (!r.ok) throw new Error('Anthropic ' + r.status + ': ' + (d?.error?.message || JSON.stringify(d).substring(0, 120)));
         text = d.content?.[0]?.text || null;
@@ -433,7 +433,7 @@ async function ensureSchema(env) {
     await env.DB.prepare(`CREATE TABLE IF NOT EXISTS market_seasonality (id INTEGER PRIMARY KEY AUTOINCREMENT, city TEXT NOT NULL, state TEXT NOT NULL, month_number INTEGER NOT NULL, avg_occupancy REAL, avg_adr REAL, multiplier REAL DEFAULT 1.0, sample_size INTEGER DEFAULT 0, updated_at TEXT DEFAULT (datetime('now')), UNIQUE(city, state, month_number))`).run();
     await env.DB.prepare(`CREATE TABLE IF NOT EXISTS market_profiles (id INTEGER PRIMARY KEY AUTOINCREMENT, city TEXT NOT NULL, state TEXT NOT NULL, str_listing_count INTEGER, str_avg_adr REAL, str_median_adr REAL, str_avg_occupancy REAL, str_avg_rating REAL, str_avg_reviews INTEGER, str_property_mix TEXT, str_bedroom_mix TEXT, str_price_bands TEXT, str_superhost_pct REAL, ltr_avg_rent REAL, ltr_median_rent REAL, ltr_active_listings INTEGER, your_property_count INTEGER, your_avg_adr REAL, your_avg_occupancy REAL, your_total_revenue REAL, your_avg_rating REAL, adr_trend_3mo REAL, listing_count_trend_3mo REAL, new_listings_30d INTEGER, peak_months TEXT, low_months TEXT, peak_multiplier REAL, ai_demand_drivers TEXT, ai_regulatory_notes TEXT, ai_investment_thesis TEXT, ai_competitive_position TEXT, ai_recommendations TEXT, ai_risk_factors TEXT, ai_enriched_at TEXT, demographics_json TEXT, demographics_updated_at TEXT, last_updated TEXT DEFAULT (datetime('now')), UNIQUE(city, state))`).run();
     // Migrate market_profiles: add demographics columns for existing DBs
-    try { const mpCols = await env.DB.prepare(`SELECT name FROM pragma_table_info('market_profiles')`).all(); const mpSet = new Set((mpCols.results || []).map(r => r.name)); if (!mpSet.has('demographics_json')) await env.DB.prepare(`ALTER TABLE market_profiles ADD COLUMN demographics_json TEXT`).run(); if (!mpSet.has('demographics_updated_at')) await env.DB.prepare(`ALTER TABLE market_profiles ADD COLUMN demographics_updated_at TEXT`).run(); if (!mpSet.has('str_top_hosts')) await env.DB.prepare(`ALTER TABLE market_profiles ADD COLUMN str_top_hosts TEXT`).run(); } catch {}
+    try { const mpCols = await env.DB.prepare(`SELECT name FROM pragma_table_info('market_profiles')`).all(); const mpSet = new Set((mpCols.results || []).map(r => r.name)); if (!mpSet.has('demographics_json')) await env.DB.prepare(`ALTER TABLE market_profiles ADD COLUMN demographics_json TEXT`).run(); if (!mpSet.has('demographics_updated_at')) await env.DB.prepare(`ALTER TABLE market_profiles ADD COLUMN demographics_updated_at TEXT`).run(); if (!mpSet.has('str_top_hosts')) await env.DB.prepare(`ALTER TABLE market_profiles ADD COLUMN str_top_hosts TEXT`).run(); if (!mpSet.has('rate_matrix_json')) await env.DB.prepare(`ALTER TABLE market_profiles ADD COLUMN rate_matrix_json TEXT`).run(); } catch {}
     // Guesty listing mapping
     await env.DB.prepare(`CREATE TABLE IF NOT EXISTS guesty_listings (id INTEGER PRIMARY KEY AUTOINCREMENT, guesty_listing_id TEXT UNIQUE, listing_name TEXT, listing_address TEXT, property_id INTEGER, auto_matched INTEGER DEFAULT 0, match_score REAL, created_at TEXT DEFAULT (datetime('now')))`).run();
     // Capital / one-time expenses
@@ -495,6 +495,7 @@ async function ensureSchema(env) {
       if (!glExisting.has('listing_thumbnail')) await env.DB.prepare(`ALTER TABLE guesty_listings ADD COLUMN listing_thumbnail TEXT`).run();
       if (!glExisting.has('listing_pictures_json')) await env.DB.prepare(`ALTER TABLE guesty_listings ADD COLUMN listing_pictures_json TEXT`).run();
       if (!glExisting.has('listing_description')) await env.DB.prepare(`ALTER TABLE guesty_listings ADD COLUMN listing_description TEXT`).run();
+      if (!glExisting.has('listing_amenities_json')) await env.DB.prepare(`ALTER TABLE guesty_listings ADD COLUMN listing_amenities_json TEXT`).run();
     } catch {}
     // Migrate guesty_reservations: add API-sourced columns
     try {
@@ -581,6 +582,7 @@ async function ensureSchema(env) {
       const ppCols = await env.DB.prepare(`SELECT name FROM pragma_table_info('property_platforms')`).all();
       const ppExisting = new Set((ppCols.results || []).map(c => c.name));
       if (!ppExisting.has('listing_name')) await env.DB.prepare(`ALTER TABLE property_platforms ADD COLUMN listing_name TEXT`).run();
+      if (!ppExisting.has('rate_source')) await env.DB.prepare(`ALTER TABLE property_platforms ADD COLUMN rate_source TEXT`).run();
       // Add platform_listing_name to properties table (shared name for all platforms)
       const propCols2 = await env.DB.prepare(`SELECT name FROM pragma_table_info('properties')`).all();
       const propExisting2 = new Set((propCols2.results || []).map(c => c.name));
@@ -1043,8 +1045,10 @@ export default {
       if (path === '/api/intelligence/market' && method === 'GET') return await getMarketIntelligence(url.searchParams, env);
       if (path === '/api/intelligence/channels' && method === 'GET') return await getChannelIntelligence(url.searchParams, env);
       if (path === '/api/intelligence/rebuild' && method === 'POST') return await rebuildIntelligence(request, env);
+      if (path === '/api/portfolio/full-refresh' && method === 'POST') return await fullPortfolioRefresh(request, env);
       if (path === '/api/intelligence/context' && method === 'GET') return await getIntelligenceContext(url.searchParams, env);
       if (path === '/api/intelligence/debug' && method === 'GET') return await getIntelligenceDebug(env);
+      if (path === '/api/intelligence/insights' && method === 'GET') return await getPortfolioInsights(env);
       if (path === '/api/guesty/debug-reservation' && method === 'GET') return await debugGuestyReservation(env, url.searchParams);
       if (path === '/api/guesty/debug-pets' && method === 'GET') {
         const stats = await env.DB.prepare(`SELECT 
@@ -2507,26 +2511,49 @@ async function fetchComparables(request, env, uid) {
       }
     }
 
-    // Use cached market data or regional estimates for LTR reference — no live RentCast call
-    let ltrReference = [];
-    try {
-      // Check for existing comps or cached market data
-      const cached = await env.DB.prepare(`SELECT median_daily_rate FROM market_snapshots WHERE LOWER(city) = LOWER(?) AND LOWER(state) = LOWER(?) ORDER BY snapshot_date DESC LIMIT 1`).bind(prop.city, prop.state).first();
-      if (cached && cached.median_daily_rate) ltrReference = [cached.median_daily_rate];
-    } catch {}
-    const ltrMedian = ltrReference.length > 0 ? ltrReference.sort((a, b) => a - b)[Math.floor(ltrReference.length / 2)] : 0;
+    // Use market profile STR data first (from real Airbnb crawl), then market_snapshots, then regional baselines
+    let estBase = 0;
     const strMult = getSTRMultiplier(prop.state, prop.city, prop.property_type);
 
-    // Generate STR estimates from LTR data or regional baselines
-    let estBase = 0;
-    if (ltrMedian > 0) {
-      estBase = Math.round((ltrMedian / 30) * strMult);
-      sources.push({ name: 'LTR Reference', status: 'ok', detail: ltrReference.length + ' area rents (median $' + ltrMedian + '/mo) → ~$' + estBase + '/nt STR equivalent (' + strMult.toFixed(1) + 'x multiplier)' });
-    } else {
+    // Source 1: Market profile STR median ADR (from crawled Airbnb data — most reliable)
+    let strSource = '';
+    try {
+      const mktProfile = await env.DB.prepare(
+        `SELECT str_median_adr, str_avg_adr, str_listing_count FROM market_profiles WHERE LOWER(city) = LOWER(?) AND LOWER(state) = LOWER(?)`
+      ).bind(prop.city, prop.state).first();
+      if (mktProfile && (mktProfile.str_median_adr > 0 || mktProfile.str_avg_adr > 0)) {
+        estBase = Math.round(mktProfile.str_median_adr || mktProfile.str_avg_adr);
+        strSource = 'Market profile: ' + (mktProfile.str_listing_count || 0) + ' STR listings, median $' + estBase + '/nt';
+        sources.push({ name: 'STR Market Data', status: 'ok', detail: strSource });
+      }
+    } catch {}
+
+    // Source 2: market_snapshots — but interpret value correctly (may be monthly rent or daily rate)
+    if (estBase === 0) {
+      try {
+        const cached = await env.DB.prepare(`SELECT median_daily_rate, data_source FROM market_snapshots WHERE LOWER(city) = LOWER(?) AND LOWER(state) = LOWER(?) ORDER BY snapshot_date DESC LIMIT 1`).bind(prop.city, prop.state).first();
+        if (cached && cached.median_daily_rate > 0) {
+          const val = cached.median_daily_rate;
+          // Values over $200 are almost certainly monthly rents (from RentCast/web scrape), divide by 30 and apply STR multiplier
+          // Values under $200 are likely already daily STR rates — use directly
+          if (val > 200) {
+            estBase = Math.round((val / 30) * strMult);
+            sources.push({ name: 'LTR Reference', status: 'ok', detail: 'Median $' + val + '/mo → ~$' + estBase + '/nt STR equivalent (' + strMult.toFixed(1) + 'x multiplier)' });
+          } else {
+            estBase = Math.round(val);
+            sources.push({ name: 'Market Snapshot', status: 'ok', detail: 'Median ADR $' + val + '/nt from ' + (cached.data_source || 'cache') });
+          }
+        }
+      } catch {}
+    }
+
+    // Source 3: Regional tier baselines (fallback)
+    if (estBase === 0) {
       const tier = getStateTier(prop.state);
       const tierRents = { premium: { 0:1800,1:2400,2:3200,3:4200,4:5500,5:7000,6:8500 }, high: { 0:1400,1:1900,2:2500,3:3300,4:4300,5:5500,6:6500 }, mid: { 0:1100,1:1500,2:2000,3:2600,4:3400,5:4200,6:5000 }, low: { 0:850,1:1100,2:1500,3:1900,4:2500,5:3100,6:3800 } };
       const baseRent = (tierRents[tier] || tierRents.mid)[Math.min(beds, 6)] || 2000;
       estBase = Math.round((baseRent / 30) * strMult);
+      sources.push({ name: 'Regional Baseline', status: 'info', detail: tier + ' tier, ' + beds + 'BR base $' + baseRent + '/mo → ~$' + estBase + '/nt' });
     }
 
     // Property adjustments
@@ -2727,7 +2754,7 @@ async function saveApiKey(request, env) {
 async function getAiStatus(env) {
   const status = {
     workers_ai: { available: !!env.AI, provider: 'Cloudflare Workers AI', model: '@cf/meta/llama-3.1-70b-instruct', cost: 'Free (included with Workers)' },
-    anthropic: { available: !!env.ANTHROPIC_API_KEY, provider: 'Anthropic', model: 'claude-sonnet-4-5', cost: 'Per-token billing' },  // env already hydrated from DB at request start
+    anthropic: { available: !!env.ANTHROPIC_API_KEY, provider: 'Anthropic', model: 'claude-sonnet-4-6', cost: 'Per-token billing' },  // env already hydrated from DB at request start
     openai: { available: !!env.OPENAI_API_KEY, provider: 'OpenAI', model: 'gpt-4o-mini', cost: 'Per-token billing' },
   };
   let usage = { total: 0, today: 0, last7d: 0, by_endpoint: {}, by_provider: {}, recent: [], errors: 0 };
@@ -3142,27 +3169,46 @@ async function analyzePricing(propertyId, request, env) {
 
   const all = [];
 
+  // Load market profile (has rate matrix)
+  let marketProfile = null;
+  try {
+    marketProfile = await env.DB.prepare(`SELECT rate_matrix_json FROM market_profiles WHERE LOWER(city) = LOWER(?) AND LOWER(state) = LOWER(?)`).bind(property.city, property.state).first();
+  } catch {}
+
   // STR strategies
   let aiError = null;
   if (analysisType === 'str' || analysisType === 'both') {
     // Inject actual avg stay into seasonData so algorithmic strategies can use it
   if (guestyAvgStay > 0 && seasonData.length > 0) { seasonData[0].avg_stay_length = guestyAvgStay; }
   else if (guestyAvgStay > 0) { seasonData = [{ avg_stay_length: guestyAvgStay }]; }
-  const strStrategies = generateAlgorithmicStrategies(property, amenities, marketData[0] || null, comparables, taxRate, plData, seasonData);
+  const strStrategies = generateAlgorithmicStrategies(property, amenities, marketData[0] || null, comparables, taxRate, plData, seasonData, marketProfile);
     all.push(...strStrategies);
     if (body.use_ai) {
       const qualityPref = body.quality || 'best'; // 'best' or 'economy'
       const aiProv = await pickAIProvider(env, 'pricing_analysis', qualityPref);
+      // Build rate matrix context for AI prompt
+      let rateMatrixCtx = '';
+      try {
+        if (marketProfile && marketProfile.rate_matrix_json) {
+          const rm = JSON.parse(marketProfile.rate_matrix_json);
+          if (rm.entries && rm.entries.length > 0) {
+            const lines = rm.entries.map(e => e.beds + 'BR/' + e.baths + 'BA: median $' + e.median + '/nt (p25-p75: $' + e.p25 + '-$' + e.p75 + ', ' + e.count + ' listings)').join('\n  ');
+            let inc = '';
+            if (rm.increments) { if (rm.increments.per_bedroom) inc += ' +$' + rm.increments.per_bedroom + '/bedroom'; if (rm.increments.per_bathroom) inc += ' +$' + rm.increments.per_bathroom + '/bathroom'; }
+            rateMatrixCtx = '\nRATE MATRIX (from ' + rm.total_listings + ' crawled listings in this market):\n  ' + lines + (inc ? '\n  Incremental value:' + inc : '') + '\n  USE THIS as your primary rate reference — it is derived from real market data.';
+          }
+        }
+      } catch {}
       if (!aiProv) {
         aiError = 'No AI provider available. Add an API key in Admin → API Keys or enable Workers AI.';
       } else {
-        const aiS = await generateAIStrategy(property, amenities, marketData[0], comparables, taxRate, aiProv, 'str', env, plData, platforms);
+        const aiS = await generateAIStrategy(property, amenities, marketData[0], comparables, taxRate, aiProv, 'str', env, plData, platforms, seasonData, rateMatrixCtx);
         if (aiS && !aiS.__ai_error) { aiS.ai_provider = aiProv; all.push(aiS); }
         else {
           aiError = 'AI call failed (' + aiProv + '): ' + (aiS?.__ai_error || 'empty response');
           // Auto-fallback to Workers AI if paid provider failed
           if (aiProv !== 'workers_ai' && env.AI) {
-            const aiSFb = await generateAIStrategy(property, amenities, marketData[0], comparables, taxRate, 'workers_ai', 'str', env, plData, platforms);
+            const aiSFb = await generateAIStrategy(property, amenities, marketData[0], comparables, taxRate, 'workers_ai', 'str', env, plData, platforms, seasonData, rateMatrixCtx);
             if (aiSFb && !aiSFb.__ai_error) { aiSFb.ai_provider = 'workers_ai'; all.push(aiSFb); aiError = aiError + ' — fell back to Workers AI (Llama).'; }
           }
         }
@@ -3231,11 +3277,36 @@ async function analyzePricing(propertyId, request, env) {
   return json({ property, amenities, market: marketData[0] || null, comparables_count: comparables.length, auto_fetch: autoFetchMsg, tax_rate: taxRate, strategies: all, analysis_type: analysisType, pricelabs: plData, platforms, sources, seasonality: seasonData, actuals: actualsData, ai_error: aiError || null });
 }
 
-function generateAlgorithmicStrategies(property, amenities, market, comparables, taxRate, plData, seasonData) {
+function generateAlgorithmicStrategies(property, amenities, market, comparables, taxRate, plData, seasonData, marketProfile) {
   const totalBoost = amenities.reduce((s, a) => s + (a.impact_score || 0), 0);
   const amenMult = 1 + (totalBoost / 100);
   const beds = Math.min(property.bedrooms || 1, 6);
   const baths = property.bathrooms || 1;
+
+  // ── Step 0: Score and sort comps by relevance (bed/bath similarity) ──
+  const scoredComps = comparables.map(c => {
+    let score = 0;
+    const cBeds = c.bedrooms || 0;
+    const cBaths = c.bathrooms || 0;
+    // Exact bed match = highest value
+    if (cBeds === beds) score += 50;
+    else if (Math.abs(cBeds - beds) === 1) score += 25;
+    else if (Math.abs(cBeds - beds) === 2) score += 5;
+    // Bath similarity
+    if (cBaths === baths) score += 20;
+    else if (Math.abs(cBaths - baths) <= 1) score += 10;
+    // Same property type
+    if (c.property_type && c.property_type === property.property_type) score += 15;
+    // Has rating = real listing not estimate
+    if (c.rating && c.rating > 0) score += 10;
+    // Has reviews = established listing
+    if (c.review_count && c.review_count > 5) score += 5;
+    return { ...c, _relevance: score };
+  }).sort((a, b) => b._relevance - a._relevance);
+
+  // Use top-relevance comps for rate derivation (exact/near bed match preferred)
+  const nearComps = scoredComps.filter(c => c._relevance >= 25); // at least ±1 bed match
+  const bestComps = nearComps.length >= 3 ? nearComps : scoredComps; // fallback to all if too few near matches
 
   // ── Step 1: Determine base nightly rate — PriceLabs first, then derive from comps ──
   let nightlyBase = 0;
@@ -3251,19 +3322,58 @@ function generateAlgorithmicStrategies(property, amenities, market, comparables,
     nightlyBase = Math.round(plData.base_price);
     rateSource = 'PriceLabs base price $' + nightlyBase + '/nt';
   }
-  // Priority 3: STR comps (rates under $1000 are nightly)
+  // Priority 2.5: Rate matrix — data-driven bed/bath rate from crawl data
+  if (nightlyBase === 0 && marketProfile && marketProfile.rate_matrix_json) {
+    try {
+      const rm = JSON.parse(marketProfile.rate_matrix_json);
+      if (rm.entries && rm.entries.length > 0) {
+        // Look for exact bed/bath match first
+        const exact = rm.entries.find(e => e.beds === beds && e.baths === baths && e.count >= 2);
+        if (exact) {
+          nightlyBase = exact.median;
+          rateSource = 'Rate matrix: ' + beds + 'BR/' + baths + 'BA median $' + exact.median + '/nt (' + exact.count + ' listings, p25-p75: $' + exact.p25 + '-$' + exact.p75 + ')';
+        } else {
+          // Try same bed count, any bath
+          const sameBed = rm.entries.filter(e => e.beds === beds && e.count >= 2);
+          if (sameBed.length > 0) {
+            const closest = sameBed.reduce((a, b) => Math.abs(a.baths - baths) < Math.abs(b.baths - baths) ? a : b);
+            let rate = closest.median;
+            // Adjust for bath difference using increment if available
+            if (rm.increments && rm.increments.per_bathroom && closest.baths !== baths) {
+              rate = Math.round(rate + (baths - closest.baths) * rm.increments.per_bathroom);
+            }
+            nightlyBase = rate;
+            rateSource = 'Rate matrix: ' + beds + 'BR adj from ' + closest.beds + 'BR/' + closest.baths + 'BA $' + closest.median + '/nt (' + closest.count + ' listings)';
+          } else if (rm.increments && rm.increments.per_bedroom) {
+            // No same-bed entries — find nearest and adjust
+            const nearest = rm.entries.filter(e => e.count >= 2).reduce((a, b) => Math.abs(a.beds - beds) < Math.abs(b.beds - beds) ? a : b, rm.entries[0]);
+            if (nearest) {
+              const bedDiff = beds - nearest.beds;
+              const bathDiff = baths - (nearest.baths || 1);
+              let rate = nearest.median + bedDiff * rm.increments.per_bedroom;
+              if (rm.increments.per_bathroom) rate += bathDiff * rm.increments.per_bathroom;
+              nightlyBase = Math.round(Math.max(rate, 50));
+              rateSource = 'Rate matrix: derived from ' + nearest.beds + 'BR $' + nearest.median + '/nt + $' + rm.increments.per_bedroom + '/bedroom';
+            }
+          }
+        }
+      }
+    } catch {}
+  }
+  // Priority 3: STR comps — prefer bed/bath-matched comps
   if (nightlyBase === 0) {
-    const compRates = comparables.map(c => c.nightly_rate || 0).filter(r => r > 30);
+    const compRates = bestComps.map(c => c.nightly_rate || 0).filter(r => r > 30);
     const strComps = compRates.filter(r => r < 1000);
     if (strComps.length >= 2) {
       const sorted = strComps.slice().sort((a, b) => a - b);
       nightlyBase = sorted[Math.floor(sorted.length / 2)];
-      rateSource = strComps.length + ' STR comps (median $' + nightlyBase + '/nt)';
+      const matchedCount = nearComps.filter(c => (c.nightly_rate || 0) > 30 && (c.nightly_rate || 0) < 1000).length;
+      rateSource = strComps.length + ' STR comps (median $' + nightlyBase + '/nt' + (matchedCount >= 2 ? ', ' + matchedCount + ' bed-matched' : '') + ')';
     }
   }
   // Priority 4: Derive from LTR comps
   if (nightlyBase === 0) {
-    const compRates = comparables.map(c => c.nightly_rate || 0).filter(r => r > 30);
+    const compRates = bestComps.map(c => c.nightly_rate || 0).filter(r => r > 30);
     const ltrComps = compRates.filter(r => r >= 1000);
     let monthlyRent = 0;
     if (ltrComps.length >= 2) {
@@ -3590,7 +3700,7 @@ async function autoAnalyzeProperties(env) {
     message: succeeded + ' of ' + candidates.length + ' properties auto-analyzed' };
 }
 
-async function generateAIStrategy(property, amenities, market, comparables, taxRate, provider, mode, env, plData, platforms, seasonData) {
+async function generateAIStrategy(property, amenities, market, comparables, taxRate, provider, mode, env, plData, platforms, seasonData, rateMatrixContext) {
   const modeLabel = mode === 'ltr' ? 'long-term rental (LTR)' : 'short-term vacation rental (STR)';
 
   const utilities = (property.expense_electric || 0) + (property.expense_gas || 0) + (property.expense_water || 0) + (property.expense_internet || 0) + (property.expense_trash || 0) + (property.expense_other || 0);
@@ -3688,7 +3798,17 @@ AMENITIES (${amenities.length}): ${amenities.map(a => a.name + ' (+' + (a.impact
 
 MARKET: ${market ? 'Avg $' + (market.avg_daily_rate || '?') + '/nt | Median $' + (market.median_daily_rate || '?') + '/nt | Avg occ ' + (market.avg_occupancy ? Math.round(market.avg_occupancy * 100) + '%' : '?') + ' | ' + (market.active_listings || '?') + ' active listings' : 'No market data'}
 
-COMPS (${comparables.length}): ${comparables.slice(0, 12).map(c => (c.source || '') + ' ' + (c.bedrooms || '?') + 'BR $' + (c.nightly_rate || 0) + (c.comp_type === 'ltr' ? '/mo' : '/nt') + (c.rating ? ' ' + c.rating + '★' : '') + (c.occupancy_pct ? ' ' + Math.round(c.occupancy_pct * 100) + '%occ' : '')).join(' | ') || 'None'}
+COMPS (${comparables.length}): ${(() => {
+  const propBeds = property.bedrooms || 1;
+  const scored = comparables.map(c => {
+    const cBeds = c.bedrooms || 0;
+    const match = cBeds === propBeds ? '★MATCH' : Math.abs(cBeds - propBeds) === 1 ? '~near' : '';
+    return { c, match, dist: Math.abs(cBeds - propBeds) };
+  }).sort((a, b) => a.dist - b.dist);
+  return scored.slice(0, 14).map(({ c, match }) => (match ? '[' + match + '] ' : '') + (c.source || '') + ' ' + (c.bedrooms || '?') + 'BR/' + (c.bathrooms || '?') + 'BA $' + (c.nightly_rate || 0) + (c.comp_type === 'ltr' ? '/mo' : '/nt') + (c.rating ? ' ' + c.rating + '★' : '') + (c.occupancy_pct ? ' ' + Math.round(c.occupancy_pct * 100) + '%occ' : '')).join(' | ') || 'None';
+})()}
+COMP GUIDANCE: Weight ★MATCH comps (same bedroom count) most heavily for pricing. ~near comps (±1 bed) are secondary reference. Ignore mismatched comps unless no matches exist.
+${rateMatrixContext || ''}
 ${plContext}${platContext}${seasonContext ? '\n' + seasonContext : ''}
 ${plCustomizationsContext}
 ${guestyContext ? guestyContext : ''}
@@ -3723,7 +3843,7 @@ Respond ONLY with JSON (no markdown, no backticks):
   try {
     if (provider === 'anthropic') {
       const k = env.ANTHROPIC_API_KEY; if (!k) throw new Error('ANTHROPIC_API_KEY not set');
-      const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': k, 'anthropic-version': '2023-06-01' }, body: JSON.stringify({ model: 'claude-sonnet-4-5', max_tokens: 2500, messages: [{ role: 'user', content: prompt }] }) });
+      const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': k, 'anthropic-version': '2023-06-01' }, body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 2500, messages: [{ role: 'user', content: prompt }] }) });
       const rj = await r.json();
       if (!r.ok) throw new Error('Anthropic API ' + r.status + ': ' + (rj?.error?.message || JSON.stringify(rj).substring(0, 120)));
       aiResponse = rj.content?.[0]?.text;
@@ -3989,35 +4109,125 @@ Generate a COMPREHENSIVE PriceLabs pricing strategy. Respond ONLY with JSON (no 
 
   // Parse response - robust extraction
   let strategy = null;
-  try {
-    let jsonStr = aiResponse;
-    // Strip any backtick fences (1, 2, or 3 backticks, with or without 'json' label)
-    jsonStr = jsonStr.replace(/`{1,3}json\s*/gi, '').replace(/`{1,3}\s*/g, '');
+  let parseError = null;
+
+  function tryParse(str) {
+    try { return JSON.parse(str); } catch (e) { return e; }
+  }
+
+  function extractAndClean(raw) {
+    let s = raw;
+    // Strip backtick fences
+    s = s.replace(/`{1,3}json\s*/gi, '').replace(/`{1,3}\s*/g, '');
     // Find outermost JSON object
-    const firstBrace = jsonStr.indexOf('{');
-    const lastBrace = jsonStr.lastIndexOf('}');
-    if (firstBrace >= 0 && lastBrace > firstBrace) jsonStr = jsonStr.substring(firstBrace, lastBrace + 1);
-    // Clean common JSON issues
-    jsonStr = jsonStr.replace(/,\s*}/g, '}').replace(/,\s*]/g, ']');
-    // Remove control characters except newlines
-    jsonStr = jsonStr.replace(/[\x00-\x09\x0b\x0c\x0e-\x1f\x7f]/g, ' ');
-    try { strategy = JSON.parse(jsonStr); } catch {
-      // Try fixing common issues: unescaped quotes in values, trailing commas
-      jsonStr = jsonStr.replace(/,\s*([}\]])/g, '$1').replace(/\t/g, ' ');
-      try { strategy = JSON.parse(jsonStr); } catch {
-        // Last resort: try to fix unescaped newlines in string values
-        jsonStr = jsonStr.replace(/\n/g, '\\n').replace(/\r/g, '');
-        try { strategy = JSON.parse(jsonStr); } catch {}
+    const fb = s.indexOf('{'), lb = s.lastIndexOf('}');
+    if (fb >= 0 && lb > fb) s = s.substring(fb, lb + 1);
+    // Remove control characters (keep newlines for structure)
+    s = s.replace(/[\x00-\x09\x0b\x0c\x0e-\x1f\x7f]/g, ' ');
+    // Fix trailing commas
+    s = s.replace(/,\s*}/g, '}').replace(/,\s*\]/g, ']');
+    return s;
+  }
+
+  try {
+    let jsonStr = extractAndClean(aiResponse);
+
+    // Attempt 1: direct parse
+    let result = tryParse(jsonStr);
+    if (!(result instanceof Error)) { strategy = result; }
+    else {
+      parseError = 'attempt1: ' + result.message;
+
+      // Attempt 2: fix unescaped quotes inside string values
+      // Strategy: walk through and escape quotes that appear inside string values
+      // The most common issue is quotes inside array strings like: ["Set base to $165 ("above market")"]
+      // Fix by replacing inner quotes with escaped quotes
+      let fixed = jsonStr;
+      // Fix unescaped quotes inside array string elements: find patterns like "text "inner" text"
+      // Replace double-quote pairs that aren't at key/value boundaries
+      fixed = fixed.replace(/"([^"]*)":\s*"((?:[^"\\]|\\.)*)"/g, function(match) { return match; }); // preserve key-value pairs
+      // More aggressive: try to fix by escaping quotes between [ ] that break array elements
+      fixed = fixed.replace(/\[([^\]]*)\]/g, function(match, inner) {
+        // Inside arrays, fix unescaped quotes within string elements
+        return '[' + inner.replace(/"([^"]*?)"\s*(?=[,\]])/g, function(m, content) {
+          // Escape any unescaped inner quotes
+          return '"' + content.replace(/(?<!\\)"/g, '\\"') + '"';
+        }) + ']';
+      });
+      fixed = fixed.replace(/,\s*}/g, '}').replace(/,\s*\]/g, ']');
+
+      result = tryParse(fixed);
+      if (!(result instanceof Error)) { strategy = result; }
+      else {
+        parseError += ' | attempt2: ' + result.message;
+
+        // Attempt 3: nuclear option — extract key numeric fields with regex
+        // If we can get base_price, projected values, etc., build a partial strategy
+        try {
+          const extract = (key) => {
+            const m = jsonStr.match(new RegExp('"' + key + '"\\s*:\\s*([\\d.]+)'));
+            return m ? parseFloat(m[1]) : null;
+          };
+          const extractStr = (key) => {
+            const m = jsonStr.match(new RegExp('"' + key + '"\\s*:\\s*"([^"]{1,500})"'));
+            return m ? m[1] : null;
+          };
+          const extractArr = (key) => {
+            const m = jsonStr.match(new RegExp('"' + key + '"\\s*:\\s*\\[([^\\]]{1,1000})\\]'));
+            if (!m) return [];
+            return m[1].split(',').map(s => s.trim().replace(/^"|"$/g, '')).filter(s => s.length > 0);
+          };
+
+          const bp = extract('base_price') || extract('base_nightly_rate');
+          if (bp && bp > 0) {
+            strategy = {
+              base_price: bp,
+              min_price: extract('min_price'),
+              max_price: extract('max_price'),
+              cleaning_fee: extract('cleaning_fee'),
+              weekend_adjustment: extract('weekend_adjustment'),
+              pet_fee: extract('pet_fee'),
+              extra_guest_fee: extract('extra_guest_fee'),
+              min_nights_weekday: extract('min_nights_weekday'),
+              min_nights_weekend: extract('min_nights_weekend'),
+              weekly_discount_pct: extract('weekly_discount_pct'),
+              monthly_discount_pct: extract('monthly_discount_pct'),
+              last_minute_discount_pct: extract('last_minute_discount_pct'),
+              early_bird_discount_pct: extract('early_bird_discount_pct'),
+              orphan_day_discount_pct: extract('orphan_day_discount_pct'),
+              projected_occupancy: extract('projected_occupancy'),
+              projected_monthly_revenue: extract('projected_monthly_revenue'),
+              projected_annual_revenue: extract('projected_annual_revenue'),
+              breakeven_occupancy: extract('breakeven_occupancy'),
+              peak_season_markup_pct: extract('peak_season_markup_pct'),
+              low_season_discount_pct: extract('low_season_discount_pct'),
+              strategy_summary: extractStr('strategy_summary') || extractStr('cleaning_fee_reasoning') || 'Strategy extracted from partial AI response',
+              cleaning_fee_reasoning: extractStr('cleaning_fee_reasoning'),
+              key_recommendations: extractArr('key_recommendations'),
+              risks: extractArr('risks'),
+              peak_season_months: extractArr('peak_season_months'),
+              low_season_months: extractArr('low_season_months'),
+              pricelabs_setup_steps: extractArr('pricelabs_setup_steps'),
+              _partial_parse: true,
+            };
+            parseError += ' | attempt3: regex extraction succeeded (partial)';
+          } else {
+            parseError += ' | attempt3: regex extraction failed — no base_price found';
+          }
+        } catch (e3) {
+          parseError += ' | attempt3: ' + e3.message;
+        }
       }
     }
-  } catch {}
+  } catch (e) { parseError = 'outer: ' + e.message; }
 
   if (!strategy) {
-    // All parsing attempts failed — return raw text as fallback
+    // Log the failure so we can diagnose
+    syslog(env, 'error', 'generateAIStrategy', 'JSON parse failed: ' + (parseError || 'unknown'), aiResponse.substring(0, 500), property.id);
     return json({
       strategy: { strategy_summary: aiResponse.substring(0, 2000), key_recommendations: ['AI response could not be parsed into structured data — see summary above'], raw: true },
       property: { id: property.id, address: property.address, city: property.city, state: property.state },
-      context: { provider, parse_error: true },
+      context: { provider, parse_error: true, parse_detail: parseError },
     });
   }
 
@@ -5282,13 +5492,33 @@ async function scrapePlatformPricing(propId, env, uid) {
       if (scraped) {
         const sets = [];
         const vals = [];
-        if (scraped.nightly_rate && scraped.nightly_rate > 0) { sets.push('nightly_rate = ?'); vals.push(scraped.nightly_rate); }
-        if (scraped.cleaning_fee !== undefined && scraped.cleaning_fee !== null) { sets.push('cleaning_fee = ?'); vals.push(scraped.cleaning_fee); }
+        // Determine rate source reliability
+        const src = scraped.raw_data?.source || 'unknown';
+        const isLiveRate = src.includes('airbnb_property') || src.includes('direct_html');
+        const isEstimate = src.includes('google');
+        const isManual = plat.rate_source === 'manual';
+        const rateSource = isLiveRate ? 'live' : isEstimate ? 'estimate' : 'scraped';
+        // Rate storage rules:
+        // - NEVER overwrite manual rates (user entered the real number)
+        // - Live API rates always stored (most accurate)
+        // - Estimate rates (Google snippets) NEVER stored — too unreliable
+        if (scraped.nightly_rate && scraped.nightly_rate > 0 && !isManual) {
+          if (isLiveRate) {
+            sets.push('nightly_rate = ?'); vals.push(scraped.nightly_rate);
+            sets.push('rate_source = ?'); vals.push('live');
+          }
+          // Estimates: don't store rate, don't change rate_source
+        }
+        if (scraped.cleaning_fee !== undefined && scraped.cleaning_fee !== null && isLiveRate && !isManual) { sets.push('cleaning_fee = ?'); vals.push(scraped.cleaning_fee); }
+        // Rating and reviews from any source — Google gets these right
         if (scraped.rating) { sets.push('rating = ?'); vals.push(scraped.rating); }
         if (scraped.review_count) { sets.push('review_count = ?'); vals.push(scraped.review_count); }
         if (scraped.min_nights) { sets.push('min_nights = ?'); vals.push(scraped.min_nights); }
         if (scraped.raw_data) { sets.push('raw_data = ?'); vals.push(JSON.stringify(scraped.raw_data)); }
-        sets.push("last_scraped = datetime('now')");
+        // Only update rate_source if we actually stored a rate
+        if (!isManual && !sets.some(s => s.startsWith('rate_source'))) {
+          // Don't change rate_source if we didn't update the rate
+        }        sets.push("last_scraped = datetime('now')");
         sets.push("updated_at = datetime('now')");
         vals.push(plat.id);
         await env.DB.prepare(`UPDATE property_platforms SET ${sets.join(', ')} WHERE id = ?`).bind(...vals).run();
@@ -5296,7 +5526,7 @@ async function scrapePlatformPricing(propId, env, uid) {
         if (scraped.image_url) {
           try { await env.DB.prepare(`UPDATE properties SET image_url = ? WHERE id = ? AND (image_url IS NULL OR image_url = '')`).bind(scraped.image_url, propId).run(); } catch {}
         }
-        results.push({ platform: plat.platform, status: 'ok', nightly_rate: scraped.nightly_rate, rating: scraped.rating, review_count: scraped.review_count, source: scraped.raw_data?.source, image_url: scraped.image_url });
+        results.push({ platform: plat.platform, status: 'ok', nightly_rate: scraped.nightly_rate, rating: scraped.rating, review_count: scraped.review_count, source: scraped.raw_data?.source, rate_source: rateSource, image_url: scraped.image_url });
       } else {
         results.push({ platform: plat.platform, status: 'no_data', detail: 'Could not extract pricing data. Ensure URL is correct.' });
       }
@@ -5620,11 +5850,11 @@ async function searchPlatformListings(propId, env, uid) {
         const vrboData = await vrboResp.json();
         const results = vrboData.organic_results || [];
         for (const r of results.slice(0, 3)) {
-          if (r.link && r.link.includes('vrbo.com')) {
+          if (r.link && r.link.includes('vrbo.com') && !r.link.includes('/search') && !r.link.includes('searchresults')) {
             found.push({
               platform: 'vrbo',
               title: r.title || 'VRBO listing',
-              listing_url: r.link,
+              listing_url: r.link.split('?')[0],
               nightly_rate: null,
               image_url: r.thumbnail || r.favicon || null,
             });
@@ -5647,11 +5877,13 @@ async function searchPlatformListings(propId, env, uid) {
         const bkData = await bkResp.json();
         const results = bkData.organic_results || [];
         for (const r of results.slice(0, 3)) {
-          if (r.link && r.link.includes('booking.com')) {
+          if (r.link && r.link.includes('booking.com') && (r.link.includes('/hotel/') || r.link.includes('/apartment/') || r.link.includes('/villa/'))) {
+            // Strip query params that might redirect to search — keep clean property URL
+            const bkCleanUrl = r.link.split('?')[0].replace(/\.html.*/, '.html');
             found.push({
               platform: 'booking',
               title: r.title || 'Booking.com listing',
-              listing_url: r.link,
+              listing_url: bkCleanUrl,
               nightly_rate: null,
               image_url: r.thumbnail || r.favicon || null,
             });
@@ -5817,134 +6049,109 @@ async function scrapePlatformListing(url, platform, nights, guests, env, checkin
     }
   }
 
-  // ── VRBO: Fetch page directly with date params ──
-  // URL format: https://www.vrbo.com/{listingId}?chkin=YYYY-MM-DD&chkout=YYYY-MM-DD&adults=N
-  // Pets: add &pets=1 if applicable. Strip any existing query params from stored URL first.
-  if (platform === 'vrbo') {
+  // ── VRBO: Use SearchAPI google engine to get pricing from Google's rich results ──
+  if (platform === 'vrbo' && env.SEARCHAPI_KEY) {
     try {
-      const vrboBase = url.split('?')[0].replace(/\/+$/, ''); // strip existing params & trailing slash
-      const vrboParams = new URLSearchParams({
-        chkin: cin,
-        chkout: cout,
-        adults: String(guests || 2),
-      });
-      if (pets > 0) vrboParams.set('pets', String(pets));
-      const vrboUrl = vrboBase + '?' + vrboParams.toString();
-      const resp = await fetch(vrboUrl, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', 'Accept': 'text/html,application/xhtml+xml', 'Accept-Language': 'en-US,en;q=0.9', 'Referer': 'https://www.vrbo.com/' },
-        redirect: 'follow'
+      await trackApiCall(env, 'searchapi', 'scrape_vrbo', true);
+      // Extract VRBO listing ID for targeted search
+      const vrboIdMatch = url.match(/vrbo\.com\/(\d+)|vrbo\.com\/([a-zA-Z0-9-]+)/);
+      const vrboSearchQ = vrboIdMatch ? 'vrbo.com ' + (vrboIdMatch[1] || vrboIdMatch[2]) + ' price per night' : url + ' price per night';
+      const params = new URLSearchParams({ engine: 'google', q: vrboSearchQ });
+      const resp = await fetch('https://www.searchapi.io/api/v1/search?' + params.toString(), {
+        headers: { 'Authorization': 'Bearer ' + env.SEARCHAPI_KEY, 'Accept': 'application/json' }
       });
       if (resp.ok) {
-        const html = await resp.text();
+        const data = await resp.json();
         const result = {};
-        // Extract og:image (universal across all platforms)
-        const ogImg = html.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i) || html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:image["']/i);
-        if (ogImg) result.image_url = ogImg[1];
-        // VRBO shows "X.X out of 10" or "X.Xout of 10"
-        const ratingMatch = html.match(/(\d\.\d)\s*out of 10/i) || html.match(/"ratingValue":\s*"?(\d\.\d+)"?/);
-        if (ratingMatch) result.rating = Math.round(parseFloat(ratingMatch[1]) / 2 * 10) / 10; // Convert /10 to /5
-        // Review count: "X external reviews" or "X reviews"  
-        const revMatch = html.match(/(\d+)\s*(?:external\s+)?reviews?/i) || html.match(/"reviewCount":\s*"?(\d+)"?/);
-        if (revMatch) result.review_count = parseInt(revMatch[1]);
-        // Bedrooms/bathrooms/sleeps from page text
-        const bedsMatch = html.match(/(\d+)\s*bedroom/i);
-        const bathMatch = html.match(/(\d+)\s*bathroom/i);
-        const sleepsMatch = html.match(/Sleeps\s*(\d+)/i);
-        const sqftMatch = html.match(/([\d,]+)\s*sq\s*ft/i);
-        if (bedsMatch) result.bedrooms = parseInt(bedsMatch[1]);
-        if (bathMatch) result.bathrooms = parseInt(bathMatch[1]);
-        if (sleepsMatch) result.sleeps = parseInt(sleepsMatch[1]);
-        if (sqftMatch) result.sqft = parseInt(sqftMatch[1].replace(/,/g, ''));
-        // Price patterns — with date params, VRBO shows per-night rate prominently
-        // Also try to extract cleaning fee and total from the price breakdown
-        const pricePatterns = [
-          /\$(\d{2,4})\/night/i,
-          /\$(\d{2,4})\s*per\s*night/i,
-          /"price":\s*"?\$?(\d{2,4})"?/i,
-          /"amount":\s*(\d{4,6})[,}]/,   // cents: 18500 = $185
-          /avg.*?\$(\d{2,4})/i,
-          /"unitPrice":\s*(\d{2,4})/i,
-          /data-nightly[^>]*>\$([\d,]+)/i,
-        ];
-        for (const pat of pricePatterns) {
-          const m = html.match(pat);
-          if (m) {
-            let v = parseInt(m[1].replace(/,/g, ''));
-            // If value looks like cents (>10000 and no decimal context), convert
-            if (v > 10000 && pat.source.includes('amount')) v = Math.round(v / 100);
-            if (v > 0 && v < 5000) { result.nightly_rate = v; break; }
-          }
+        // Check knowledge graph
+        if (data.knowledge_graph) {
+          const kg = data.knowledge_graph;
+          if (kg.price) { const pm = String(kg.price).match(/(\d[\d,]*)/); if (pm) result.nightly_rate = parseInt(pm[1].replace(/,/g, '')); }
+          if (kg.rating) result.rating = parseFloat(kg.rating) > 5 ? Math.round(parseFloat(kg.rating) / 2 * 10) / 10 : parseFloat(kg.rating);
+          if (kg.reviews) result.review_count = parseInt(String(kg.reviews).replace(/[^\d]/g, ''));
+          if (kg.image) result.image_url = kg.image;
         }
-        // Try to extract cleaning fee
-        const cleanPatterns = [
-          /cleaning\s*fee[^\d$]*\$([\d,]+)/i,
-          /"cleaningFee":\s*(\d{2,6})/i,
-          /cleaning[^<]*\$(\d{2,4})/i,
-        ];
-        for (const pat of cleanPatterns) {
-          const m = html.match(pat);
-          if (m) {
-            let v = parseInt(m[1].replace(/,/g, ''));
-            if (v > 1000 && pat.source.includes('Fee')) v = Math.round(v / 100); // cents
-            if (v > 0 && v < 2000) { result.cleaning_fee = v; break; }
+        // Check organic results for the actual VRBO listing
+        for (const r of (data.organic_results || []).slice(0, 3)) {
+          const snippet = (r.snippet || '') + ' ' + (r.title || '');
+          if (!result.nightly_rate) {
+            const pm = snippet.match(/\$(\d{2,4})\s*(?:\/|per)\s*night/i) || snippet.match(/from\s*\$(\d{2,4})/i) || snippet.match(/\$(\d{2,4})\s*avg/i);
+            if (pm) result.nightly_rate = parseInt(pm[1]);
           }
+          if (!result.rating) {
+            const rm = snippet.match(/(\d\.\d)\s*(?:out of\s*\d|\/\s*\d|stars?|★)/i);
+            if (rm) { const rv = parseFloat(rm[1]); result.rating = rv > 5 ? Math.round(rv / 2 * 10) / 10 : rv; }
+          }
+          if (!result.review_count) {
+            const revm = snippet.match(/(\d{1,5})\s*reviews?/i);
+            if (revm) result.review_count = parseInt(revm[1]);
+          }
+          // Rich snippet rating
+          if (r.rich_snippet?.top?.extensions) {
+            for (const ext of r.rich_snippet.top.extensions) {
+              if (!result.rating && ext.match(/[\d.]+/)) { const rv = parseFloat(ext.match(/([\d.]+)/)[1]); if (rv > 0 && rv <= 10) result.rating = rv > 5 ? Math.round(rv / 2 * 10) / 10 : rv; }
+            }
+          }
+          if (r.rich_snippet?.top?.detected_extensions?.rating) result.rating = result.rating || (r.rich_snippet.top.detected_extensions.rating > 5 ? Math.round(r.rich_snippet.top.detected_extensions.rating / 2 * 10) / 10 : r.rich_snippet.top.detected_extensions.rating);
+          if (r.rich_snippet?.top?.detected_extensions?.reviews) result.review_count = result.review_count || r.rich_snippet.top.detected_extensions.reviews;
         }
-        if (result.rating || result.review_count || result.nightly_rate) {
-          result.raw_data = { source: 'vrbo_html', fetched: new Date().toISOString(), url_used: vrboUrl };
+        if (result.nightly_rate || result.rating || result.review_count) {
+          result.raw_data = { source: 'searchapi_google_vrbo', fetched: new Date().toISOString() };
           return result;
         }
       }
     } catch (e) { /* fall through */ }
   }
 
-  // ── Booking.com: Append check-in/out + guest params, then try direct fetch ──
-  // URL format: ...?checkin=YYYY-MM-DD&checkout=YYYY-MM-DD&group_adults=N&no_rooms=1
-  if (platform === 'booking') {
+  // ── Booking.com: Use SearchAPI google engine to get pricing from search results ──
+  if (platform === 'booking' && env.SEARCHAPI_KEY) {
     try {
-      const bkBase = url.split('?')[0];
-      const bkParams = new URLSearchParams({
-        checkin: cin,
-        checkout: cout,
-        group_adults: String(guests || 2),
-        no_rooms: '1',
-        selected_currency: 'USD',
-      });
-      if (pets > 0) bkParams.set('group_children', '0'); // Booking uses different pet param — note in raw_data
-      const bkUrl = bkBase + '?' + bkParams.toString();
-      const resp = await fetch(bkUrl, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', 'Accept': 'text/html', 'Accept-Language': 'en-US,en;q=0.9', 'Referer': 'https://www.booking.com/' },
-        redirect: 'follow'
+      await trackApiCall(env, 'searchapi', 'scrape_booking', true);
+      // Extract hotel name/ID from URL for targeted search
+      const bkSlug = url.split('?')[0].replace(/^.*booking\.com\/hotel\/[a-z]{2}\//, '').replace(/\.html.*$/, '').replace(/-/g, ' ');
+      const bkSearchQ = bkSlug ? 'booking.com ' + bkSlug + ' price per night reviews' : url + ' price per night';
+      const params = new URLSearchParams({ engine: 'google', q: bkSearchQ });
+      const resp = await fetch('https://www.searchapi.io/api/v1/search?' + params.toString(), {
+        headers: { 'Authorization': 'Bearer ' + env.SEARCHAPI_KEY, 'Accept': 'application/json' }
       });
       if (resp.ok) {
-        const html = await resp.text();
-        // Only parse if we got actual content (not CAPTCHA)
-        if (html.length > 5000 && !html.includes('verify that you')) {
-          const result = {};
-          // Extract og:image
-          const ogImg = html.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i) || html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:image["']/i);
-          if (ogImg) result.image_url = ogImg[1];
-          // With dates, Booking shows actual nightly rate
-          const bkPricePatterns = [
-            /\$(\d{2,4})\s*(?:\/|per)\s*night/i,
-            /USD\s*([\d,]+)\s*per\s*night/i,
-            /"price":\s*"?([\d.]+)"?/,
-            /\$\s*(\d{2,4})/i,
-          ];
-          for (const bkPat of bkPricePatterns) {
-            const bkM = html.match(bkPat);
-            if (bkM) { result.nightly_rate = parseInt(bkM[1].replace(/,/g, '')); break; }
+        const data = await resp.json();
+        const result = {};
+        // Check knowledge graph / hotel info
+        if (data.knowledge_graph) {
+          const kg = data.knowledge_graph;
+          if (kg.price) { const pm = String(kg.price).match(/(\d[\d,]*)/); if (pm) result.nightly_rate = parseInt(pm[1].replace(/,/g, '')); }
+          if (kg.rating) { const rv = parseFloat(kg.rating); result.rating = rv > 5 ? Math.round(rv / 2 * 10) / 10 : rv; }
+          if (kg.reviews) result.review_count = parseInt(String(kg.reviews).replace(/[^\d]/g, ''));
+          if (kg.image) result.image_url = kg.image;
+        }
+        // Check hotel prices panel if present
+        if (data.hotel_prices) {
+          for (const hp of (Array.isArray(data.hotel_prices) ? data.hotel_prices : [data.hotel_prices])) {
+            if (hp.rate || hp.price) { const rv = hp.rate || hp.price; if (typeof rv === 'number') result.nightly_rate = result.nightly_rate || Math.round(rv); }
           }
-          const ratingMatch = html.match(/(\d\.\d)\s*(?:\/\s*10|out of 10)/i) || html.match(/"ratingValue":\s*"?(\d\.\d+)"?/);
-          if (ratingMatch) {
-            const raw = parseFloat(ratingMatch[1]);
-            result.rating = raw > 5 ? Math.round(raw / 2 * 10) / 10 : raw; // Booking uses /10
+        }
+        // Check organic results
+        for (const r of (data.organic_results || []).slice(0, 3)) {
+          const snippet = (r.snippet || '') + ' ' + (r.title || '');
+          if (!result.nightly_rate) {
+            const pm = snippet.match(/\$(\d{2,4})\s*(?:\/|per)\s*night/i) || snippet.match(/from\s*\$(\d{2,4})/i) || snippet.match(/\$(\d{2,4})\s*avg/i);
+            if (pm) result.nightly_rate = parseInt(pm[1]);
           }
-          const revMatch = html.match(/([\d,]+)\s*(?:reviews?|ratings?|verified)/i);
-          if (revMatch) result.review_count = parseInt(revMatch[1].replace(/,/g, ''));
-          if (result.nightly_rate || result.rating) {
-            result.raw_data = { source: 'booking_html', fetched: new Date().toISOString(), url_used: bkUrl };
-            return result;
+          if (!result.rating) {
+            const rm = snippet.match(/(\d\.\d)\s*(?:out of\s*\d|\/\s*\d|\/\s*10|stars?)/i);
+            if (rm) { const rv = parseFloat(rm[1]); result.rating = rv > 5 ? Math.round(rv / 2 * 10) / 10 : rv; }
           }
+          if (!result.review_count) {
+            const revm = snippet.match(/([\d,]+)\s*(?:reviews?|ratings?|verified)/i);
+            if (revm) result.review_count = parseInt(revm[1].replace(/,/g, ''));
+          }
+          if (r.rich_snippet?.top?.detected_extensions?.rating) { const rv = r.rich_snippet.top.detected_extensions.rating; result.rating = result.rating || (rv > 5 ? Math.round(rv / 2 * 10) / 10 : rv); }
+          if (r.rich_snippet?.top?.detected_extensions?.reviews) result.review_count = result.review_count || r.rich_snippet.top.detected_extensions.reviews;
+        }
+        if (result.nightly_rate || result.rating || result.review_count) {
+          result.raw_data = { source: 'searchapi_google_booking', fetched: new Date().toISOString() };
+          return result;
         }
       }
     } catch (e) { /* fall through */ }
@@ -9355,7 +9562,7 @@ async function syncGuestyListingsApi(env) {
 
   try {
     while (hasMore) {
-      const data = await guestyApiFetch(env, '/v1/listings', { limit, skip, fields: '_id title address.full address.street address.city address.state address.zipcode nickname propertyType bedrooms bathrooms accommodates picture.thumbnail pictures' });
+      const data = await guestyApiFetch(env, '/v1/listings', { limit, skip, fields: '_id title address.full address.street address.city address.state address.zipcode nickname propertyType bedrooms bathrooms accommodates picture.thumbnail pictures amenities' });
       const results = data.results || [];
       allListings.push(...results);
       skip += limit;
@@ -9385,20 +9592,23 @@ async function syncGuestyListingsApi(env) {
       const picsJson = pics.length > 0 ? JSON.stringify(pics) : null;
       // Capture listing description
       const desc = l.publicDescription?.summary || l.publicDescription?.space || l.publicDescription?.notes || l.title || '';
+      // Capture amenities array from Guesty
+      const amenitiesArr = Array.isArray(l.amenities) ? l.amenities : [];
+      const amenitiesJson = amenitiesArr.length > 0 ? JSON.stringify(amenitiesArr) : null;
 
       // Check if a listing with this name already exists (from CSV import with different ID)
       const existingByName = await env.DB.prepare(`SELECT id, guesty_listing_id, property_id FROM guesty_listings WHERE listing_name = ?`).bind(title).first();
       if (existingByName && existingByName.guesty_listing_id !== gId) {
         // Update existing row with the real Guesty API ID — preserve property_id link
-        await env.DB.prepare(`UPDATE guesty_listings SET guesty_listing_id = ?, listing_address = COALESCE(NULLIF(?, ''), listing_address), listing_city = COALESCE(NULLIF(?, ''), listing_city), listing_state = COALESCE(NULLIF(?, ''), listing_state), listing_zip = COALESCE(NULLIF(?, ''), listing_zip), listing_property_type = COALESCE(NULLIF(?, ''), listing_property_type), listing_bedrooms = COALESCE(?, listing_bedrooms), listing_bathrooms = COALESCE(?, listing_bathrooms), listing_accommodates = COALESCE(?, listing_accommodates), listing_thumbnail = COALESCE(NULLIF(?, ''), listing_thumbnail), listing_pictures_json = COALESCE(?, listing_pictures_json), listing_description = COALESCE(NULLIF(?, ''), listing_description) WHERE id = ?`)
-          .bind(gId, addr, city, state, zip, pType, beds, baths, accommodates, thumbnail, picsJson, desc, existingByName.id).run();
+        await env.DB.prepare(`UPDATE guesty_listings SET guesty_listing_id = ?, listing_address = COALESCE(NULLIF(?, ''), listing_address), listing_city = COALESCE(NULLIF(?, ''), listing_city), listing_state = COALESCE(NULLIF(?, ''), listing_state), listing_zip = COALESCE(NULLIF(?, ''), listing_zip), listing_property_type = COALESCE(NULLIF(?, ''), listing_property_type), listing_bedrooms = COALESCE(?, listing_bedrooms), listing_bathrooms = COALESCE(?, listing_bathrooms), listing_accommodates = COALESCE(?, listing_accommodates), listing_thumbnail = COALESCE(NULLIF(?, ''), listing_thumbnail), listing_pictures_json = COALESCE(?, listing_pictures_json), listing_description = COALESCE(NULLIF(?, ''), listing_description), listing_amenities_json = COALESCE(?, listing_amenities_json) WHERE id = ?`)
+          .bind(gId, addr, city, state, zip, pType, beds, baths, accommodates, thumbnail, picsJson, desc, amenitiesJson, existingByName.id).run();
         upserted++;
         continue;
       }
 
       // Normal upsert by guesty_listing_id
-      await env.DB.prepare(`INSERT INTO guesty_listings (guesty_listing_id, listing_name, listing_address, listing_city, listing_state, listing_zip, listing_property_type, listing_bedrooms, listing_bathrooms, listing_accommodates, listing_thumbnail, listing_pictures_json, listing_description) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(guesty_listing_id) DO UPDATE SET listing_name=excluded.listing_name, listing_address=COALESCE(NULLIF(excluded.listing_address, ''), listing_address), listing_city=COALESCE(NULLIF(excluded.listing_city, ''), listing_city), listing_state=COALESCE(NULLIF(excluded.listing_state, ''), listing_state), listing_zip=COALESCE(NULLIF(excluded.listing_zip, ''), listing_zip), listing_property_type=COALESCE(NULLIF(excluded.listing_property_type, ''), listing_property_type), listing_bedrooms=COALESCE(excluded.listing_bedrooms, listing_bedrooms), listing_bathrooms=COALESCE(excluded.listing_bathrooms, listing_bathrooms), listing_accommodates=COALESCE(excluded.listing_accommodates, listing_accommodates), listing_thumbnail=COALESCE(NULLIF(excluded.listing_thumbnail, ''), listing_thumbnail), listing_pictures_json=COALESCE(excluded.listing_pictures_json, listing_pictures_json), listing_description=COALESCE(NULLIF(excluded.listing_description, ''), listing_description)`)
-        .bind(gId, title, addr, city, state, zip, pType, beds, baths, accommodates, thumbnail, picsJson, desc).run();
+      await env.DB.prepare(`INSERT INTO guesty_listings (guesty_listing_id, listing_name, listing_address, listing_city, listing_state, listing_zip, listing_property_type, listing_bedrooms, listing_bathrooms, listing_accommodates, listing_thumbnail, listing_pictures_json, listing_description, listing_amenities_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(guesty_listing_id) DO UPDATE SET listing_name=excluded.listing_name, listing_address=COALESCE(NULLIF(excluded.listing_address, ''), listing_address), listing_city=COALESCE(NULLIF(excluded.listing_city, ''), listing_city), listing_state=COALESCE(NULLIF(excluded.listing_state, ''), listing_state), listing_zip=COALESCE(NULLIF(excluded.listing_zip, ''), listing_zip), listing_property_type=COALESCE(NULLIF(excluded.listing_property_type, ''), listing_property_type), listing_bedrooms=COALESCE(excluded.listing_bedrooms, listing_bedrooms), listing_bathrooms=COALESCE(excluded.listing_bathrooms, listing_bathrooms), listing_accommodates=COALESCE(excluded.listing_accommodates, listing_accommodates), listing_thumbnail=COALESCE(NULLIF(excluded.listing_thumbnail, ''), listing_thumbnail), listing_pictures_json=COALESCE(excluded.listing_pictures_json, listing_pictures_json), listing_description=COALESCE(NULLIF(excluded.listing_description, ''), listing_description), listing_amenities_json=COALESCE(excluded.listing_amenities_json, listing_amenities_json)`)
+        .bind(gId, title, addr, city, state, zip, pType, beds, baths, accommodates, thumbnail, picsJson, desc, amenitiesJson).run();
       upserted++;
     } catch {}
   }
@@ -10137,8 +10347,12 @@ async function rebuildIntelligence(request, env) {
           segment = 'insurance'; // emergency placement
         }
 
-        await env.DB.prepare(`UPDATE guesty_reservations SET demand_segment = ? WHERE id = ?`).bind(segment, r.id).run();
+        segBatch.push(env.DB.prepare(`UPDATE guesty_reservations SET demand_segment = ? WHERE id = ?`).bind(segment, r.id));
         classified++;
+      }
+      // Batch all segment updates (D1 batch limit ~100, chunk if needed)
+      for (let bi = 0; bi < segBatch.length; bi += 80) {
+        await env.DB.batch(segBatch.slice(bi, bi + 80));
       }
       results.segments = { classified };
     } catch (err) { results.segments = { error: err.message }; }
@@ -10258,6 +10472,604 @@ async function rebuildIntelligence(request, env) {
     } catch (err) { results.channels = { error: err.message }; }
   }
 
+
+  // ── ADVANCED PORTFOLIO INTELLIGENCE ────────────────────────────────────
+  // Derived from existing Guesty + PriceLabs data — no new API calls required
+  if (sections.includes('guests') || sections.includes('channels') || sections.includes('advanced')) {
+    try {
+      const advResults = {};
+
+      // ── 1. GUEST ORIGIN ANALYSIS ──────────────────────────────────────────
+      // Where are guests coming from? Feed marketing & targeting decisions.
+      try {
+        const { results: origins } = await env.DB.prepare(
+          `SELECT gg.hometown, gg.country, COUNT(DISTINCT gg.id) as guest_count,
+                  SUM(gg.total_revenue) as total_rev, ROUND(AVG(gg.avg_stay_nights),1) as avg_nights
+           FROM guesty_guests gg
+           WHERE gg.total_stays > 0 AND (gg.hometown IS NOT NULL OR gg.country IS NOT NULL)
+             AND gg.id IN (SELECT DISTINCT guest_id FROM guesty_reservations WHERE guest_id IS NOT NULL AND property_id IN (SELECT id FROM properties WHERE (is_managed = 0 OR is_managed IS NULL) AND (is_research != 1 OR is_research IS NULL)))
+           GROUP BY gg.hometown, gg.country
+           ORDER BY guest_count DESC LIMIT 30`
+        ).all();
+
+        // Also get state-level aggregation from guest hometown text
+        const stateMap = {};
+        const countryMap = {};
+        for (const o of (origins || [])) {
+          const ht = (o.hometown || '').trim();
+          const ct = (o.country || '').trim();
+          // Extract state from "City, ST" or "City, ST, Country" patterns
+          const stMatch = ht.match(/,\s*([A-Z]{2})(?:\s*,|\s*$)/);
+          if (stMatch) {
+            const st = stMatch[1];
+            if (!stateMap[st]) stateMap[st] = { guests: 0, revenue: 0 };
+            stateMap[st].guests += o.guest_count;
+            stateMap[st].revenue += (o.total_rev || 0);
+          }
+          if (ct && ct.length > 0) {
+            if (!countryMap[ct]) countryMap[ct] = { guests: 0, revenue: 0 };
+            countryMap[ct].guests += o.guest_count;
+            countryMap[ct].revenue += (o.total_rev || 0);
+          }
+        }
+
+        // Persist top origins to market_intelligence
+        const originStmt = env.DB.prepare(
+          `INSERT INTO market_intelligence (city, state, property_type, bedrooms, metric_key, metric_value, sample_size, period, updated_at)
+           VALUES (?,?,?,?,?,?,?,?,datetime('now'))
+           ON CONFLICT(city, state, property_type, bedrooms, metric_key, period)
+           DO UPDATE SET metric_value=excluded.metric_value, sample_size=excluded.sample_size, updated_at=datetime('now')`
+        );
+        let originCount = 0;
+        const originBatch = [];
+        const topStates = Object.entries(stateMap).sort((a, b) => b[1].guests - a[1].guests).slice(0, 10);
+        for (const [st, data] of topStates) {
+          originBatch.push(originStmt.bind('_portfolio', '_all', 'all', 0, 'guest_origin_state_' + st, data.revenue, data.guests, 'all_time'));
+          originCount++;
+        }
+        const topCountries = Object.entries(countryMap).sort((a, b) => b[1].guests - a[1].guests).slice(0, 10);
+        for (const [ct, data] of topCountries) {
+          originBatch.push(originStmt.bind('_portfolio', '_all', 'all', 0, 'guest_origin_country_' + ct.substring(0, 30), data.revenue, data.guests, 'all_time'));
+          originCount++;
+        }
+        if (originBatch.length > 0) await env.DB.batch(originBatch);
+        advResults.guest_origins = { states: topStates.length, countries: topCountries.length, total_records: originCount, top_origins: origins?.slice(0, 5).map(o => o.hometown || o.country) || [] };
+      } catch (e) { advResults.guest_origins = { error: e.message }; syslog(env, 'error', 'rebuildIntelligence', 'guest_origins', e.message); }
+
+      // ── 2. DAY-OF-WEEK REVENUE PATTERNS ───────────────────────────────────
+      // Which check-in days generate most revenue? Feeds min-stay strategy.
+      try {
+        const { results: dowData } = await env.DB.prepare(
+          `SELECT
+            CASE CAST(strftime('%w', check_in) AS INTEGER)
+              WHEN 0 THEN 'Sun' WHEN 1 THEN 'Mon' WHEN 2 THEN 'Tue'
+              WHEN 3 THEN 'Wed' WHEN 4 THEN 'Thu' WHEN 5 THEN 'Fri' WHEN 6 THEN 'Sat'
+            END as dow,
+            CAST(strftime('%w', check_in) AS INTEGER) as dow_num,
+            COUNT(*) as bookings,
+            SUM(accommodation_fare) as total_rev,
+            ROUND(AVG(accommodation_fare)) as avg_rev,
+            ROUND(AVG(nights_count), 1) as avg_nights,
+            ROUND(AVG(host_payout)) as avg_payout
+           FROM guesty_reservations
+           WHERE check_in IS NOT NULL AND ${LIVE_STATUS_SQL}
+             AND property_id IN (
+              SELECT p.id FROM properties p
+              WHERE (p.is_managed = 0 OR p.is_managed IS NULL)
+                AND (p.is_research != 1 OR p.is_research IS NULL)
+                AND p.id NOT IN (SELECT DISTINCT parent_id FROM properties WHERE parent_id IS NOT NULL)
+            )
+           GROUP BY dow_num
+           ORDER BY dow_num`
+        ).all();
+
+        const dowStmt = env.DB.prepare(
+          `INSERT INTO market_intelligence (city, state, property_type, bedrooms, metric_key, metric_value, sample_size, period, updated_at)
+           VALUES (?,?,?,?,?,?,?,?,datetime('now'))
+           ON CONFLICT(city, state, property_type, bedrooms, metric_key, period)
+           DO UPDATE SET metric_value=excluded.metric_value, sample_size=excluded.sample_size, updated_at=datetime('now')`
+        );
+        const dowBatch = [];
+        for (const d of (dowData || [])) {
+          dowBatch.push(dowStmt.bind('_portfolio', '_all', 'all', 0, 'dow_revenue_' + d.dow, d.avg_rev, d.bookings, 'all_time'));
+          dowBatch.push(dowStmt.bind('_portfolio', '_all', 'all', 0, 'dow_nights_' + d.dow, d.avg_nights, d.bookings, 'all_time'));
+          dowBatch.push(dowStmt.bind('_portfolio', '_all', 'all', 0, 'dow_payout_' + d.dow, d.avg_payout, d.bookings, 'all_time'));
+        }
+        if (dowBatch.length > 0) await env.DB.batch(dowBatch);
+        advResults.day_of_week = { days_analyzed: (dowData || []).length };
+      } catch (e) { advResults.day_of_week = { error: e.message }; syslog(env, 'error', 'rebuildIntelligence', 'dow_patterns', e.message); }
+
+      // ── 3. BOOKING PACE / VELOCITY ────────────────────────────────────────
+      // How does this year's booking pace compare to last year?
+      // "By March 14 last year you had X bookings; this year you have Y"
+      try {
+        const now = new Date();
+        const thisYear = now.getFullYear();
+        const lastYear = thisYear - 1;
+        const todayStr = now.toISOString().split('T')[0];
+        const sameDayLastYear = lastYear + todayStr.substring(4); // same month-day, last year
+
+        // Count bookings with check_in in remaining year, booked BY this date each year
+        // "Forward bookings as of today" vs "forward bookings as of same date last year"
+        const thisYearPace = await env.DB.prepare(
+          `SELECT COUNT(*) as bookings, SUM(accommodation_fare) as rev, SUM(host_payout) as payout
+           FROM guesty_reservations
+           WHERE booking_date IS NOT NULL AND booking_date <= ?
+             AND check_in >= ? AND ${LIVE_STATUS_SQL}
+             AND property_id IN (
+              SELECT p.id FROM properties p
+              WHERE (p.is_managed = 0 OR p.is_managed IS NULL)
+                AND (p.is_research != 1 OR p.is_research IS NULL)
+                AND p.id NOT IN (SELECT DISTINCT parent_id FROM properties WHERE parent_id IS NOT NULL)
+            )`
+        ).bind(todayStr, thisYear + '-01-01').first();
+
+        const lastYearPace = await env.DB.prepare(
+          `SELECT COUNT(*) as bookings, SUM(accommodation_fare) as rev, SUM(host_payout) as payout
+           FROM guesty_reservations
+           WHERE booking_date IS NOT NULL AND booking_date <= ?
+             AND check_in >= ? AND check_in < ? AND ${LIVE_STATUS_SQL}
+             AND property_id IN (
+              SELECT p.id FROM properties p
+              WHERE (p.is_managed = 0 OR p.is_managed IS NULL)
+                AND (p.is_research != 1 OR p.is_research IS NULL)
+                AND p.id NOT IN (SELECT DISTINCT parent_id FROM properties WHERE parent_id IS NOT NULL)
+            )`
+        ).bind(sameDayLastYear, lastYear + '-01-01', thisYear + '-01-01').first();
+
+        // Per-property pace
+        const { results: propPace } = await env.DB.prepare(
+          `SELECT property_id, COUNT(*) as bookings, SUM(accommodation_fare) as rev
+           FROM guesty_reservations
+           WHERE booking_date IS NOT NULL AND booking_date <= ?
+             AND check_in >= ? AND property_id IS NOT NULL AND ${LIVE_STATUS_SQL}
+             AND property_id IN (
+              SELECT p.id FROM properties p
+              WHERE (p.is_managed = 0 OR p.is_managed IS NULL)
+                AND (p.is_research != 1 OR p.is_research IS NULL)
+                AND p.id NOT IN (SELECT DISTINCT parent_id FROM properties WHERE parent_id IS NOT NULL)
+            )
+           GROUP BY property_id`
+        ).bind(todayStr, thisYear + '-01-01').all();
+
+        const { results: propPaceLY } = await env.DB.prepare(
+          `SELECT property_id, COUNT(*) as bookings, SUM(accommodation_fare) as rev
+           FROM guesty_reservations
+           WHERE booking_date IS NOT NULL AND booking_date <= ?
+             AND check_in >= ? AND check_in < ? AND property_id IS NOT NULL AND ${LIVE_STATUS_SQL}
+             AND property_id IN (
+              SELECT p.id FROM properties p
+              WHERE (p.is_managed = 0 OR p.is_managed IS NULL)
+                AND (p.is_research != 1 OR p.is_research IS NULL)
+                AND p.id NOT IN (SELECT DISTINCT parent_id FROM properties WHERE parent_id IS NOT NULL)
+            )
+           GROUP BY property_id`
+        ).bind(sameDayLastYear, lastYear + '-01-01', thisYear + '-01-01').all();
+
+        const lyMap = {};
+        for (const p of (propPaceLY || [])) lyMap[p.property_id] = p;
+
+        const paceStmt = env.DB.prepare(
+          `INSERT INTO market_intelligence (city, state, property_type, bedrooms, metric_key, metric_value, sample_size, period, updated_at)
+           VALUES (?,?,?,?,?,?,?,?,datetime('now'))
+           ON CONFLICT(city, state, property_type, bedrooms, metric_key, period)
+           DO UPDATE SET metric_value=excluded.metric_value, sample_size=excluded.sample_size, updated_at=datetime('now')`
+        );
+
+        const paceBatch = [
+          paceStmt.bind('_portfolio', '_all', 'all', 0, 'pace_bookings_ty', thisYearPace?.bookings || 0, 1, 'ytd'),
+          paceStmt.bind('_portfolio', '_all', 'all', 0, 'pace_revenue_ty', Math.round(thisYearPace?.rev || 0), 1, 'ytd'),
+          paceStmt.bind('_portfolio', '_all', 'all', 0, 'pace_bookings_ly', lastYearPace?.bookings || 0, 1, 'ytd'),
+          paceStmt.bind('_portfolio', '_all', 'all', 0, 'pace_revenue_ly', Math.round(lastYearPace?.rev || 0), 1, 'ytd'),
+        ];
+        // Fallback: If LY booking_date data is sparse, also compare completed stays by check_in
+        // This doesn't need booking_date — just counts actual stays in each year to date
+        const completedTY = await env.DB.prepare(
+          `SELECT COUNT(*) as bookings, SUM(accommodation_fare) as rev, SUM(host_payout) as payout
+           FROM guesty_reservations
+           WHERE check_in >= ? AND check_in <= ? AND ${LIVE_STATUS_SQL}
+             AND property_id IN (
+              SELECT p.id FROM properties p
+              WHERE (p.is_managed = 0 OR p.is_managed IS NULL)
+                AND (p.is_research != 1 OR p.is_research IS NULL)
+                AND p.id NOT IN (SELECT DISTINCT parent_id FROM properties WHERE parent_id IS NOT NULL)
+            )`
+        ).bind(thisYear + '-01-01', todayStr).first();
+
+        const completedLY = await env.DB.prepare(
+          `SELECT COUNT(*) as bookings, SUM(accommodation_fare) as rev, SUM(host_payout) as payout
+           FROM guesty_reservations
+           WHERE check_in >= ? AND check_in <= ? AND ${LIVE_STATUS_SQL}
+             AND property_id IN (
+              SELECT p.id FROM properties p
+              WHERE (p.is_managed = 0 OR p.is_managed IS NULL)
+                AND (p.is_research != 1 OR p.is_research IS NULL)
+                AND p.id NOT IN (SELECT DISTINCT parent_id FROM properties WHERE parent_id IS NOT NULL)
+            )`
+        ).bind(lastYear + '-01-01', sameDayLastYear).first();
+
+        // Save completed stays as separate metrics
+        paceBatch.push(paceStmt.bind('_portfolio', '_all', 'all', 0, 'completed_bookings_ty', completedTY?.bookings || 0, 1, 'ytd'));
+        paceBatch.push(paceStmt.bind('_portfolio', '_all', 'all', 0, 'completed_revenue_ty', Math.round(completedTY?.rev || 0), 1, 'ytd'));
+        paceBatch.push(paceStmt.bind('_portfolio', '_all', 'all', 0, 'completed_bookings_ly', completedLY?.bookings || 0, 1, 'ytd'));
+        paceBatch.push(paceStmt.bind('_portfolio', '_all', 'all', 0, 'completed_revenue_ly', Math.round(completedLY?.rev || 0), 1, 'ytd'));
+
+        // Flag whether booking_date data is sparse
+        const hasBookingDates = (thisYearPace?.bookings || 0) > 0 || (lastYearPace?.bookings || 0) > 0;
+        paceBatch.push(paceStmt.bind('_portfolio', '_all', 'all', 0, 'pace_has_booking_dates', hasBookingDates ? 1 : 0, 1, 'ytd'));
+
+        const paceChange = (lastYearPace?.bookings || 0) > 0
+          ? Math.round(((thisYearPace?.bookings || 0) - lastYearPace.bookings) / lastYearPace.bookings * 100)
+          : null;
+        if (paceChange !== null) {
+          paceBatch.push(paceStmt.bind('_portfolio', '_all', 'all', 0, 'pace_change_pct', paceChange, 1, 'ytd'));
+        }
+        await env.DB.batch(paceBatch);
+        advResults.booking_pace = {
+          this_year: thisYearPace?.bookings || 0,
+          last_year: lastYearPace?.bookings || 0,
+          pace_change: paceChange,
+          properties_compared: (propPace || []).length,
+        };
+      } catch (e) { advResults.booking_pace = { error: e.message }; syslog(env, 'error', 'rebuildIntelligence', 'booking_pace', e.message); }
+
+      // ── 4. LEAD TIME TREND ANALYSIS ───────────────────────────────────────
+      // Are bookings coming in earlier or later? Shrinking lead time = less pricing leverage.
+      try {
+        const { results: leadByQuarter } = await env.DB.prepare(
+          `SELECT
+            CASE
+              WHEN booking_date >= ? THEN 'current_q'
+              WHEN booking_date >= ? THEN 'prev_q'
+              ELSE 'older'
+            END as period,
+            ROUND(AVG(JULIANDAY(check_in) - JULIANDAY(booking_date))) as avg_lead,
+            COUNT(*) as bookings,
+            ROUND(AVG(CASE WHEN JULIANDAY(check_in) - JULIANDAY(booking_date) <= 7 THEN 1.0 ELSE 0.0 END) * 100) as pct_last_minute,
+            ROUND(AVG(CASE WHEN JULIANDAY(check_in) - JULIANDAY(booking_date) >= 30 THEN 1.0 ELSE 0.0 END) * 100) as pct_advance
+           FROM guesty_reservations
+           WHERE booking_date IS NOT NULL AND check_in IS NOT NULL
+             AND booking_date > '' AND ${LIVE_STATUS_SQL}
+             AND property_id IN (SELECT id FROM properties WHERE (is_managed = 0 OR is_managed IS NULL) AND (is_research != 1 OR is_research IS NULL))
+           GROUP BY period
+           ORDER BY period`
+        ).bind(
+          new Date(new Date().getFullYear(), Math.floor(new Date().getMonth() / 3) * 3, 1).toISOString().split('T')[0],
+          new Date(new Date().getFullYear(), Math.floor(new Date().getMonth() / 3) * 3 - 3, 1).toISOString().split('T')[0]
+        ).all();
+
+        const leadStmt = env.DB.prepare(
+          `INSERT INTO market_intelligence (city, state, property_type, bedrooms, metric_key, metric_value, sample_size, period, updated_at)
+           VALUES (?,?,?,?,?,?,?,?,datetime('now'))
+           ON CONFLICT(city, state, property_type, bedrooms, metric_key, period)
+           DO UPDATE SET metric_value=excluded.metric_value, sample_size=excluded.sample_size, updated_at=datetime('now')`
+        );
+        const leadBatch = [];
+        for (const q of (leadByQuarter || [])) {
+          leadBatch.push(leadStmt.bind('_portfolio', '_all', 'all', 0, 'lead_time_avg', q.avg_lead || 0, q.bookings, q.period));
+          leadBatch.push(leadStmt.bind('_portfolio', '_all', 'all', 0, 'lead_time_pct_last_minute', q.pct_last_minute || 0, q.bookings, q.period));
+          leadBatch.push(leadStmt.bind('_portfolio', '_all', 'all', 0, 'lead_time_pct_advance', q.pct_advance || 0, q.bookings, q.period));
+        }
+        if (leadBatch.length > 0) await env.DB.batch(leadBatch);
+        advResults.lead_time = { quarters_analyzed: (leadByQuarter || []).length };
+      } catch (e) { advResults.lead_time = { error: e.message }; syslog(env, 'error', 'rebuildIntelligence', 'lead_time', e.message); }
+
+      // ── 5. RevPAN (Revenue Per Available Night) ───────────────────────────
+      // The hotel industry gold standard — combines ADR × occupancy into one number.
+      try {
+        const { results: revpanData } = await env.DB.prepare(
+          `SELECT ma.property_id, p.city, p.state, p.bedrooms,
+                  COALESCE(p.platform_listing_name, p.name, p.address) as prop_name,
+                  p.unit_number,
+                  SUM(ma.total_revenue) as total_rev,
+                  SUM(ma.booked_nights) as total_nights,
+                  SUM(ma.available_nights) as total_avail,
+                  SUM(ma.host_payout) as total_payout,
+                  COUNT(*) as month_count
+           FROM monthly_actuals ma
+           JOIN properties p ON ma.property_id = p.id
+           WHERE (p.is_research != 1 OR p.is_research IS NULL)
+             AND (p.is_managed = 0 OR p.is_managed IS NULL)
+           GROUP BY ma.property_id`
+        ).all();
+
+        const revpanStmt = env.DB.prepare(
+          `INSERT INTO market_intelligence (city, state, property_type, bedrooms, metric_key, metric_value, sample_size, period, updated_at)
+           VALUES (?,?,?,?,?,?,?,?,datetime('now'))
+           ON CONFLICT(city, state, property_type, bedrooms, metric_key, period)
+           DO UPDATE SET metric_value=excluded.metric_value, sample_size=excluded.sample_size, updated_at=datetime('now')`
+        );
+
+        let portfolioRev = 0, portfolioAvail = 0, portfolioPayout = 0, portfolioNights = 0;
+        const revpanBatch = [];
+        for (const r of (revpanData || [])) {
+          const revpan = r.total_avail > 0 ? Math.round(r.total_rev / r.total_avail * 100) / 100 : 0;
+          const payPAN = r.total_avail > 0 ? Math.round(r.total_payout / r.total_avail * 100) / 100 : 0;
+          const adr = r.total_nights > 0 ? Math.round(r.total_rev / r.total_nights) : 0;
+          const occ = r.total_avail > 0 ? Math.round(r.total_nights / r.total_avail * 100) : 0;
+          revpanBatch.push(revpanStmt.bind(r.city || '_unknown', r.state || '_all', 'all', r.bedrooms || 0, 'revpan_property_' + r.property_id, revpan, r.month_count, 'all_time'));
+          portfolioRev += (r.total_rev || 0);
+          portfolioAvail += (r.total_avail || 0);
+          portfolioPayout += (r.total_payout || 0);
+          portfolioNights += (r.total_nights || 0);
+        }
+        // Portfolio-level RevPAN
+        const portfolioRevpan = portfolioAvail > 0 ? Math.round(portfolioRev / portfolioAvail * 100) / 100 : 0;
+        const portfolioAdr = portfolioNights > 0 ? Math.round(portfolioRev / portfolioNights) : 0;
+        const portfolioOcc = portfolioAvail > 0 ? Math.round(portfolioNights / portfolioAvail * 100) : 0;
+        revpanBatch.push(revpanStmt.bind('_portfolio', '_all', 'all', 0, 'revpan', portfolioRevpan, (revpanData || []).length, 'all_time'));
+        revpanBatch.push(revpanStmt.bind('_portfolio', '_all', 'all', 0, 'portfolio_adr', portfolioAdr, (revpanData || []).length, 'all_time'));
+        revpanBatch.push(revpanStmt.bind('_portfolio', '_all', 'all', 0, 'portfolio_occ', portfolioOcc, (revpanData || []).length, 'all_time'));
+        if (revpanBatch.length > 0) await env.DB.batch(revpanBatch);
+
+        advResults.revpan = { portfolio_revpan: portfolioRevpan, portfolio_adr: portfolioAdr, portfolio_occ: portfolioOcc, properties: (revpanData || []).length };
+      } catch (e) { advResults.revpan = { error: e.message }; syslog(env, 'error', 'rebuildIntelligence', 'revpan', e.message); }
+
+      // ── 6. CANCELLATION PATTERN ANALYSIS ──────────────────────────────────
+      // When do cancellations happen relative to check-in? Which channels cancel most?
+      try {
+        const { results: cancelData } = await env.DB.prepare(
+          `SELECT channel,
+                  COUNT(*) as cancels,
+                  ROUND(AVG(JULIANDAY(check_in) - JULIANDAY(booking_date))) as avg_lead_at_book,
+                  SUM(CASE WHEN nights_count >= 7 THEN 1 ELSE 0 END) as long_stay_cancels,
+                  SUM(CASE WHEN nights_count < 3 THEN 1 ELSE 0 END) as short_stay_cancels,
+                  SUM(COALESCE(cancellation_fee, 0)) as total_cancel_fees,
+                  SUM(COALESCE(total_refunded, 0)) as total_refunded
+           FROM guesty_reservations
+           WHERE LOWER(COALESCE(status,'')) IN ('canceled','cancelled')
+             AND booking_date IS NOT NULL AND check_in IS NOT NULL
+             AND property_id IN (SELECT id FROM properties WHERE (is_managed = 0 OR is_managed IS NULL) AND (is_research != 1 OR is_research IS NULL))
+           GROUP BY channel
+           ORDER BY cancels DESC`
+        ).all();
+
+        // Also: total live bookings per channel for cancel rate calc
+        const { results: liveByChannel } = await env.DB.prepare(
+          `SELECT channel, COUNT(*) as total FROM guesty_reservations WHERE ${LIVE_STATUS_SQL} GROUP BY channel`
+        ).all();
+        const liveMap = {};
+        for (const l of (liveByChannel || [])) liveMap[l.channel || 'Direct'] = l.total;
+
+        const cancelStmt = env.DB.prepare(
+          `INSERT INTO market_intelligence (city, state, property_type, bedrooms, metric_key, metric_value, sample_size, period, updated_at)
+           VALUES (?,?,?,?,?,?,?,?,datetime('now'))
+           ON CONFLICT(city, state, property_type, bedrooms, metric_key, period)
+           DO UPDATE SET metric_value=excluded.metric_value, sample_size=excluded.sample_size, updated_at=datetime('now')`
+        );
+        const cancelBatch = [];
+        for (const c of (cancelData || [])) {
+          const ch = (c.channel || 'Direct').replace(/[^a-zA-Z0-9]/g, '_').substring(0, 30);
+          const total = (liveMap[c.channel || 'Direct'] || 0) + c.cancels;
+          const rate = total > 0 ? Math.round(c.cancels / total * 100) : 0;
+          cancelBatch.push(cancelStmt.bind('_portfolio', '_all', 'all', 0, 'cancel_rate_' + ch, rate, c.cancels, 'all_time'));
+          cancelBatch.push(cancelStmt.bind('_portfolio', '_all', 'all', 0, 'cancel_long_stay_' + ch, c.long_stay_cancels || 0, c.cancels, 'all_time'));
+          cancelBatch.push(cancelStmt.bind('_portfolio', '_all', 'all', 0, 'cancel_refunded_' + ch, Math.round(c.total_refunded || 0), c.cancels, 'all_time'));
+        }
+        if (cancelBatch.length > 0) await env.DB.batch(cancelBatch);
+        advResults.cancellations = { channels_analyzed: (cancelData || []).length };
+      } catch (e) { advResults.cancellations = { error: e.message }; syslog(env, 'error', 'rebuildIntelligence', 'cancel_patterns', e.message); }
+
+      // ── 7. PRICE ELASTICITY SIGNALS ───────────────────────────────────────
+      // When prices changed, did occupancy respond? Correlate price_history with monthly_actuals.
+      try {
+        const { results: priceChanges } = await env.DB.prepare(
+          `SELECT ph1.property_id, ph1.snapshot_date as change_date, ph1.base_price as new_price,
+                  ph2.base_price as old_price,
+                  ROUND(ph1.base_price - ph2.base_price) as price_delta,
+                  ROUND((ph1.base_price - ph2.base_price) / NULLIF(ph2.base_price, 0) * 100) as pct_change
+           FROM price_history ph1
+           JOIN price_history ph2 ON ph1.property_id = ph2.property_id
+             AND ph2.snapshot_date = (SELECT MAX(snapshot_date) FROM price_history WHERE property_id = ph1.property_id AND snapshot_date < ph1.snapshot_date)
+           WHERE ABS(ph1.base_price - ph2.base_price) >= 5
+             AND ph1.property_id IN (SELECT id FROM properties WHERE (is_managed = 0 OR is_managed IS NULL) AND (is_research != 1 OR is_research IS NULL))
+           ORDER BY ph1.snapshot_date DESC
+           LIMIT 100`
+        ).all();
+
+        // For each significant price change, check occupancy before/after
+        let elasticitySignals = 0;
+        const elastStmt = env.DB.prepare(
+          `INSERT INTO market_intelligence (city, state, property_type, bedrooms, metric_key, metric_value, sample_size, period, updated_at)
+           VALUES (?,?,?,?,?,?,?,?,datetime('now'))
+           ON CONFLICT(city, state, property_type, bedrooms, metric_key, period)
+           DO UPDATE SET metric_value=excluded.metric_value, sample_size=excluded.sample_size, updated_at=datetime('now')`
+        );
+
+        // Aggregate: for price increases, what happened to occupancy?
+        let priceUpCount = 0, priceUpOccDelta = 0;
+        let priceDownCount = 0, priceDownOccDelta = 0;
+
+        for (const pc of (priceChanges || [])) {
+          // Get the month of the price change and the month after
+          const changeMonth = pc.change_date ? pc.change_date.substring(0, 7) : null;
+          if (!changeMonth) continue;
+          const changeDate = new Date(changeMonth + '-01');
+          changeDate.setMonth(changeDate.getMonth() + 1);
+          const nextMonth = changeDate.getFullYear() + '-' + String(changeDate.getMonth() + 1).padStart(2, '0');
+          changeDate.setMonth(changeDate.getMonth() - 2);
+          const prevMonth = changeDate.getFullYear() + '-' + String(changeDate.getMonth() + 1).padStart(2, '0');
+
+          const before = await env.DB.prepare(
+            `SELECT occupancy_pct FROM monthly_actuals WHERE property_id = ? AND month = ?`
+          ).bind(pc.property_id, prevMonth).first();
+          const after = await env.DB.prepare(
+            `SELECT occupancy_pct FROM monthly_actuals WHERE property_id = ? AND month = ?`
+          ).bind(pc.property_id, nextMonth).first();
+
+          if (before?.occupancy_pct != null && after?.occupancy_pct != null) {
+            const occDelta = Math.round((after.occupancy_pct - before.occupancy_pct) * 100);
+            if (pc.price_delta > 0) { priceUpCount++; priceUpOccDelta += occDelta; }
+            else { priceDownCount++; priceDownOccDelta += occDelta; }
+            elasticitySignals++;
+          }
+        }
+
+        // Store aggregate elasticity signals
+        if (priceUpCount > 0) {
+          const avgOccAfterIncrease = Math.round(priceUpOccDelta / priceUpCount);
+          await elastStmt.bind('_portfolio', '_all', 'all', 0, 'elasticity_price_up_occ_delta', avgOccAfterIncrease, priceUpCount, 'all_time').run();
+        }
+        if (priceDownCount > 0) {
+          const avgOccAfterDecrease = Math.round(priceDownOccDelta / priceDownCount);
+          await elastStmt.bind('_portfolio', '_all', 'all', 0, 'elasticity_price_down_occ_delta', avgOccAfterDecrease, priceDownCount, 'all_time').run();
+        }
+        advResults.price_elasticity = { signals: elasticitySignals, price_increases: priceUpCount, price_decreases: priceDownCount };
+      } catch (e) { advResults.price_elasticity = { error: e.message }; syslog(env, 'error', 'rebuildIntelligence', 'price_elasticity', e.message); }
+
+      // ── 8. CROSS-PLATFORM PRICING ANALYSIS ────────────────────────────────
+      // Compare rates across platforms for the same property.
+      try {
+        const { results: platPrices } = await env.DB.prepare(
+          `SELECT pp.property_id, pp.platform, pp.nightly_rate, pp.cleaning_fee, pp.rating, pp.review_count,
+                  COALESCE(p.platform_listing_name, p.name, p.address) as prop_name, p.unit_number
+           FROM property_platforms pp
+           JOIN properties p ON pp.property_id = p.id
+           WHERE pp.nightly_rate > 0 AND pp.is_active = 1
+             AND (p.is_managed = 0 OR p.is_managed IS NULL) AND (p.is_research != 1 OR p.is_research IS NULL)
+           ORDER BY pp.property_id, pp.platform`
+        ).all();
+
+        // Group by property
+        const byProp = {};
+        for (const pp of (platPrices || [])) {
+          if (!byProp[pp.property_id]) byProp[pp.property_id] = { name: pp.unit_number ? pp.unit_number + ' — ' + pp.prop_name : pp.prop_name, platforms: [] };
+          byProp[pp.property_id].platforms.push(pp);
+        }
+
+        let discrepancies = 0;
+        for (const pid in byProp) {
+          const platforms = byProp[pid].platforms;
+          if (platforms.length < 2) continue;
+          const rates = platforms.map(p => p.nightly_rate);
+          const maxRate = Math.max(...rates);
+          const minRate = Math.min(...rates);
+          if (maxRate - minRate > 15) discrepancies++; // >$15 spread across platforms
+        }
+        advResults.cross_platform = { properties_multi_platform: Object.keys(byProp).filter(k => byProp[k].platforms.length >= 2).length, pricing_discrepancies: discrepancies };
+      } catch (e) { advResults.cross_platform = { error: e.message }; syslog(env, 'error', 'rebuildIntelligence', 'cross_platform', e.message); }
+
+      // ── 9. RATE-CONTEXT ANALYSIS ──────────────────────────────────────────
+      // Connects pricing changes to occupancy outcomes.
+      // Answers: "Did high occupancy come from low pricing?" and "Did a rate drop drive bookings?"
+      try {
+        // For each property with actuals, compare actual ADR vs avg set rate (from price_history)
+        const { results: rateContext } = await env.DB.prepare(
+          `SELECT ma.property_id, ma.month, ma.avg_nightly_rate as actual_adr, ma.occupancy_pct,
+                  ma.booked_nights, ma.num_reservations, ma.total_revenue, ma.host_payout,
+                  COALESCE(p.platform_listing_name, p.name, p.address) as prop_name,
+                  p.unit_number,
+                  (SELECT ROUND(AVG(ph.base_price)) FROM price_history ph
+                   WHERE ph.property_id = ma.property_id
+                     AND ph.snapshot_date >= ma.month || '-01'
+                     AND ph.snapshot_date < date(ma.month || '-01', '+1 month')
+                     AND ph.base_price > 0) as avg_set_rate,
+                  (SELECT ROUND(AVG(ph.rec_price)) FROM price_history ph
+                   WHERE ph.property_id = ma.property_id
+                     AND ph.snapshot_date >= ma.month || '-01'
+                     AND ph.snapshot_date < date(ma.month || '-01', '+1 month')
+                     AND ph.rec_price > 0) as avg_rec_rate,
+                  (SELECT ROUND(AVG(CAST(ph.mkt_occ_30d AS REAL))) FROM price_history ph
+                   WHERE ph.property_id = ma.property_id
+                     AND ph.snapshot_date >= ma.month || '-01'
+                     AND ph.snapshot_date < date(ma.month || '-01', '+1 month')
+                     AND ph.mkt_occ_30d IS NOT NULL AND ph.mkt_occ_30d != '') as avg_mkt_occ
+           FROM monthly_actuals ma
+           JOIN properties p ON ma.property_id = p.id
+           WHERE (p.is_managed = 0 OR p.is_managed IS NULL)
+             AND (p.is_research != 1 OR p.is_research IS NULL)
+             AND ma.booked_nights > 0
+           ORDER BY ma.month DESC`
+        ).all();
+
+        const rateStmt = env.DB.prepare(
+          `INSERT INTO market_intelligence (city, state, property_type, bedrooms, metric_key, metric_value, sample_size, period, updated_at)
+           VALUES (?,?,?,?,?,?,?,?,datetime('now'))
+           ON CONFLICT(city, state, property_type, bedrooms, metric_key, period)
+           DO UPDATE SET metric_value=excluded.metric_value, sample_size=excluded.sample_size, updated_at=datetime('now')`
+        );
+        const rateBatch = [];
+
+        // Detect underpriced high-occupancy months per property
+        const underpricedMonths = [];
+        const propRateContext = {}; // {prop_id: [{month, actual_adr, set_rate, occ, gap_pct}]}
+
+        for (const r of (rateContext || [])) {
+          if (!r.avg_set_rate || !r.actual_adr || r.actual_adr <= 0) continue;
+          const gapPct = Math.round((r.actual_adr - r.avg_set_rate) / r.avg_set_rate * 100);
+          const label = r.unit_number ? r.unit_number + ' — ' + r.prop_name : r.prop_name;
+
+          if (!propRateContext[r.property_id]) propRateContext[r.property_id] = [];
+          propRateContext[r.property_id].push({
+            month: r.month, actual_adr: r.actual_adr, set_rate: r.avg_set_rate,
+            rec_rate: r.avg_rec_rate, occ: r.occupancy_pct, gap_pct: gapPct,
+            revenue: r.total_revenue, bookings: r.num_reservations, label
+          });
+
+          // Flag: high occ (>70%) but ADR significantly below set rate (>15% under)
+          if (r.occupancy_pct >= 0.70 && gapPct < -15) {
+            underpricedMonths.push({
+              property_id: r.property_id, month: r.month, label,
+              occ: Math.round(r.occupancy_pct * 100), actual_adr: r.actual_adr,
+              set_rate: r.avg_set_rate, gap_pct: gapPct
+            });
+          }
+        }
+
+        // Save per-property rate context summary (latest 3 months)
+        let propsAnalyzed = 0;
+        for (const pid in propRateContext) {
+          const months = propRateContext[pid].slice(0, 3); // most recent 3
+          if (months.length === 0) continue;
+          const avgGap = Math.round(months.reduce((s, m) => s + m.gap_pct, 0) / months.length);
+          const avgOcc = Math.round(months.reduce((s, m) => s + (m.occ || 0), 0) / months.length * 100);
+          // Classify: underpriced_high_occ, well_priced, overpriced_low_occ
+          let classification = 'well_priced';
+          if (avgGap < -15 && avgOcc > 70) classification = 'underpriced_high_occ';
+          else if (avgGap < -10 && avgOcc > 60) classification = 'possibly_underpriced';
+          else if (avgGap > 10 && avgOcc < 40) classification = 'overpriced_low_occ';
+
+          rateBatch.push(rateStmt.bind('_portfolio', '_all', 'all', 0,
+            'rate_context_prop_' + pid,
+            avgGap, // metric_value = avg rate gap %
+            months.length, // sample_size = months analyzed
+            classification // period field used for classification
+          ));
+          propsAnalyzed++;
+        }
+
+        // Save portfolio-level underpriced count
+        rateBatch.push(rateStmt.bind('_portfolio', '_all', 'all', 0,
+          'underpriced_high_occ_count',
+          underpricedMonths.length,
+          propsAnalyzed,
+          'all_time'
+        ));
+
+        // Save top underpriced property-months as individual metrics for display
+        const topUnderpriced = underpricedMonths.sort((a, b) => a.gap_pct - b.gap_pct).slice(0, 5);
+        for (let i = 0; i < topUnderpriced.length; i++) {
+          const u = topUnderpriced[i];
+          rateBatch.push(rateStmt.bind('_portfolio', '_all', 'all', 0,
+            'underpriced_' + i + '_pid', u.property_id, u.gap_pct, u.month));
+        }
+
+        if (rateBatch.length > 0) {
+          for (let bi = 0; bi < rateBatch.length; bi += 80) {
+            await env.DB.batch(rateBatch.slice(bi, bi + 80));
+          }
+        }
+        advResults.rate_context = {
+          properties_analyzed: propsAnalyzed,
+          underpriced_months: underpricedMonths.length,
+          top_underpriced: topUnderpriced.map(u => u.label + ' ' + u.month + ' (' + u.occ + '% occ, ADR $' + u.actual_adr + ' vs set $' + u.set_rate + ')')
+        };
+      } catch (e) { advResults.rate_context = { error: e.message }; syslog(env, 'error', 'rebuildIntelligence', 'rate_context', e.message); }
+
+      results.advanced = advResults;
+    } catch (err) { results.advanced = { error: err.message }; }
+  }
+
   // ── PRICING DISCREPANCY DETECTION ────────────────────────────────────────
   // Compare PriceLabs recommended prices vs what's actually live in Guesty calendar
   try {
@@ -10351,6 +11163,68 @@ async function getIntelligenceContext(params, env) {
     }
   } catch {}
 
+  // ── Advanced portfolio intelligence (from rebuildIntelligence) ──
+  try {
+    const { results: advMetrics } = await env.DB.prepare(
+      `SELECT metric_key, metric_value, sample_size, period FROM market_intelligence WHERE city = '_portfolio' ORDER BY metric_key`
+    ).all();
+    if (advMetrics && advMetrics.length > 0) {
+      const m = {};
+      for (const row of advMetrics) m[row.metric_key + (row.period !== 'all_time' ? '_' + row.period : '')] = { v: row.metric_value, n: row.sample_size };
+
+      // RevPAN
+      if (m.revpan) {
+        context += '── Revenue Efficiency ──\n';
+        context += 'Portfolio RevPAN (Revenue Per Available Night): $' + m.revpan.v + '\n';
+        if (m.portfolio_adr) context += 'Portfolio ADR: $' + m.portfolio_adr.v + ' | Occupancy: ' + (m.portfolio_occ?.v || '?') + '%\n';
+        context += 'RevPAN = ADR × Occupancy. Maximize this metric rather than just ADR or occupancy alone.\n\n';
+      }
+
+      // Booking pace
+      if (m.pace_bookings_ty_ytd || m.pace_bookings_ly_ytd) {
+        context += '── Booking Pace (YTD) ──\n';
+        context += 'This year: ' + (m.pace_bookings_ty_ytd?.v || 0) + ' bookings ($' + Math.round(m.pace_revenue_ty_ytd?.v || 0).toLocaleString() + ' revenue)\n';
+        context += 'Same date last year: ' + (m.pace_bookings_ly_ytd?.v || 0) + ' bookings ($' + Math.round(m.pace_revenue_ly_ytd?.v || 0).toLocaleString() + ' revenue)\n';
+        if (m.pace_change_pct_ytd) context += 'Pace change: ' + (m.pace_change_pct_ytd.v >= 0 ? '+' : '') + m.pace_change_pct_ytd.v + '%\n';
+        context += '\n';
+      }
+
+      // Day-of-week patterns
+      const dowDays = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+      const dowData = dowDays.filter(d => m['dow_revenue_' + d]).map(d => d + ': $' + Math.round(m['dow_revenue_' + d].v) + '/booking (' + m['dow_revenue_' + d].n + ' bookings, avg ' + (m['dow_nights_' + d]?.v || '?') + ' nights)');
+      if (dowData.length > 0) {
+        context += '── Check-in Day Patterns ──\n' + dowData.join('\n') + '\nUse this to set minimum stay rules and day-of-week pricing adjustments.\n\n';
+      }
+
+      // Lead time trends
+      const ltCurrent = m.lead_time_avg_current_q;
+      const ltPrev = m.lead_time_avg_prev_q;
+      if (ltCurrent || ltPrev) {
+        context += '── Booking Lead Time ──\n';
+        if (ltCurrent) context += 'Current quarter: ' + ltCurrent.v + ' days avg lead time (' + ltCurrent.n + ' bookings)\n';
+        if (ltPrev) context += 'Previous quarter: ' + ltPrev.v + ' days avg lead time (' + ltPrev.n + ' bookings)\n';
+        if (ltCurrent && ltPrev && ltCurrent.v < ltPrev.v) context += 'WARNING: Lead time shrinking — guests booking closer to check-in. Reduce far-out discounts, tighten last-minute pricing.\n';
+        context += '\n';
+      }
+
+      // Price elasticity
+      if (m.elasticity_price_up_occ_delta) {
+        context += '── Price Elasticity Signals ──\n';
+        context += 'After price increases: occupancy changed ' + (m.elasticity_price_up_occ_delta.v >= 0 ? '+' : '') + m.elasticity_price_up_occ_delta.v + '% on avg (' + m.elasticity_price_up_occ_delta.n + ' instances)\n';
+        if (m.elasticity_price_down_occ_delta) context += 'After price decreases: occupancy changed ' + (m.elasticity_price_down_occ_delta.v >= 0 ? '+' : '') + m.elasticity_price_down_occ_delta.v + '% on avg (' + m.elasticity_price_down_occ_delta.n + ' instances)\n';
+        context += 'Use this to gauge how sensitive your market is to rate changes.\n\n';
+      }
+
+      // Guest origin top states
+      const originStates = advMetrics.filter(r => r.metric_key.startsWith('guest_origin_state_')).sort((a, b) => b.sample_size - a.sample_size).slice(0, 5);
+      if (originStates.length > 0) {
+        context += '── Guest Origins (Top Feeder Markets) ──\n';
+        originStates.forEach(o => { context += o.metric_key.replace('guest_origin_state_', '') + ': ' + o.sample_size + ' guests ($' + Math.round(o.metric_value).toLocaleString() + ' revenue)\n'; });
+        context += 'Target marketing and listing descriptions toward these origin markets.\n\n';
+      }
+    }
+  } catch {}
+
   context += '── Data Source Rules ──\n';
   context += 'Revenue/Actuals: ALWAYS from Guesty (source of truth for real bookings and money)\n';
   context += 'Recommended pricing: From PriceLabs dynamic pricing engine\n';
@@ -10359,6 +11233,252 @@ async function getIntelligenceContext(params, env) {
   context += 'Never mix PriceLabs recommended prices with Guesty actual revenue in calculations.\n\n';
 
   return json({ context, timestamp: new Date().toISOString() });
+}
+
+
+async function fullPortfolioRefresh(request, env) {
+  const body = await request.json().catch(() => ({}));
+  const dryRun = body.dry_run === true;
+  const selectedSteps = body.steps || null; // null = smart auto-select; array = user override
+
+  // ── Define all data sources with freshness rules ──
+  const sources = [
+    { id: 'guesty_sync', name: 'Guesty Reservations', group: 'sync', freshness_hours: 6, cost: 'free', cost_detail: 'Guesty API (unlimited)', benefit: 'Revenue, bookings, guest data, occupancy', sync_type: 'guesty_reservations', requires: 'GUESTY_API_KEY', auto: true, cron: 'Every 6 hours' },
+    { id: 'guesty_listings', name: 'Guesty Listings', group: 'sync', freshness_hours: 168, cost: 'free', cost_detail: 'Guesty API (unlimited)', benefit: 'Listing descriptions, photos, amenities for AI analysis', sync_type: 'guesty_listings', requires: 'GUESTY_API_KEY', auto: true, cron: 'Weekly (Monday 6am)' },
+    { id: 'pricelabs_sync', name: 'PriceLabs Listings', group: 'sync', freshness_hours: 24, cost: 'free', cost_detail: 'PriceLabs API (unlimited)', benefit: 'Base prices, occupancy forecasts, market benchmarks', sync_type: 'pricelabs_listings', requires: 'PRICELABS_API_KEY', auto: true, cron: 'Daily 6am' },
+    { id: 'pricelabs_rates', name: 'PriceLabs Daily Rates', group: 'sync', freshness_hours: 24, cost: 'free', cost_detail: 'PriceLabs API (unlimited)', benefit: 'Daily rate calendar, price history, discrepancy detection', sync_type: 'pricelabs_prices', requires: 'PRICELABS_API_KEY', auto: true, cron: 'Daily 6am' },
+    { id: 'rebuild_actuals', name: 'Monthly Actuals', group: 'compute', freshness_hours: 24, cost: 'free', cost_detail: 'Local D1 compute', benefit: 'Recalculates revenue, occ, ADR, payout from reservations', sync_type: 'monthly_actuals', auto: true, cron: 'Daily 6am' },
+    { id: 'rebuild_intel', name: 'Intelligence Rebuild', group: 'compute', freshness_hours: 24, cost: 'free', cost_detail: 'Local D1 compute', benefit: 'Guest profiles, demand segments, RevPAN, booking pace, DOW, elasticity', sync_type: 'intelligence', auto: true, cron: 'Daily 6am' },
+    { id: 'rebuild_snapshots', name: 'Performance Snapshots', group: 'compute', freshness_hours: 24, cost: 'free', cost_detail: 'Local D1 compute', benefit: 'Trend tracking — are properties improving or declining?', sync_type: 'performance_snapshots', auto: true, cron: 'Daily 6am' },
+    { id: 'rebuild_profiles', name: 'Market Profiles', group: 'compute', freshness_hours: 24, cost: 'free', cost_detail: 'Local D1 compute', benefit: 'Market ADR, occ, listings for AI context and health scoring', sync_type: 'market_crawl_profiles', auto: true, cron: 'Daily 6am' },
+    { id: 'market_crawl', name: 'Market Crawl (SearchAPI)', group: 'crawl', freshness_hours: 168, cost: 'paid', cost_detail: 'SearchAPI (~4-8 calls per market)', benefit: 'Competitive landscape — listing counts, ADR trends, new listings', sync_type: 'market_crawl', requires: 'SEARCHAPI_KEY', auto: false, cron: 'Manual only — costs money', searchapi_est: 8 },
+    { id: 'stale_cleanup', name: 'Stale Data Cleanup', group: 'maintenance', freshness_hours: 168, cost: 'free', cost_detail: 'Local D1 compute', benefit: 'Removes expired shares, old logs (30d+), keeps DB lean', sync_type: 'stale_cleanup', auto: true, cron: 'Daily 6am' },
+  ];
+
+  // ── Check integration availability ──
+  const keys = {};
+  try {
+    const { results: settings } = await env.DB.prepare(`SELECT key, value FROM app_settings WHERE key IN ('GUESTY_API_KEY','PRICELABS_API_KEY','SEARCHAPI_KEY')`).all();
+    for (const s of (settings || [])) keys[s.key] = !!(s.value && s.value.length > 5);
+  } catch {}
+
+  // ── Check SearchAPI budget ──
+  let searchApiBudget = { used: 0, limit: 80, remaining: 80 };
+  try {
+    const usage = await env.DB.prepare(`SELECT SUM(calls) as total FROM api_usage WHERE service = 'searchapi' AND month = ?`).bind(new Date().toISOString().substring(0, 7)).first();
+    searchApiBudget.used = usage?.total || 0;
+    searchApiBudget.remaining = Math.max(0, searchApiBudget.limit - searchApiBudget.used);
+  } catch {}
+
+  // ── Get last sync times from sync_log ──
+  const lastSyncs = {};
+  try {
+    const { results: logs } = await env.DB.prepare(
+      `SELECT sync_type, MAX(completed_at) as last_completed, status
+       FROM sync_log WHERE status = 'completed' AND completed_at IS NOT NULL
+       GROUP BY sync_type`
+    ).all();
+    for (const l of (logs || [])) lastSyncs[l.sync_type] = l.last_completed;
+  } catch {}
+
+  // ── Build step plan with freshness ──
+  const now = new Date();
+  const steps = [];
+  let totalSearchApiCost = 0;
+
+  for (const src of sources) {
+    const available = src.requires ? (keys[src.requires] || false) : true;
+    const lastSync = lastSyncs[src.sync_type] || null;
+    const lastSyncDate = lastSync ? new Date(lastSync + (lastSync.includes('Z') ? '' : 'Z')) : null;
+    const hoursAgo = lastSyncDate ? Math.round((now - lastSyncDate) / 3600000) : null;
+    const isStale = hoursAgo === null || hoursAgo >= src.freshness_hours;
+    const isFresh = hoursAgo !== null && hoursAgo < src.freshness_hours;
+    const freshnessPct = hoursAgo !== null ? Math.max(0, Math.min(100, Math.round((1 - hoursAgo / src.freshness_hours) * 100))) : 0;
+
+    let status = 'stale';
+    if (!available) status = 'unavailable';
+    else if (isFresh) status = 'fresh';
+    else if (hoursAgo !== null && hoursAgo < src.freshness_hours * 1.5) status = 'aging';
+
+    // Smart auto-select: stale items get selected, fresh don't, paid items only if explicitly stale
+    let recommended = false;
+    if (available && isStale) {
+      if (src.cost === 'paid') {
+        recommended = hoursAgo === null || hoursAgo >= src.freshness_hours * 2; // only if very stale
+      } else {
+        recommended = true;
+      }
+    }
+
+    // If user provided explicit selections, override
+    const selected = selectedSteps ? selectedSteps.includes(src.id) : recommended;
+    if (selected && src.searchapi_est) totalSearchApiCost += src.searchapi_est;
+
+    steps.push({
+      ...src,
+      available,
+      last_sync: lastSync,
+      hours_ago: hoursAgo,
+      freshness_pct: freshnessPct,
+      status,
+      recommended,
+      selected,
+      skip_reason: !available ? 'API key not configured' : null,
+    });
+  }
+
+  // ── Dry run: return the plan ──
+  if (dryRun) {
+    return json({
+      dry_run: true,
+      steps,
+      integrations: { guesty: keys.GUESTY_API_KEY || false, pricelabs: keys.PRICELABS_API_KEY || false, searchapi: keys.SEARCHAPI_KEY || false },
+      searchapi_budget: searchApiBudget,
+      searchapi_cost_selected: totalSearchApiCost,
+      summary: {
+        total: steps.length,
+        stale: steps.filter(s => s.status === 'stale').length,
+        fresh: steps.filter(s => s.status === 'fresh').length,
+        selected: steps.filter(s => s.selected).length,
+        free_selected: steps.filter(s => s.selected && s.cost === 'free').length,
+        paid_selected: steps.filter(s => s.selected && s.cost === 'paid').length,
+      },
+    });
+  }
+
+  // ── Execute selected steps ──
+  const toRun = selectedSteps ? steps.filter(s => selectedSteps.includes(s.id) && s.available) : steps.filter(s => s.selected && s.available);
+  const log = [];
+  const startTime = Date.now();
+
+  for (const step of steps) {
+    const shouldRun = toRun.some(r => r.id === step.id);
+    if (!shouldRun) {
+      const reason = !step.available ? step.skip_reason : step.status === 'fresh' ? 'Fresh (' + step.hours_ago + 'h ago)' : 'Not selected';
+      log.push({ step: step.id, name: step.name, status: 'skipped', reason, ms: 0 });
+      continue;
+    }
+
+    const stepStart = Date.now();
+    try {
+      let detail = '';
+      if (step.id === 'guesty_sync') {
+        const fakeReq = new Request('http://x', { method: 'POST', body: JSON.stringify({}) });
+        const result = await syncGuestyApi(fakeReq, env);
+        const data = await result.json();
+        detail = (data.imported || 0) + ' new, ' + (data.updated || 0) + ' updated';
+      } else if (step.id === 'guesty_listings') {
+        const result = await syncGuestyListingsApi(env);
+        const data = await result.json();
+        detail = (data.listings_fetched || 0) + ' listings, ' + (data.auto_matched || 0) + ' matched';
+      } else if (step.id === 'pricelabs_sync') {
+        const result = await syncPriceLabsListings(env, null, false);
+        const data = await result.json();
+        detail = (data.count || 0) + ' listings (' + (data.added || 0) + ' new, ' + (data.updated || 0) + ' updated)';
+      } else if (step.id === 'pricelabs_rates') {
+        const result = await fetchAllPriceLabsPrices(env, null, false);
+        const data = await result.json();
+        detail = (data.succeeded || 0) + '/' + (data.total || 0) + ' listings fetched';
+      } else if (step.id === 'rebuild_actuals') {
+        const result = await processGuestyData(env);
+        const data = await result.json();
+        detail = (data.properties_processed || 0) + ' properties rebuilt';
+      } else if (step.id === 'rebuild_intel') {
+        const fakeReq = { json: async () => ({ sections: ['guests', 'market', 'channels', 'advanced'] }) };
+        const result = await rebuildIntelligence(fakeReq, env);
+        const data = await result.json();
+        const r = data.results || {};
+        detail = (r.guests?.processed || 0) + ' guests, ' + (r.segments?.classified || 0) + ' segments, ' + (r.channels?.channel_records || 0) + ' channels';
+      } else if (step.id === 'rebuild_snapshots') {
+        await capturePerformanceSnapshots(env);
+        detail = 'snapshots captured';
+      } else if (step.id === 'rebuild_profiles') {
+        // Rebuild all market profiles for watchlist cities
+        const { results: watchCities } = await env.DB.prepare(`SELECT DISTINCT city, state FROM market_watchlist WHERE city IS NOT NULL`).all();
+        let profileCount = 0;
+        for (const wc of (watchCities || [])) {
+          try { await buildMarketProfile(wc.city, wc.state, env); profileCount++; } catch {}
+        }
+        detail = profileCount + ' market profiles rebuilt';
+      } else if (step.id === 'market_crawl') {
+        if (searchApiBudget.remaining < 10) {
+          log.push({ step: step.id, name: step.name, status: 'skipped', reason: 'Only ' + searchApiBudget.remaining + ' SearchAPI calls remaining', ms: 0 });
+          continue;
+        }
+        // Trigger market crawl for watchlist markets
+        detail = 'trigger from Market tab for specific markets';
+        log.push({ step: step.id, name: step.name, status: 'skipped', reason: 'Market crawl is per-market — trigger from Market → Monitoring tab', ms: 0 });
+        continue;
+      } else if (step.id === 'stale_cleanup') {
+        await env.DB.prepare(`DELETE FROM system_log WHERE created_at < datetime('now', '-30 days')`).run();
+        await env.DB.prepare(`DELETE FROM property_shares WHERE expires_at < datetime('now')`).run();
+        detail = 'cleaned up';
+      }
+      log.push({ step: step.id, name: step.name, status: 'ok', detail, ms: Date.now() - stepStart });
+      // Record in sync_log so freshness tracking picks it up
+      try { await env.DB.prepare(`INSERT INTO sync_log (sync_type, source, status, records_processed, completed_at) VALUES (?, 'manual_refresh', 'completed', 1, datetime('now'))`).bind(step.sync_type || step.id).run(); } catch {}
+    } catch (e) {
+      log.push({ step: step.id, name: step.name, status: 'error', detail: e.message, ms: Date.now() - stepStart });
+      syslog(env, 'error', 'fullPortfolioRefresh', step.id + ' failed', e.message);
+    }
+  }
+
+  const totalMs = Date.now() - startTime;
+  const okCount = log.filter(l => l.status === 'ok').length;
+  syslog(env, 'info', 'fullPortfolioRefresh', 'Refresh completed', totalMs + 'ms, ' + okCount + '/' + log.length + ' ok');
+
+  return json({
+    ok: true,
+    total_ms: totalMs,
+    total_seconds: Math.round(totalMs / 1000),
+    steps_completed: okCount,
+    steps_skipped: log.filter(l => l.status === 'skipped').length,
+    steps_errored: log.filter(l => l.status === 'error').length,
+    log,
+  });
+}
+
+async function getPortfolioInsights(env) {
+  try {
+    const { results: metrics } = await env.DB.prepare(
+      `SELECT metric_key, metric_value, sample_size, period FROM market_intelligence
+       WHERE city = '_portfolio'
+       ORDER BY metric_key, period`
+    ).all();
+
+    // Also get per-property RevPAN
+    const { results: propRevpan } = await env.DB.prepare(
+      `SELECT mi.metric_key, mi.metric_value, mi.sample_size, mi.city, mi.state, mi.bedrooms
+       FROM market_intelligence mi
+       WHERE mi.metric_key LIKE 'revpan_property_%'
+       ORDER BY mi.metric_value DESC`
+    ).all();
+
+    // Get property names for RevPAN display
+    const propIds = propRevpan.map(r => parseInt(r.metric_key.replace('revpan_property_', ''))).filter(id => !isNaN(id));
+    let propNames = {};
+    if (propIds.length > 0) {
+      const { results: props } = await env.DB.prepare(
+        `SELECT id, CASE WHEN unit_number IS NOT NULL AND unit_number != '' THEN unit_number || ' — ' || COALESCE(platform_listing_name, name, address) ELSE COALESCE(platform_listing_name, name, address, 'Property #' || id) END as label FROM properties WHERE id IN (${propIds.map(() => '?').join(',')})`
+      ).bind(...propIds).all();
+      for (const p of (props || [])) propNames[p.id] = p.label;
+    }
+
+    return json({
+      metrics: metrics || [],
+      property_revpan: (propRevpan || []).map(r => ({
+        property_id: parseInt(r.metric_key.replace('revpan_property_', '')),
+        revpan: r.metric_value,
+        months: r.sample_size,
+        city: r.city,
+        state: r.state,
+        label: propNames[parseInt(r.metric_key.replace('revpan_property_', ''))] || 'Property',
+      })),
+    });
+  } catch (e) {
+    syslog(env, 'error', 'getPortfolioInsights', 'query failed', e.message);
+    return json({ metrics: [], property_revpan: [], error: e.message });
+  }
 }
 
 
@@ -10858,6 +11978,37 @@ async function getGuestyActualsForPrompt(propertyId, city, state, env) {
     }
   } catch (e) { syslog(env, 'error', 'getGuestyActualsForPrompt', 'L10707', e.message); }
 
+  // Rate context: compare actual ADR vs set rates to flag pricing-driven occupancy
+  try {
+    const { results: rateHistory } = await env.DB.prepare(
+      `SELECT ma.month, ma.avg_nightly_rate as actual_adr, ma.occupancy_pct,
+              (SELECT ROUND(AVG(ph.base_price)) FROM price_history ph
+               WHERE ph.property_id = ma.property_id
+                 AND ph.snapshot_date >= ma.month || '-01'
+                 AND ph.snapshot_date < date(ma.month || '-01', '+1 month')
+                 AND ph.base_price > 0) as set_rate,
+              (SELECT ROUND(AVG(ph.rec_price)) FROM price_history ph
+               WHERE ph.property_id = ma.property_id
+                 AND ph.snapshot_date >= ma.month || '-01'
+                 AND ph.snapshot_date < date(ma.month || '-01', '+1 month')
+                 AND ph.rec_price > 0) as rec_rate
+       FROM monthly_actuals ma
+       WHERE ma.property_id = ? AND ma.booked_nights > 0
+       ORDER BY ma.month DESC LIMIT 6`
+    ).bind(propertyId).all();
+    if (rateHistory && rateHistory.length > 0) {
+      const underpriced = rateHistory.filter(r => r.set_rate && r.actual_adr && r.actual_adr < r.set_rate * 0.85 && r.occupancy_pct >= 0.65);
+      result += 'PRICING CONTEXT (actual ADR vs PriceLabs set rate): ';
+      result += rateHistory.map(r => {
+        const gap = r.set_rate ? Math.round((r.actual_adr - r.set_rate) / r.set_rate * 100) : null;
+        return r.month + ': actual $' + Math.round(r.actual_adr || 0) + (r.set_rate ? ' vs set $' + r.set_rate : '') + (r.rec_rate ? ' (rec $' + r.rec_rate + ')' : '') + (gap !== null ? ' [' + (gap >= 0 ? '+' : '') + gap + '%]' : '') + ' at ' + Math.round((r.occupancy_pct || 0) * 100) + '% occ';
+      }).join(' | ') + '\n';
+      if (underpriced.length > 0) {
+        result += 'WARNING: ' + underpriced.length + ' month(s) show high occupancy (65%+) with ADR 15%+ below set rate — occupancy was likely driven by aggressive pricing, not demand strength. Factor this into any occupancy trend analysis.\n';
+      }
+    }
+  } catch (e) { syslog(env, 'error', 'getGuestyActualsForPrompt', 'rate_context', e.message); }
+
   // Reservation-level booking patterns — ONLY confirmed+closed, matching processGuestyData filter
   // Read-only from guesty_reservations, never modifies any table
   try {
@@ -11028,46 +12179,102 @@ async function autoFetchAmenities(propertyId, env) {
   let foundAmenities = new Set();
   let sources = [];
 
-  // Scrape platform listing pages for amenity mentions
-  const urls = platforms.filter(p => p.listing_url).map(p => ({ url: p.listing_url, platform: p.platform }));
-  if (property.listing_url) urls.push({ url: property.listing_url, platform: 'direct' });
+  // Common patterns for text matching
+  const patterns = [
+    [/(?:hot tub|jacuzzi|spa)/i, 'hot tub'], [/(?:swimming pool|pool access|private pool)/i, 'pool'],
+    [/(?:ev charger|ev charging|electric vehicle)/i, 'ev charger'], [/(?:fire ?pit)/i, 'fire pit'],
+    [/(?:game room|billiards|pool table)/i, 'game room'], [/(?:gym|fitness|workout)/i, 'gym'],
+    [/(?:washer|laundry|washing machine)/i, 'washer/dryer'], [/(?:dishwasher)/i, 'dishwasher'],
+    [/(?:pet[- ]?friendly|dogs? (?:allowed|welcome)|pets? (?:allowed|welcome))/i, 'pet friendly'],
+    [/(?:wifi|wi-fi|high[- ]?speed internet)/i, 'wifi'], [/(?:parking|garage|driveway)/i, 'parking'],
+    [/(?:air condition|central air|ac unit|a\/c)/i, 'air conditioning'],
+    [/(?:fireplace|wood stove)/i, 'fireplace'], [/(?:balcony|patio|deck|porch)/i, 'patio/balcony'],
+    [/(?:bbq|grill|barbecue)/i, 'bbq grill'], [/(?:coffee maker|keurig|nespresso)/i, 'coffee maker'],
+    [/(?:smart tv|netflix|roku|streaming)/i, 'smart tv'], [/(?:keyless|smart lock|self check)/i, 'keyless entry'],
+    [/(?:workspace|dedicated desk|work from home|office)/i, 'workspace'],
+    [/(?:waterfront|lake view|ocean view|beach)/i, 'waterfront'], [/(?:mountain view|scenic view)/i, 'mountain view'],
+  ];
 
-  for (const u of urls.slice(0, 3)) {
-    try {
-      const resp = await fetch(u.url, { headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36', 'Accept': 'text/html' }, redirect: 'follow' });
-      if (!resp.ok) continue;
-      const html = (await resp.text()).toLowerCase();
-      sources.push(u.platform);
-
-      // Match known amenity names against page content
-      for (const name in amenityMap) {
-        if (html.includes(name) || html.includes(name.replace(/ /g, '-')) || html.includes(name.replace(/ /g, '_'))) {
-          foundAmenities.add(name);
-        }
+  function matchText(text) {
+    const lower = text.toLowerCase();
+    for (const name in amenityMap) {
+      if (lower.includes(name) || lower.includes(name.replace(/ /g, '-')) || lower.includes(name.replace(/ /g, '_'))) {
+        foundAmenities.add(name);
       }
-      // Common patterns
-      const patterns = [
-        [/(?:hot tub|jacuzzi|spa)/i, 'hot tub'], [/(?:swimming pool|pool access|private pool)/i, 'pool'],
-        [/(?:ev charger|ev charging|electric vehicle)/i, 'ev charger'], [/(?:fire ?pit)/i, 'fire pit'],
-        [/(?:game room|billiards|pool table)/i, 'game room'], [/(?:gym|fitness|workout)/i, 'gym'],
-        [/(?:washer|laundry|washing machine)/i, 'washer/dryer'], [/(?:dishwasher)/i, 'dishwasher'],
-        [/(?:pet[- ]?friendly|dogs? (?:allowed|welcome)|pets? (?:allowed|welcome))/i, 'pet friendly'],
-        [/(?:wifi|wi-fi|high[- ]?speed internet)/i, 'wifi'], [/(?:parking|garage|driveway)/i, 'parking'],
-        [/(?:air condition|central air|ac unit|a\/c)/i, 'air conditioning'],
-        [/(?:fireplace|wood stove)/i, 'fireplace'], [/(?:balcony|patio|deck|porch)/i, 'patio/balcony'],
-        [/(?:bbq|grill|barbecue)/i, 'bbq grill'], [/(?:coffee maker|keurig|nespresso)/i, 'coffee maker'],
-        [/(?:smart tv|netflix|roku|streaming)/i, 'smart tv'], [/(?:keyless|smart lock|self check)/i, 'keyless entry'],
-        [/(?:workspace|dedicated desk|work from home|office)/i, 'workspace'],
-        [/(?:waterfront|lake view|ocean view|beach)/i, 'waterfront'], [/(?:mountain view|scenic view)/i, 'mountain view'],
-      ];
-      for (const [regex, name] of patterns) {
-        if (regex.test(html)) foundAmenities.add(name);
-      }
-    } catch {}
+    }
+    for (const [regex, name] of patterns) {
+      if (regex.test(lower)) foundAmenities.add(name);
+    }
   }
 
-  // For research properties with no platforms, try a Google search
-  if (urls.length === 0 && env.SEARCHAPI_KEY) {
+  // Source 1: Guesty amenities (primary — most reliable)
+  try {
+    const guestyListing = await env.DB.prepare(
+      `SELECT listing_amenities_json, listing_description FROM guesty_listings WHERE property_id = ?`
+    ).bind(propertyId).first();
+    if (guestyListing) {
+      if (guestyListing.listing_amenities_json) {
+        try {
+          const gAmenities = JSON.parse(guestyListing.listing_amenities_json);
+          if (Array.isArray(gAmenities)) {
+            sources.push('guesty');
+            const combined = gAmenities.join(' ');
+            matchText(combined);
+          }
+        } catch {}
+      }
+      if (guestyListing.listing_description) {
+        matchText(guestyListing.listing_description);
+        if (!sources.includes('guesty')) sources.push('guesty');
+      }
+    }
+  } catch {}
+
+  // Source 2: Market intel — master_listings amenities for this property's linked platforms
+  try {
+    const urls = platforms.filter(p => p.listing_url).map(p => p.listing_url);
+    if (urls.length > 0) {
+      const placeholders = urls.map(() => '?').join(',');
+      const { results: intelListings } = await env.DB.prepare(
+        `SELECT amenities_json FROM master_listings WHERE listing_url IN (${placeholders})`
+      ).bind(...urls).all();
+      for (const il of (intelListings || [])) {
+        if (il.amenities_json) {
+          try {
+            const iAmenities = JSON.parse(il.amenities_json);
+            if (Array.isArray(iAmenities)) {
+              matchText(iAmenities.join(' '));
+              if (!sources.includes('intel')) sources.push('intel');
+            }
+          } catch {}
+        }
+      }
+    }
+  } catch {}
+
+  // Source 3: SearchAPI scraping of platform URLs (if we have SearchAPI key and found nothing yet)
+  if (foundAmenities.size === 0 && env.SEARCHAPI_KEY) {
+    const urls = platforms.filter(p => p.listing_url).map(p => ({ url: p.listing_url, platform: p.platform }));
+    if (property.listing_url) urls.push({ url: property.listing_url, platform: 'direct' });
+    for (const u of urls.slice(0, 2)) {
+      try {
+        const params = new URLSearchParams({ engine: 'google', q: 'site:' + new URL(u.url).hostname + ' ' + property.address + ' ' + property.city + ' amenities' });
+        await trackApiCall(env, 'searchapi', 'amenity_search', true);
+        const resp = await fetch('https://www.searchapi.io/api/v1/search?' + params.toString(), {
+          headers: { 'Authorization': 'Bearer ' + env.SEARCHAPI_KEY }
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          const text = ((data.answer_box?.snippet || '') + ' ' + (data.organic_results || []).slice(0, 3).map(r => (r.snippet || '') + ' ' + (r.title || '')).join(' '));
+          sources.push(u.platform);
+          matchText(text);
+        }
+      } catch {}
+    }
+  }
+
+  // Source 4: Generic Google search for research properties with nothing else
+  if (foundAmenities.size === 0 && env.SEARCHAPI_KEY && platforms.length === 0) {
     try {
       const q = property.address + ' ' + property.city + ' ' + property.state + ' amenities';
       const params = new URLSearchParams({ engine: 'google', q });
@@ -11077,25 +12284,26 @@ async function autoFetchAmenities(propertyId, env) {
       });
       if (resp.ok) {
         const data = await resp.json();
-        const text = ((data.answer_box?.snippet || '') + ' ' + (data.organic_results || []).slice(0, 3).map(r => (r.snippet || '') + ' ' + (r.title || '')).join(' ')).toLowerCase();
+        const text = ((data.answer_box?.snippet || '') + ' ' + (data.organic_results || []).slice(0, 3).map(r => (r.snippet || '') + ' ' + (r.title || '')).join(' '));
         sources.push('google');
-        for (const name in amenityMap) {
-          if (text.includes(name)) foundAmenities.add(name);
-        }
+        matchText(text);
       }
     } catch {}
   }
 
   // Link found amenities to property
   let added = 0;
+  const inserts = [];
+  const stmt = env.DB.prepare(`INSERT OR IGNORE INTO property_amenities (property_id, amenity_id) VALUES (?, ?)`);
   for (const name of foundAmenities) {
     if (existingNames.has(name)) continue;
     const amenity = amenityMap[name];
     if (!amenity) continue;
-    try {
-      await env.DB.prepare(`INSERT OR IGNORE INTO property_amenities (property_id, amenity_id) VALUES (?, ?)`).bind(propertyId, amenity.id).run();
-      added++;
-    } catch {}
+    inserts.push(stmt.bind(propertyId, amenity.id));
+    added++;
+  }
+  if (inserts.length > 0) {
+    try { await env.DB.batch(inserts); } catch {}
   }
 
   return json({
@@ -11178,7 +12386,7 @@ async function getDashboard(env, uid) {
 
     // 2. Monthly actuals — this month, last month, same month last year
     // CRITICAL: Exclude managed and research properties from portfolio revenue
-    const revFilter = `ma.property_id IN (SELECT id FROM properties WHERE (is_managed = 0 OR is_managed IS NULL) AND (is_research != 1 OR is_research IS NULL))`;
+    const revFilter = `ma.property_id IN (SELECT id FROM properties WHERE (is_managed = 0 OR is_managed IS NULL) AND (is_research != 1 OR is_research IS NULL) AND id NOT IN (SELECT DISTINCT parent_id FROM properties WHERE parent_id IS NOT NULL))`;
     let thisMonthActuals;
     try {
       thisMonthActuals = await env.DB.prepare(`SELECT SUM(total_revenue) as rev, SUM(host_payout) as payout, SUM(booked_nights) as nights, SUM(available_nights) as avail, SUM(num_reservations) as bookings, SUM(elapsed_booked_nights) as elapsed_nights, MAX(elapsed_days) as elapsed_days FROM monthly_actuals ma WHERE month = ? AND ${revFilter}`).bind(thisMonth).first();
@@ -11289,7 +12497,7 @@ async function getDashboard(env, uid) {
 
     // Demand segments insight — if segments exist, show top revenue segment
     try {
-      const topSeg = await env.DB.prepare(`SELECT demand_segment, COUNT(*) as ct, SUM(accommodation_fare) as rev FROM guesty_reservations WHERE demand_segment IS NOT NULL AND ${LIVE_STATUS_SQL} GROUP BY demand_segment ORDER BY rev DESC LIMIT 1`).first();
+      const topSeg = await env.DB.prepare(`SELECT demand_segment, COUNT(*) as ct, SUM(accommodation_fare) as rev FROM guesty_reservations WHERE demand_segment IS NOT NULL AND ${LIVE_STATUS_SQL} AND property_id IN (SELECT id FROM properties WHERE (is_managed = 0 OR is_managed IS NULL) AND (is_research != 1 OR is_research IS NULL)) GROUP BY demand_segment ORDER BY rev DESC LIMIT 1`).first();
       if (topSeg && topSeg.ct >= 3) {
         const segLabel = (topSeg.demand_segment || '').replace(/_/g, ' ');
         actions.push({ type: 'info', icon: 'target', text: 'Top demand segment: ' + segLabel + ' (' + topSeg.ct + ' bookings, $' + Math.round(topSeg.rev).toLocaleString() + ' revenue) — optimize pricing for this audience', action: 'switchView("intel");switchIntelTab("guests")', priority: 4 });
@@ -11298,7 +12506,7 @@ async function getDashboard(env, uid) {
 
     // Unclassified reservations
     try {
-      const unclassified = await env.DB.prepare(`SELECT COUNT(*) as c FROM guesty_reservations WHERE demand_segment IS NULL AND ${LIVE_STATUS_SQL}`).first();
+      const unclassified = await env.DB.prepare(`SELECT COUNT(*) as c FROM guesty_reservations WHERE demand_segment IS NULL AND ${LIVE_STATUS_SQL} AND property_id IN (SELECT id FROM properties WHERE (is_managed = 0 OR is_managed IS NULL) AND (is_research != 1 OR is_research IS NULL))`).first();
       if (unclassified?.c > 10) actions.push({ type: 'info', icon: 'tag', text: unclassified.c + ' reservations not yet classified — rebuild intelligence to analyze demand segments', action: 'dashAction_rebuildIntel', priority: 4 });
     } catch (e) { syslog(env, 'error', 'getDashboard', 'L11142', e.message); }
 
@@ -11307,6 +12515,18 @@ async function getDashboard(env, uid) {
       const plStale = await env.DB.prepare(`SELECT COUNT(*) as c FROM pricelabs_listings WHERE last_synced < datetime('now', '-7 days')`).first();
       if (plStale?.c > 0) actions.push({ type: 'warning', icon: 'pieChart', text: plStale.c + ' PriceLabs listing' + (plStale.c > 1 ? 's' : '') + ' not synced in 7+ days', action: 'switchView("pms");showPmsDetail("pricelabs")', priority: 2 });
     } catch (e) { syslog(env, 'error', 'getDashboard', 'L11148', e.message); }
+
+    // SearchAPI paid plan cancellation reminder — active through March 2026
+    try {
+      const now = new Date();
+      const cancelDeadline = new Date('2026-04-01T00:00:00Z');
+      if (now < cancelDeadline) {
+        const daysLeft = Math.ceil((cancelDeadline - now) / 86400000);
+        if (daysLeft <= 21) {
+          actions.push({ type: daysLeft <= 7 ? 'warning' : 'info', icon: 'alertCircle', text: 'SearchAPI paid plan expires end of March 2026 — cancel before auto-renewal (' + daysLeft + ' days left)', action: 'switchView("settings")', priority: daysLeft <= 7 ? 1 : 2 });
+        }
+      }
+    } catch {}
 
     // 5a-2. Market alerts — significant changes in tracked markets
     try {
@@ -11832,7 +13052,7 @@ async function getDashboard(env, uid) {
 
       // 1. Actuals — monthly_actuals for this year (portfolio only, no managed/research)
       const { results: yearActuals } = await env.DB.prepare(
-        `SELECT ma.month, SUM(ma.total_revenue) as revenue, SUM(ma.host_payout) as payout, SUM(ma.booked_nights) as nights, SUM(ma.available_nights) as avail FROM monthly_actuals ma JOIN properties p ON ma.property_id = p.id WHERE ma.month >= ? AND ma.month <= ? AND (p.is_managed = 0 OR p.is_managed IS NULL) AND (p.is_research != 1 OR p.is_research IS NULL) GROUP BY ma.month ORDER BY ma.month`
+        `SELECT ma.month, SUM(ma.total_revenue) as revenue, SUM(ma.host_payout) as payout, SUM(ma.booked_nights) as nights, SUM(ma.available_nights) as avail FROM monthly_actuals ma JOIN properties p ON ma.property_id = p.id WHERE ma.month >= ? AND ma.month <= ? AND (p.is_managed = 0 OR p.is_managed IS NULL) AND (p.is_research != 1 OR p.is_research IS NULL) AND p.id NOT IN (SELECT DISTINCT parent_id FROM properties WHERE parent_id IS NOT NULL) GROUP BY ma.month ORDER BY ma.month`
       ).bind(year + '-01', year + '-12').all();
       const actualMap = {};
       for (const a of (yearActuals || [])) actualMap[a.month] = { revenue: Math.round(a.revenue || 0), payout: Math.round(a.payout || 0), nights: a.nights || 0, avail: a.avail || 0 };
@@ -11842,8 +13062,9 @@ async function getDashboard(env, uid) {
       const forwardMap = {};
       try {
         const { results: fwdRes } = await env.DB.prepare(
-          `SELECT gr.check_in, gr.check_out, gr.nights_count, gr.accommodation_fare, gr.host_payout, gr.property_id FROM guesty_reservations gr JOIN properties p ON gr.property_id = p.id WHERE gr.check_out > ? AND ${LIVE_STATUS_GR} AND (p.is_managed = 0 OR p.is_managed IS NULL) AND (p.is_research != 1 OR p.is_research IS NULL)`
+          `SELECT gr.check_in, gr.check_out, gr.nights_count, gr.accommodation_fare, gr.host_payout, gr.property_id FROM guesty_reservations gr JOIN properties p ON gr.property_id = p.id WHERE gr.check_out > ? AND ${LIVE_STATUS_GR} AND (p.is_managed = 0 OR p.is_managed IS NULL) AND (p.is_research != 1 OR p.is_research IS NULL) AND p.id NOT IN (SELECT DISTINCT parent_id FROM properties WHERE parent_id IS NOT NULL)`
         ).bind(today).all();
+        const tomorrow = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
         for (const r of (fwdRes || [])) {
           if (!r.check_in || !r.accommodation_fare) continue;
           const ciStr = (r.check_in || '').substring(0, 10);
@@ -11860,7 +13081,6 @@ async function getDashboard(env, uid) {
           const nightlyRate = totalNights > 0 ? r.accommodation_fare / totalNights : 0;
           const nightlyPayout = totalNights > 0 ? (r.host_payout || r.accommodation_fare) / totalNights : 0;
           // Only count nights AFTER today (tomorrow onwards)
-          const tomorrow = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
           let d2 = ci < tomorrow ? new Date(tomorrow) : new Date(ci);
           while (d2 < co) {
             const mk = d2.getUTCFullYear() + '-' + String(d2.getUTCMonth() + 1).padStart(2, '0');
@@ -11989,11 +13209,13 @@ async function assignAlgoTemplate(request, env) {
   const propertyIds = b.property_ids || [];
   if (propertyIds.length === 0) return json({ error: 'property_ids required' }, 400);
 
-  let updated = 0;
-  for (const pid of propertyIds) {
-    await env.DB.prepare(`UPDATE properties SET algo_template_id = ? WHERE id = ?`).bind(templateId, pid).run();
-    updated++;
+  const stmts = propertyIds.map(pid =>
+    env.DB.prepare(`UPDATE properties SET algo_template_id = ? WHERE id = ?`).bind(templateId, pid)
+  );
+  for (let bi = 0; bi < stmts.length; bi += 80) {
+    await env.DB.batch(stmts.slice(bi, bi + 80));
   }
+  const updated = propertyIds.length;
   return json({ ok: true, updated, message: (templateId ? 'Assigned template to ' : 'Unassigned template from ') + updated + ' properties' });
 }
 
@@ -12140,8 +13362,91 @@ async function buildMarketProfile(city, state, env) {
     }
   } catch {}
 
+  // ── Rate Matrix: bed/bath breakdown from crawl data ──
+  try {
+    const { results: matrixRows } = await env.DB.prepare(
+      `SELECT bedrooms, bathrooms, nightly_rate, rating, review_count FROM master_listings WHERE LOWER(city) = ? AND LOWER(state) = ? AND status = 'active' AND nightly_rate > 0 AND bedrooms IS NOT NULL ORDER BY bedrooms, bathrooms`
+    ).bind(cityL, stateL).all();
+
+    if (matrixRows && matrixRows.length >= 3) {
+      // Group by beds/baths combo
+      const groups = {};
+      for (const r of matrixRows) {
+        const beds = Math.min(r.bedrooms || 0, 8);
+        // Normalize baths to nearest 0.5
+        const baths = Math.round((r.bathrooms || 1) * 2) / 2;
+        const key = beds + '/' + baths;
+        if (!groups[key]) groups[key] = { beds, baths, rates: [], ratings: [], reviews: [] };
+        groups[key].rates.push(r.nightly_rate);
+        if (r.rating) groups[key].ratings.push(r.rating);
+        if (r.review_count) groups[key].reviews.push(r.review_count);
+      }
+
+      const matrix = [];
+      for (const key in groups) {
+        const g = groups[key];
+        const sorted = g.rates.slice().sort((a, b) => a - b);
+        const mid = Math.floor(sorted.length / 2);
+        const median = sorted.length % 2 ? sorted[mid] : Math.round((sorted[mid - 1] + sorted[mid]) / 2);
+        const avg = Math.round(sorted.reduce((a, b) => a + b, 0) / sorted.length);
+        const p25 = sorted[Math.floor(sorted.length * 0.25)] || sorted[0];
+        const p75 = sorted[Math.floor(sorted.length * 0.75)] || sorted[sorted.length - 1];
+        const avgRating = g.ratings.length > 0 ? Math.round(g.ratings.reduce((a, b) => a + b, 0) / g.ratings.length * 10) / 10 : null;
+        matrix.push({
+          beds: g.beds, baths: g.baths, count: sorted.length,
+          median: median, avg: avg, p25: Math.round(p25), p75: Math.round(p75),
+          min: Math.round(sorted[0]), max: Math.round(sorted[sorted.length - 1]),
+          avg_rating: avgRating,
+        });
+      }
+      matrix.sort((a, b) => a.beds - b.beds || a.baths - b.baths);
+
+      // Compute incremental values
+      if (matrix.length >= 2) {
+        // Bedroom increment: compare medians across bed counts (same or similar bath)
+        const bedGroups = {};
+        for (const m of matrix) {
+          if (!bedGroups[m.beds]) bedGroups[m.beds] = [];
+          bedGroups[m.beds].push(m.median);
+        }
+        const bedMedians = {};
+        for (const b in bedGroups) {
+          const sorted = bedGroups[b].sort((a, c) => a - c);
+          bedMedians[b] = sorted[Math.floor(sorted.length / 2)];
+        }
+        const bedKeys = Object.keys(bedMedians).map(Number).sort((a, b) => a - b);
+        const bedIncrements = [];
+        for (let i = 1; i < bedKeys.length; i++) {
+          bedIncrements.push(bedMedians[bedKeys[i]] - bedMedians[bedKeys[i - 1]]);
+        }
+        const avgBedIncrement = bedIncrements.length > 0 ? Math.round(bedIncrements.reduce((a, b) => a + b, 0) / bedIncrements.length) : null;
+
+        // Bath increment: compare same-bed entries with different bath counts
+        const bathIncrements = [];
+        for (let i = 0; i < matrix.length; i++) {
+          for (let j = i + 1; j < matrix.length; j++) {
+            if (matrix[i].beds === matrix[j].beds && matrix[j].baths > matrix[i].baths && matrix[i].count >= 2 && matrix[j].count >= 2) {
+              const perBath = (matrix[j].median - matrix[i].median) / (matrix[j].baths - matrix[i].baths);
+              bathIncrements.push(perBath);
+            }
+          }
+        }
+        const avgBathIncrement = bathIncrements.length > 0 ? Math.round(bathIncrements.reduce((a, b) => a + b, 0) / bathIncrements.length) : null;
+
+        profile.rate_matrix_json = JSON.stringify({
+          entries: matrix,
+          increments: { per_bedroom: avgBedIncrement, per_bathroom: avgBathIncrement },
+          total_listings: matrixRows.length,
+          updated: new Date().toISOString(),
+        });
+      } else {
+        profile.rate_matrix_json = JSON.stringify({ entries: matrix, increments: {}, total_listings: matrixRows.length, updated: new Date().toISOString() });
+      }
+    }
+  } catch {}
+
   // Upsert into market_profiles
-  const fields = ['str_listing_count','str_avg_adr','str_median_adr','str_avg_occupancy','str_avg_rating','str_avg_reviews','str_property_mix','str_bedroom_mix','str_price_bands','str_top_hosts','str_superhost_pct','ltr_avg_rent','ltr_median_rent','ltr_active_listings','your_property_count','your_avg_adr','your_avg_occupancy','your_total_revenue','your_avg_rating','adr_trend_3mo','listing_count_trend_3mo','new_listings_30d','peak_months','low_months','peak_multiplier'];
+  const fields = ['str_listing_count','str_avg_adr','str_median_adr','str_avg_occupancy','str_avg_rating','str_avg_reviews','str_property_mix','str_bedroom_mix','str_price_bands','str_top_hosts','str_superhost_pct','ltr_avg_rent','ltr_median_rent','ltr_active_listings','your_property_count','your_avg_adr','your_avg_occupancy','your_total_revenue','your_avg_rating','adr_trend_3mo','listing_count_trend_3mo','new_listings_30d','peak_months','low_months','peak_multiplier','rate_matrix_json'];
   const setClauses = fields.map(f => `${f}=excluded.${f}`).join(',');
   const placeholders = fields.map(() => '?').join(',');
   const values = fields.map(f => profile[f] !== undefined ? profile[f] : null);
@@ -12499,18 +13804,21 @@ async function crawlMarketListings(city, state, env) {
 async function autoPopulateWatchlist(env) {
   // Tier 1 — markets where you own/manage properties (not research)
   const { results: ownedMarkets } = await env.DB.prepare(`SELECT DISTINCT city, state FROM properties WHERE (is_research = 0 OR is_research IS NULL) AND city IS NOT NULL AND city != '' GROUP BY LOWER(city), LOWER(state)`).all();
-  let added = 0;
+  const wlBatch = [];
   for (const m of (ownedMarkets || [])) {
-    await env.DB.prepare(`INSERT INTO market_watchlist (city, state, tier, frequency, auto_created, updated_at) VALUES (?,?,1,'biweekly',1,datetime('now')) ON CONFLICT(city, state) DO UPDATE SET tier = MIN(tier, 1), frequency = 'biweekly', updated_at = datetime('now')`).bind(m.city, m.state).run();
-    added++;
+    wlBatch.push(env.DB.prepare(`INSERT INTO market_watchlist (city, state, tier, frequency, auto_created, updated_at) VALUES (?,?,1,'biweekly',1,datetime('now')) ON CONFLICT(city, state) DO UPDATE SET tier = MIN(tier, 1), frequency = 'biweekly', updated_at = datetime('now')`).bind(m.city, m.state));
   }
   // Tier 2 — research property markets
   const { results: researchMarkets } = await env.DB.prepare(`SELECT DISTINCT city, state FROM properties WHERE is_research = 1 AND city IS NOT NULL AND city != '' GROUP BY LOWER(city), LOWER(state)`).all();
   for (const m of (researchMarkets || [])) {
-    await env.DB.prepare(`INSERT INTO market_watchlist (city, state, tier, frequency, auto_created, updated_at) VALUES (?,?,2,'biweekly',1,datetime('now')) ON CONFLICT(city, state) DO NOTHING`).bind(m.city, m.state).run();
-    added++;
+    wlBatch.push(env.DB.prepare(`INSERT INTO market_watchlist (city, state, tier, frequency, auto_created, updated_at) VALUES (?,?,2,'biweekly',1,datetime('now')) ON CONFLICT(city, state) DO NOTHING`).bind(m.city, m.state));
   }
-  return json({ ok: true, message: 'Auto-populated ' + added + ' markets from your properties' });
+  if (wlBatch.length > 0) {
+    for (let bi = 0; bi < wlBatch.length; bi += 80) {
+      await env.DB.batch(wlBatch.slice(bi, bi + 80));
+    }
+  }
+  return json({ ok: true, message: 'Auto-populated ' + wlBatch.length + ' markets from your properties' });
 }
 
 // ─── Property Calendar (unified view) ────────────────────────────────────────

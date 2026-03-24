@@ -733,7 +733,7 @@ function fmtNum(n) {
 
 function renderFinanceByCity(cities) {
   if (!cities || cities.length === 0) { document.getElementById('finByCity').innerHTML = '<p style="color:var(--text3);font-size:0.85rem;">No data yet.</p>'; return; }
-  var h = '<table class="comp-table"><thead><tr><th>Market</th><th>Properties</th><th>Value</th><th>Revenue/mo</th><th>Cost/mo</th><th>Net/mo</th></tr></thead><tbody>';
+  var h = '<table class="comp-table"><thead><tr><th>Market</th><th>Properties</th><th>Value</th><th>Est. Rev/mo</th><th>Cost/mo</th><th>Est. Net/mo</th></tr></thead><tbody>';
   cities.forEach(function(c) {
     var net = (c.revenue || 0) - (c.cost || 0);
     var netColor = net >= 0 ? 'var(--accent)' : 'var(--danger)';
@@ -756,7 +756,7 @@ function renderFinancePropertyTable(props) {
   var inactiveProps = props.filter(function(p) { return p.is_inactive; });
 
   function buildTable(list, showTotals) {
-    var h = '<table class="comp-table"><thead><tr><th>Property</th><th>Type</th><th>Rev/mo</th><th>Cost/mo</th><th>Services</th><th>Net/mo</th><th>Annual Net</th></tr></thead><tbody>';
+    var h = '<table class="comp-table"><thead><tr><th>Property</th><th>Type</th><th>Est. Rev/mo</th><th>Cost/mo</th><th>Services</th><th>Est. Net/mo</th><th>Est. Annual</th></tr></thead><tbody>';
     var totalRev = 0, totalCost = 0, totalSvc = 0;
     list.forEach(function(p) {
       var netColor = (p.monthly_net || 0) >= 0 ? 'var(--accent)' : 'var(--danger)';

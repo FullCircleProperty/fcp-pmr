@@ -7,6 +7,7 @@
       </div>
     </div>
     <div class="header-actions">
+      <button id="refreshBtn" class="btn btn-xs" onclick="refreshCurrentView()" title="Refresh data" style="padding:5px 8px;font-size:0.78rem;display:flex;align-items:center;gap:4px;min-height:unset;">↻ Refresh</button>
       <button id="themeToggleBtn" class="btn btn-xs" onclick="toggleTheme()" title="Switch light/dark mode" style="padding:5px 8px;font-size:0.78rem;display:flex;align-items:center;gap:4px;min-height:unset;">☀️</button>
       <div class="user-badge" id="userBadge"></div>
       <button class="btn btn-sm" onclick="showPasswordModal()">Password</button>
@@ -423,7 +424,7 @@
           <div></div>
           <button class="btn btn-xs btn-purple" onclick="autoFetchAmenities()" id="autoAmenBtn">Auto-Detect Amenities</button>
         </div>
-        <div id="autoAmenStatus" style="font-size:0.78rem;color:var(--text3);margin-bottom:8px;"></div>
+        <div id="autoAmenStatus" style="font-size:0.78rem;color:var(--text3);margin-bottom:8px;">Scans Guesty listing data, market intel DB, and platform search results.</div>
         <div id="propAmenitiesContent">
           <p style="color:var(--text3);font-size:0.85rem;">Save the property first to manage amenities.</p>
         </div>
@@ -647,7 +648,7 @@
         <div id="propPlatformSearch" style="display:none;margin-bottom:12px;">
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
             <button class="btn btn-sm btn-purple" onclick="autoSearchPlatforms()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;flex-shrink:0;"><path d="M11 19a8 8 0 100-16 8 8 0 000 16zM21 21l-4.35-4.35"/></svg> Auto-Search by Listing Name</button>
-            <button class="btn btn-sm" onclick="scrapePlatforms()" title="Fetch current pricing from all linked platforms"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;flex-shrink:0;"><path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg> Scrape All Platforms</button>
+            <button class="btn btn-sm" onclick="scrapePropPlatforms()" title="Fetch current pricing from all linked platforms"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;flex-shrink:0;"><path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg> Scrape All Platforms</button>
             <button class="btn btn-xs" onclick="togglePropPlatformAdd()">+ Add Link</button>
             <span id="platformSearchStatus" style="font-size:0.78rem;color:var(--text3);"></span>
           </div>
@@ -915,7 +916,7 @@
 
     <!-- Add Platform Form -->
     <div class="card" style="margin-top:14px;">
-      <div class="card-header"><h3>Linked Platforms</h3><button class="btn btn-xs" onclick="togglePlatformForm()">+ Add Platform</button></div>
+      <div class="card-header"><h3>Linked Platforms</h3><button class="btn btn-xs" onclick="togglePlatformForm()">+ Add Platform Link</button></div>
       <div id="platformList" style="margin-bottom:10px;"></div>
       <div id="addPlatformForm" style="display:none;margin-top:14px;padding:14px;background:var(--bg);border-radius:8px;border:1px solid var(--border);">
         <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
@@ -1035,6 +1036,7 @@
       <button class="tab" onclick="switchIntelTab('channels')" data-itab="channels" title="Booking channel performance — Airbnb vs VRBO vs Direct, ADR, cancellation rates, pet bookings">Channels</button>
       <button class="tab" onclick="switchIntelTab('monitoring')" data-itab="monitoring" title="Watchlist of markets to auto-crawl on a schedule — tiered by ownership priority"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;flex-shrink:0;"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8zM12 15a3 3 0 100-6 3 3 0 000 6z"/></svg> Monitoring</button>
       <button class="tab" onclick="switchIntelTab('algo')" data-itab="algo" title="Compare your pricing projections against actual Guesty performance — revenue, occupancy, ADR, and seasonality accuracy">Algo Health</button>
+      <button class="tab" onclick="switchIntelTab('insights')" data-itab="insights" title="Advanced portfolio analytics: RevPAN, booking pace, guest origins, price elasticity, day-of-week patterns">Insights</button>
     </div>
 
     <!-- DATA COLLECTION TAB (existing intel features) -->
@@ -1249,9 +1251,19 @@
       </div>
     </div>
 
-  </div>
+    <!-- INSIGHTS TAB — Advanced portfolio analytics -->
+    <div id="intelTab-insights" style="display:none;">
+      <div class="card" style="border-left:4px solid #f59e0b;">
+        <div class="card-header" style="background:rgba(245,158,11,0.06);">
+          <h3 style="color:#f59e0b;">📊 Portfolio Insights</h3>
+          <button class="btn btn-xs" onclick="loadPortfolioInsights()" title="Refresh advanced analytics from the latest intelligence rebuild">Refresh</button>
+        </div>
+        <p style="font-size:0.78rem;color:var(--text2);margin-bottom:14px;">Advanced analytics derived from your Guesty + PriceLabs data. Updated during intelligence rebuild. No external API calls required.</p>
+        <div id="insightsContent"><div style="color:var(--text3);font-size:0.82rem;">Loading insights...</div></div>
+      </div>
+    </div>
 
-  <!-- Integrations -->
+  </div>
   <div class="view" id="view-pms">
 
     <!-- ── Card stack (default) ─────────────────────────────────────────── -->

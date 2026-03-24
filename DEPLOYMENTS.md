@@ -1,6 +1,6 @@
 # FCP-PMR Deployment & Architecture Guide
 **Living document — update with every major change.**
-**Last updated:** v2.27.5 (2026-03-10)
+**Last updated:** v2.33.0 (2026-03-14)
 
 ---
 
@@ -11,9 +11,10 @@ Every new Claude session working on FCP-PMR should:
 1. **Read this file** (`DEPLOYMENTS.md`) — it has all the context you need
 2. **Read the uploaded tarball version** — `grep '"version"' package.json`
 3. **Run `node validate.js`** before AND after making changes
-4. **Bump version** in `package.json` on EVERY build
-5. **Never guess at code** — always read the actual file before editing
-6. **Package tarball with dist/** — `tar czf` must include `dist/worker.js`
+4. **Run `node audit.js`** after making changes — catches logic bugs validate.js can't
+5. **Bump version** in `package.json` on EVERY build
+6. **Never guess at code** — always read the actual file before editing
+7. **Package tarball with dist/** — `tar czf` must include `dist/worker.js`
 
 ---
 
@@ -31,7 +32,7 @@ Domain:       pmr.fullcircle-property.com
 
 ### File Structure (current)
 ```
-src/worker.js              12,258 lines  ← ALL backend code (monolith)
+src/worker.js              13,908 lines  ← ALL backend code (monolith)
 frontend/parts/js/
   00-dashboard.js             700 lines  ← Dashboard KPIs, action items
   01-globals.js             1,634 lines  ← Auth, state, utilities, _ico()
@@ -42,7 +43,7 @@ frontend/parts/js/
   06-csv.js                    56 lines  ← CSV export
   07-market.js                815 lines  ← Market data, profiles
   08-settings.js              482 lines  ← Admin panel
-  09-intel.js                 577 lines  ← Intel/data hub
+  09-intel.js                 780 lines  ← Intel/data hub + Insights tab
   10-finances.js            1,138 lines  ← Portfolio finances
   11-pricing.js             1,137 lines  ← Pricing strategies
   12-pricelabs.js             936 lines  ← PriceLabs integration
@@ -50,7 +51,8 @@ frontend/parts/js/
   14-algo-health.js           586 lines  ← Algorithm health dashboard
   15-intelligence.js          482 lines  ← Intelligence features
 frontend/parts/app-html.html  1,656 lines  ← Main HTML shell
-validate.js                              ← Build validation (RUN EVERY TIME)
+validate.js                              ← Build validation (26 structural checks — RUN EVERY TIME)
+audit.js                                 ← Deep code audit (14 logic checks — RUN AFTER CHANGES)
 build.js                                 ← Frontend assembler
 deploy.sh                                ← One-command deploy
 ```
@@ -195,6 +197,10 @@ Same incremental approach: only extract when modifying that section.
 
 | Version | Date | Key Changes |
 |---------|------|-------------|
+| v2.33.0 | 2026-03-14 | audit.js: automated deep code audit (14 checks, 7 bug categories). Found & fixed: booking pace intel missing managed exclusion (4 queries), getDashboard demand segments missing managed exclusion (2 queries), 3 sequential-write loops → env.DB.batch() (demand segments, algo templates, watchlist). SearchAPI cancellation reminder on dashboard. Listing Health panel + Owner Statement PDF confirmed already complete. |
+| v2.32.1 | 2026-03-14 | Code audit: 5 managed-property leakage bugs in intel queries → fixed with property filter. Sequential D1 writes → env.DB.batch() in 6 sections. Smart Data Freshness panel on dashboard — shows per-source freshness (green/yellow/red), auto-selects stale free items, cost calculator for paid items, selective execution with live progress. 9 pre-deploy bugs caught and fixed (3 nonexistent function calls, wrong function for listings sync, 5 wrong return field names, missing sync_log writes). |
+| v2.32.0 | 2026-03-14 | Advanced Portfolio Intelligence: 8 new intel sections (guest origins, DOW patterns, booking pace/velocity, lead time trends, RevPAN, cancellation patterns, price elasticity, cross-platform pricing). New Insights tab in Intel hub. AI prompt context enriched with all new metrics. Zero new API calls — all derived from existing Guesty + PriceLabs data. |
+| v2.31.8 | 2026-03-14 | Data accuracy audit: 4 bugs fixed — pricing snapshot Net Income now uses actuals when available (labeled "Est." when projected), property card net badge/border uses actuals with `~` prefix on projections, Finance tab headers clarified as "Est. Rev/mo" |
 | v2.27.5 | 2026-03-10 | Fixed 5 more `.catch()` on non-Promise bugs (research tab, PL action items, Guesty address, marketing export). New validate.js check (26/26). Dashboard layout: setup prompts + discoveries moved up. |
 | v2.27.2 | 2026-03-10 | Market Intelligence overhaul: monthly revenue trend chart, snapshot trend chart, top hosts, market alerts on profile, managed exclusion in portfolio actuals |
 | v2.27.1 | 2026-03-10 | CRITICAL: `.catch()` on `forEach` crashed `enterApp()` (pages stuck loading), SQL OR precedence in nearby query, managed property leak in portfolio actuals |
@@ -232,6 +238,12 @@ Same incremental approach: only extract when modifying that section.
 | SQL OR without parentheses | v2.27.1 | `AND x OR y AND z` binds as `(AND x) OR (y AND z)` — nearby property query returned entire DB for standalone properties | Always parenthesize OR conditions in SQL WHERE clauses |
 | `getPortfolioActuals` missing managed exclusion | v2.27.1 | Excluded research but not managed → Jupiter FL revenue leaked into portfolio YTD/LY totals | Grep all portfolio queries for managed exclusion pattern |
 | `.catch()` on array methods / constructors | v2.27.5 | v2.26.1 "empty catches" pass added `.catch()` to `.filter()`, `.forEach()`, `.map()`, `new Blob()`, `addEventListener()` — all return non-Promise, so `.catch()` throws TypeError or returns undefined | `validate.js` check #26 catches this pattern forever |
+| Projections displayed as actual revenue | v2.31.8 | Pricing snapshot "Net Income" used PL projection without "Est." label; property card net badge used blended ADR projection as if it were earned revenue; Finance table headers said "Rev/mo" not "Est. Rev/mo" | Always label projected numbers with "Est." prefix or `~` marker; use Guesty actuals when available |
+| Managed property leakage in intel queries | v2.32.1 | 5 new intel sections (DOW, booking pace, lead time, cancellations, live counts) queried guesty_reservations without joining properties to exclude managed/research — Jupiter FL contaminated portfolio metrics | Every query aggregating reservation data for portfolio metrics must join properties with `(is_managed = 0 OR is_managed IS NULL) AND (is_research != 1 OR is_research IS NULL)` |
+| Booking pace intel missing managed exclusion | v2.33.0 | 4 queries in booking pace section had no property filter → Jupiter FL contaminated portfolio pace metrics | audit.js check #7 catches all 8 advanced intel sections |
+| getDashboard demand segments unfiltered | v2.33.0 | topSeg and unclassified reservation counts included managed/research properties | audit.js check #3 scans all portfolio-level aggregations |
+| Sequential .run() in demand segment loop | v2.33.0 | rebuildIntelligence classified 100s of reservations one-by-one → D1 subrequest risk | audit.js check #4 detects await .run() inside for/forEach |
+| Calling nonexistent functions in refresh | v2.32.1 | `rebuildMonthlyActuals`, `rebuildPerformanceSnapshots`, `rebuildAllMarketProfiles` don't exist — the real names are `processGuestyData`, `capturePerformanceSnapshots`, and `buildMarketProfile` per city. Also `syncGuestyApi` ≠ `syncGuestyListingsApi`. | Always `grep -n 'async function NAME'` before calling any function. Verify return field names by reading the actual `return json({...})` line. |
 
 ---
 
@@ -242,7 +254,7 @@ Same incremental approach: only extract when modifying that section.
 - **Run validate.js first** to know what's already passing before making changes
 - **Read this file first** to avoid re-discovering known issues
 - **Be surgical** — fix one thing at a time, verify, move on
-- **When auditing:** the validation script catches the structural bugs. Manual review should focus on logic correctness, not pattern matching.
+- **When auditing:** run `node audit.js` for logic correctness (function existence, return fields, managed exclusion, batch writes, AI names). Run `node validate.js` for structural patterns (SQL safety, constants, security). Both should pass before deploy.
 - **Context window budget:** ~30K lines total codebase. Reading even 30% of it consumes most of the context window. Target reading <10% per session.
 
 ### Critical Gotchas (learned the hard way)
@@ -268,8 +280,9 @@ Before every deployment:
 # 1. Bump version
 # Edit package.json version
 
-# 2. Run validation
+# 2. Run validation + audit
 node validate.js
+node audit.js
 
 # 3. Build
 node build.js

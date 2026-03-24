@@ -577,6 +577,7 @@
       </div>
     </div>
     <div class="header-actions">
+      <button id="refreshBtn" class="btn btn-xs" onclick="refreshCurrentView()" title="Refresh data" style="padding:5px 8px;font-size:0.78rem;display:flex;align-items:center;gap:4px;min-height:unset;">↻ Refresh</button>
       <button id="themeToggleBtn" class="btn btn-xs" onclick="toggleTheme()" title="Switch light/dark mode" style="padding:5px 8px;font-size:0.78rem;display:flex;align-items:center;gap:4px;min-height:unset;">☀️</button>
       <div class="user-badge" id="userBadge"></div>
       <button class="btn btn-sm" onclick="showPasswordModal()">Password</button>
@@ -993,7 +994,7 @@
           <div></div>
           <button class="btn btn-xs btn-purple" onclick="autoFetchAmenities()" id="autoAmenBtn">Auto-Detect Amenities</button>
         </div>
-        <div id="autoAmenStatus" style="font-size:0.78rem;color:var(--text3);margin-bottom:8px;"></div>
+        <div id="autoAmenStatus" style="font-size:0.78rem;color:var(--text3);margin-bottom:8px;">Scans Guesty listing data, market intel DB, and platform search results.</div>
         <div id="propAmenitiesContent">
           <p style="color:var(--text3);font-size:0.85rem;">Save the property first to manage amenities.</p>
         </div>
@@ -1217,7 +1218,7 @@
         <div id="propPlatformSearch" style="display:none;margin-bottom:12px;">
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
             <button class="btn btn-sm btn-purple" onclick="autoSearchPlatforms()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;flex-shrink:0;"><path d="M11 19a8 8 0 100-16 8 8 0 000 16zM21 21l-4.35-4.35"/></svg> Auto-Search by Listing Name</button>
-            <button class="btn btn-sm" onclick="scrapePlatforms()" title="Fetch current pricing from all linked platforms"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;flex-shrink:0;"><path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg> Scrape All Platforms</button>
+            <button class="btn btn-sm" onclick="scrapePropPlatforms()" title="Fetch current pricing from all linked platforms"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;flex-shrink:0;"><path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg> Scrape All Platforms</button>
             <button class="btn btn-xs" onclick="togglePropPlatformAdd()">+ Add Link</button>
             <span id="platformSearchStatus" style="font-size:0.78rem;color:var(--text3);"></span>
           </div>
@@ -1485,7 +1486,7 @@
 
     <!-- Add Platform Form -->
     <div class="card" style="margin-top:14px;">
-      <div class="card-header"><h3>Linked Platforms</h3><button class="btn btn-xs" onclick="togglePlatformForm()">+ Add Platform</button></div>
+      <div class="card-header"><h3>Linked Platforms</h3><button class="btn btn-xs" onclick="togglePlatformForm()">+ Add Platform Link</button></div>
       <div id="platformList" style="margin-bottom:10px;"></div>
       <div id="addPlatformForm" style="display:none;margin-top:14px;padding:14px;background:var(--bg);border-radius:8px;border:1px solid var(--border);">
         <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
@@ -1605,6 +1606,7 @@
       <button class="tab" onclick="switchIntelTab('channels')" data-itab="channels" title="Booking channel performance — Airbnb vs VRBO vs Direct, ADR, cancellation rates, pet bookings">Channels</button>
       <button class="tab" onclick="switchIntelTab('monitoring')" data-itab="monitoring" title="Watchlist of markets to auto-crawl on a schedule — tiered by ownership priority"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;flex-shrink:0;"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8zM12 15a3 3 0 100-6 3 3 0 000 6z"/></svg> Monitoring</button>
       <button class="tab" onclick="switchIntelTab('algo')" data-itab="algo" title="Compare your pricing projections against actual Guesty performance — revenue, occupancy, ADR, and seasonality accuracy">Algo Health</button>
+      <button class="tab" onclick="switchIntelTab('insights')" data-itab="insights" title="Advanced portfolio analytics: RevPAN, booking pace, guest origins, price elasticity, day-of-week patterns">Insights</button>
     </div>
 
     <!-- DATA COLLECTION TAB (existing intel features) -->
@@ -1819,9 +1821,19 @@
       </div>
     </div>
 
-  </div>
+    <!-- INSIGHTS TAB — Advanced portfolio analytics -->
+    <div id="intelTab-insights" style="display:none;">
+      <div class="card" style="border-left:4px solid #f59e0b;">
+        <div class="card-header" style="background:rgba(245,158,11,0.06);">
+          <h3 style="color:#f59e0b;">📊 Portfolio Insights</h3>
+          <button class="btn btn-xs" onclick="loadPortfolioInsights()" title="Refresh advanced analytics from the latest intelligence rebuild">Refresh</button>
+        </div>
+        <p style="font-size:0.78rem;color:var(--text2);margin-bottom:14px;">Advanced analytics derived from your Guesty + PriceLabs data. Updated during intelligence rebuild. No external API calls required.</p>
+        <div id="insightsContent"><div style="color:var(--text3);font-size:0.82rem;">Loading insights...</div></div>
+      </div>
+    </div>
 
-  <!-- Integrations -->
+  </div>
   <div class="view" id="view-pms">
 
     <!-- ── Card stack (default) ─────────────────────────────────────────── -->
@@ -2435,7 +2447,7 @@ function renderDashboard(d) {
     var chartH = 240;
     var chartW = '100%';
 
-    h += '<div class="card" style="margin-bottom:16px;padding:14px 16px;">';
+    h += '<div class="card" style="margin-bottom:16px;padding:14px 16px;position:relative;">';
     h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">';
     h += '<div style="font-size:0.78rem;font-weight:600;color:var(--text2);display:flex;align-items:center;gap:6px;">' + _ico('trendUp', 15, 'var(--accent)') + ' ' + new Date().getFullYear() + ' REVENUE PROJECTION</div>';
     h += '<div style="display:flex;gap:12px;font-size:0.72rem;">';
@@ -2464,70 +2476,134 @@ function renderDashboard(d) {
       h += '<text x="' + (padL - 4) + '" y="' + (gy + 4) + '" text-anchor="end" fill="var(--text3)" font-size="11">' + gLabel + '</text>';
     }
 
-    // Build line paths
+    // Build line paths — hover tooltips instead of static labels for clean visuals
     var actualPts = [], bookedPts = [], targetPts = [];
     var barW = plotW / 12;
     var lastActualX = 0, lastActualY = 0;
+    var dotsBuf = [];
+    var hoverZones = []; // invisible hit areas per month
+    var fmtVal = function(v) { return '$' + (v >= 1000 ? Math.round(v / 1000) + 'k' : v); };
+    var fmtFull = function(v) { return '$' + Math.round(v).toLocaleString(); };
+    var toY = function(v) { return padT + plotH - (v / maxVal * plotH); };
+    var projId = 'projChart_' + Date.now();
+
+    // Store data for tooltip access
+    var _projData = [];
 
     proj.forEach(function(p, i) {
       var cx = padL + barW * i + barW / 2;
-      var toY = function(v) { return padT + plotH - (v / maxVal * plotH); };
 
       // Month labels
       h += '<text x="' + cx + '" y="' + (svgH - 5) + '" text-anchor="middle" fill="var(--text3)" font-size="12" font-weight="' + (p.is_current ? '700' : '400') + '">' + mNames[i] + '</text>';
 
-      // Current month marker
       if (p.is_current) {
         h += '<rect x="' + (padL + barW * i) + '" y="' + padT + '" width="' + barW + '" height="' + plotH + '" fill="var(--accent)" opacity="0.04" rx="3" />';
       }
 
-      // Target
-      if (p.target != null && p.target > 0) targetPts.push(cx + ',' + toY(p.target));
-
-      // Actual
-      if (p.actual != null) {
-        actualPts.push(cx + ',' + toY(p.actual));
-        lastActualX = cx;
-        lastActualY = toY(p.actual);
-        // Value label on actual
-        if (p.actual > 0) {
-          h += '<text x="' + cx + '" y="' + (toY(p.actual) - 7) + '" text-anchor="middle" fill="var(--accent)" font-size="11" font-weight="600">$' + (p.actual >= 1000 ? Math.round(p.actual / 1000) + 'k' : p.actual) + '</text>';
-        }
-      }
-
-      // Booked (future)
-      if (!p.is_past && p.booked != null && p.booked > 0) {
-        bookedPts.push(cx + ',' + toY(p.booked));
-        h += '<text x="' + cx + '" y="' + (toY(p.booked) - 7) + '" text-anchor="middle" fill="#60a5fa" font-size="11">$' + (p.booked >= 1000 ? Math.round(p.booked / 1000) + 'k' : p.booked) + '</text>';
-      }
+      // Collect line points
+      if (p.target != null && p.target > 0) targetPts.push({ x: cx, y: toY(p.target), val: p.target, month: i });
+      if (p.actual != null) { actualPts.push(cx + ',' + toY(p.actual)); lastActualX = cx; lastActualY = toY(p.actual); }
+      var hasBooked = !p.is_past && p.booked != null && p.booked > 0;
+      if (hasBooked) bookedPts.push(cx + ',' + toY(p.booked));
 
       // Dots
-      if (p.actual != null && p.actual > 0) h += '<circle cx="' + cx + '" cy="' + toY(p.actual) + '" r="3.5" fill="var(--accent)" />';
-      if (!p.is_past && p.booked != null && p.booked > 0) h += '<circle cx="' + cx + '" cy="' + toY(p.booked) + '" r="3" fill="#60a5fa" stroke="#fff" stroke-width="1" />';
-      if (p.target != null && p.target > 0) h += '<circle cx="' + cx + '" cy="' + toY(p.target) + '" r="2" fill="#f59e0b" opacity="0.6" />';
+      if (p.actual != null && p.actual > 0) dotsBuf.push('<circle cx="' + cx + '" cy="' + toY(p.actual) + '" r="4" fill="var(--accent)" />');
+      if (hasBooked) dotsBuf.push('<circle cx="' + cx + '" cy="' + toY(p.booked) + '" r="3.5" fill="#60a5fa" stroke="var(--bg)" stroke-width="1.5" />');
+      if (p.target != null && p.target > 0) dotsBuf.push('<circle cx="' + cx + '" cy="' + toY(p.target) + '" r="2.5" fill="#f59e0b" opacity="0.7" />');
+
+      // All labels shown on hover — clean chart with just dots and lines
+
+      // Invisible hover zone per month column
+      hoverZones.push('<rect x="' + (padL + barW * i) + '" y="' + padT + '" width="' + barW + '" height="' + plotH + '" fill="transparent" data-mi="' + i + '" style="cursor:crosshair;" />');
+
+      _projData.push({ month: mNames[i], actual: p.actual, booked: p.booked, target: p.target, is_past: p.is_past, is_current: p.is_current });
     });
 
-    // Area fill under actual line — subtle green gradient
+    // === RENDER ORDER: area fill > lines > dots+labels > hover zones (on top for mouse events) ===
+
     if (actualPts.length > 1) {
       var bottomY = padT + plotH;
       var areaPath = actualPts[0].split(',')[0] + ',' + bottomY + ' ' + actualPts.join(' ') + ' ' + actualPts[actualPts.length - 1].split(',')[0] + ',' + bottomY;
       h += '<polygon points="' + areaPath + '" fill="var(--accent)" opacity="0.06" />';
     }
 
-    // Draw lines (order: target first as background, then booked, then actual on top)
-    if (targetPts.length > 1) h += '<polyline points="' + targetPts.join(' ') + '" fill="none" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="3,3" opacity="0.7" stroke-linejoin="round" />';
+    var targetPtStr = targetPts.map(function(t) { return t.x + ',' + t.y; });
+    if (targetPtStr.length > 1) h += '<polyline points="' + targetPtStr.join(' ') + '" fill="none" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="3,3" opacity="0.7" stroke-linejoin="round" />';
     if (bookedPts.length > 1) h += '<polyline points="' + bookedPts.join(' ') + '" fill="none" stroke="#60a5fa" stroke-width="2" stroke-dasharray="6,3" stroke-linejoin="round" />';
-    // Connect last actual point to first booked point with dashed bridge line
     if (bookedPts.length >= 1 && actualPts.length > 0) {
-      var firstBookedX = bookedPts[0].split(',')[0];
-      var firstBookedY = bookedPts[0].split(',')[1];
-      if (Math.abs(parseFloat(firstBookedX) - lastActualX) > 5) {
-        h += '<line x1="' + lastActualX + '" y1="' + lastActualY + '" x2="' + firstBookedX + '" y2="' + firstBookedY + '" stroke="#60a5fa" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.6" />';
-      }
+      var fbX = bookedPts[0].split(',')[0], fbY = bookedPts[0].split(',')[1];
+      if (Math.abs(parseFloat(fbX) - lastActualX) > 5) h += '<line x1="' + lastActualX + '" y1="' + lastActualY + '" x2="' + fbX + '" y2="' + fbY + '" stroke="#60a5fa" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.6" />';
     }
     if (actualPts.length > 1) h += '<polyline points="' + actualPts.join(' ') + '" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round" />';
 
-    h += '</svg></div>';
+    h += dotsBuf.join('');
+    h += hoverZones.join('');
+
+    // Vertical guide line (hidden, shown on hover via JS)
+    h += '<line id="' + projId + '_guide" x1="0" y1="' + padT + '" x2="0" y2="' + (padT + plotH) + '" stroke="var(--text3)" stroke-width="1" stroke-dasharray="3,2" opacity="0" />';
+
+    h += '</svg>';
+
+    // Tooltip div (hidden by default, positioned absolute over chart)
+    h += '<div id="' + projId + '_tip" style="display:none;position:absolute;pointer-events:none;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-size:0.78rem;box-shadow:0 4px 12px rgba(0,0,0,0.3);z-index:100;min-width:160px;line-height:1.7;"></div>';
+    if (actualPts.length === 0) {
+      h += '<div style="font-size:0.72rem;color:#f59e0b;padding:6px 0;">' + _ico('alertTriangle', 13, '#f59e0b') + ' No actual revenue data — go to Integrations → Process Monthly Actuals to rebuild from Guesty.</div>';
+    }
+    h += '</div>';
+
+    // Wire up hover events after render
+    window._projData = _projData;
+    window._projId = projId;
+    window._projFmtFull = fmtFull;
+    setTimeout(function() {
+      var wrap = document.getElementById(projId + '_tip');
+      if (!wrap) return;
+      var container = wrap.parentElement;
+      var svg = container.querySelector('svg');
+      if (!svg) return;
+      svg.querySelectorAll('rect[data-mi]').forEach(function(zone) {
+        zone.addEventListener('mouseenter', function(e) {
+          var mi = parseInt(zone.getAttribute('data-mi'));
+          var d = window._projData[mi];
+          if (!d) return;
+          // Show vertical guide line at column center
+          var guide = document.getElementById(window._projId + '_guide');
+          var zx = parseFloat(zone.getAttribute('x')) + parseFloat(zone.getAttribute('width')) / 2;
+          if (guide) { guide.setAttribute('x1', zx); guide.setAttribute('x2', zx); guide.setAttribute('opacity', '0.4'); }
+          zone.setAttribute('fill', 'var(--text3)'); zone.setAttribute('opacity', '0.06');
+          var tip = '';
+          tip += '<div style="font-weight:700;font-size:0.85rem;margin-bottom:4px;color:var(--text);">' + d.month + (d.is_current ? ' (current)' : d.is_past ? '' : ' (future)') + '</div>';
+          if (d.actual != null && d.actual > 0) tip += '<div style="color:var(--accent);">\u25CF Actual: <strong>' + window._projFmtFull(d.actual) + '</strong></div>';
+          if (d.booked != null && d.booked > 0) tip += '<div style="color:#60a5fa;">\u25CB Booked: <strong>' + window._projFmtFull(d.booked) + '</strong></div>';
+          if (d.target != null && d.target > 0) tip += '<div style="color:#f59e0b;">\u25CC Target: <strong>' + window._projFmtFull(d.target) + '</strong></div>';
+          if (d.target && d.actual != null && d.actual > 0) {
+            var diff = d.actual - d.target;
+            var pct = Math.round(diff / d.target * 100);
+            tip += '<div style="margin-top:3px;font-size:0.72rem;color:' + (diff >= 0 ? 'var(--accent)' : 'var(--danger)') + ';">' + (diff >= 0 ? '\u2191' : '\u2193') + ' ' + Math.abs(pct) + '% ' + (diff >= 0 ? 'above' : 'below') + ' target</div>';
+          } else if (d.target && d.booked != null && d.booked > 0 && !d.is_past) {
+            var bDiff = d.booked - d.target;
+            var bPct = Math.round(bDiff / d.target * 100);
+            tip += '<div style="margin-top:3px;font-size:0.72rem;color:' + (bDiff >= 0 ? 'var(--accent)' : '#f59e0b') + ';">' + (bDiff >= 0 ? '\u2191 ' + bPct + '% of target booked' : Math.abs(bPct) + '% gap to fill') + '</div>';
+          }
+          wrap.innerHTML = tip;
+          wrap.style.display = '';
+        });
+        zone.addEventListener('mousemove', function(e) {
+          var rect = container.getBoundingClientRect();
+          var x = e.clientX - rect.left + 12;
+          var y = e.clientY - rect.top - 10;
+          if (x + 180 > rect.width) x = x - 190;
+          wrap.style.left = x + 'px';
+          wrap.style.top = y + 'px';
+        });
+        zone.addEventListener('mouseleave', function() {
+          wrap.style.display = 'none';
+          var guide = document.getElementById(window._projId + '_guide');
+          if (guide) guide.setAttribute('opacity', '0');
+          zone.setAttribute('fill', 'transparent'); zone.setAttribute('opacity', '1');
+        });
+      });
+    }, 100);
 
     // Summary row
     var ytdActual = 0, ytdTarget = 0, totalBooked = 0;
@@ -2986,6 +3062,16 @@ function renderDashboard(d) {
     h += '</div>';
   }
 
+  // ── Smart Portfolio Refresh ────────────────────────────────────────────
+  h += '<div class="card" style="margin-bottom:16px;padding:14px 16px;border-left:4px solid #60a5fa;">';
+  h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">';
+  h += '<div style="font-size:0.78rem;font-weight:600;color:#60a5fa;display:flex;align-items:center;gap:6px;">' + _ico('refresh', 16, '#60a5fa') + ' DATA FRESHNESS</div>';
+  h += '<button class="btn btn-xs btn-primary" onclick="btnGuard(this);loadRefreshPanel()" id="btnRefreshPanel">' + _ico('activity', 12) + ' Check & Update</button>';
+  h += '</div>';
+  h += '<div style="font-size:0.72rem;color:var(--text3);">Shows what\'s fresh, what\'s stale, and lets you update selectively. Free updates auto-selected when stale.</div>';
+  h += '<div id="refreshPanel" style="display:none;margin-top:10px;"></div>';
+  h += '</div>';
+
   el.innerHTML = h;
 }
 
@@ -3096,6 +3182,185 @@ async function runBulkAnalysis() {
   }
   btn.disabled = false;
   btn.innerHTML = _ico('zap', 11, 'var(--accent)') + ' Analyze All';
+}
+
+// ── Smart Portfolio Refresh ────────────────────────────────────────────────
+
+var _refreshSteps = null;
+
+async function loadRefreshPanel() {
+  var el = document.getElementById('refreshPanel');
+  if (!el) return;
+  el.style.display = '';
+  el.innerHTML = '<div style="color:var(--text3);font-size:0.78rem;">Checking data freshness...</div>';
+
+  try {
+    var d = await api('/api/portfolio/full-refresh', 'POST', { dry_run: true });
+    _refreshSteps = d.steps || [];
+    var intg = d.integrations || {};
+    var budget = d.searchapi_budget || {};
+    var summary = d.summary || {};
+
+    var h = '';
+
+    // Integration status bar
+    h += '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;font-size:0.72rem;">';
+    h += '<span style="color:' + (intg.guesty ? 'var(--accent)' : 'var(--danger)') + ';">' + _ico(intg.guesty ? 'check' : 'x', 11) + ' Guesty</span>';
+    h += '<span style="color:' + (intg.pricelabs ? 'var(--accent)' : 'var(--danger)') + ';">' + _ico(intg.pricelabs ? 'check' : 'x', 11) + ' PriceLabs</span>';
+    h += '<span style="color:' + (intg.searchapi ? 'var(--accent)' : 'var(--text3)') + ';">' + _ico(intg.searchapi ? 'check' : 'x', 11) + ' SearchAPI (' + budget.remaining + '/' + budget.limit + ' calls left)</span>';
+    h += '</div>';
+
+    // Group steps
+    var groups = { sync: { label: 'DATA SYNC', icon: 'refresh', color: '#60a5fa' }, compute: { label: 'REBUILD & COMPUTE', icon: 'cpu', color: 'var(--purple)' }, crawl: { label: 'MARKET RESEARCH', icon: 'radar', color: '#f59e0b' }, maintenance: { label: 'MAINTENANCE', icon: 'trash', color: 'var(--text3)' } };
+
+    for (var gKey in groups) {
+      var grp = groups[gKey];
+      var grpSteps = _refreshSteps.filter(function(s) { return s.group === gKey; });
+      if (grpSteps.length === 0) continue;
+
+      h += '<div style="margin-bottom:10px;">';
+      h += '<div style="font-size:0.65rem;font-weight:700;color:' + grp.color + ';text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">' + _ico(grp.icon, 11, grp.color) + ' ' + grp.label + '</div>';
+
+      grpSteps.forEach(function(s) {
+        var freshColor = s.status === 'fresh' ? 'var(--accent)' : s.status === 'aging' ? '#f59e0b' : s.status === 'unavailable' ? 'var(--text3)' : 'var(--danger)';
+        var freshLabel = s.status === 'fresh' ? 'Fresh' : s.status === 'aging' ? 'Aging' : s.status === 'unavailable' ? 'N/A' : 'Stale';
+        var timeLabel = s.hours_ago !== null ? (s.hours_ago < 1 ? '<1h ago' : s.hours_ago < 24 ? s.hours_ago + 'h ago' : Math.round(s.hours_ago / 24) + 'd ago') : 'Never synced';
+        var costBadge = s.cost === 'paid' ? '<span style="font-size:0.58rem;background:rgba(245,158,11,0.15);color:#f59e0b;padding:1px 5px;border-radius:3px;font-weight:700;">~' + (s.searchapi_est || '?') + ' API calls</span>' : '<span style="font-size:0.58rem;color:var(--text3);">Free</span>';
+        var isDisabled = !s.available;
+        var isChecked = s.selected;
+
+        h += '<label style="display:flex;align-items:center;gap:8px;padding:5px 8px;background:var(--bg);border:1px solid var(--border);border-radius:5px;margin-bottom:3px;cursor:' + (isDisabled ? 'not-allowed' : 'pointer') + ';opacity:' + (isDisabled ? '0.5' : '1') + ';" onmouseenter="this.style.background=\'var(--surface2)\'" onmouseleave="this.style.background=\'var(--bg)\'">';
+
+        h += '<input type="checkbox" data-step-id="' + s.id + '" ' + (isChecked ? 'checked' : '') + ' ' + (isDisabled ? 'disabled' : '') + ' onchange="updateRefreshCost()" style="accent-color:var(--accent);flex-shrink:0;">';
+
+        // Freshness bar
+        h += '<div style="width:4px;height:28px;border-radius:2px;background:' + freshColor + ';flex-shrink:0;opacity:0.7;"></div>';
+
+        h += '<div style="flex:1;min-width:0;">';
+        h += '<div style="display:flex;justify-content:space-between;align-items:center;">';
+        h += '<span style="font-size:0.75rem;font-weight:600;color:var(--text);">' + esc(s.name) + '</span>';
+        h += '<span style="font-size:0.62rem;color:' + freshColor + ';font-weight:700;">' + freshLabel + ' · ' + timeLabel + '</span>';
+        h += '</div>';
+        h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:1px;">';
+        h += '<span style="font-size:0.65rem;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:70%;">' + esc(s.benefit) + '</span>';
+        h += costBadge;
+        h += '</div>';
+        if (!s.available) h += '<div style="font-size:0.6rem;color:var(--danger);">' + _ico('x', 10, 'var(--danger)') + ' ' + esc(s.skip_reason) + '</div>';
+        h += '</div></label>';
+      });
+      h += '</div>';
+    }
+
+    // Cost summary + action bar
+    h += '<div id="refreshCostBar" style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;margin-top:6px;">';
+    h += '<div id="refreshCostSummary" style="font-size:0.72rem;color:var(--text2);"></div>';
+    h += '<div style="display:flex;gap:6px;">';
+    h += '<button class="btn btn-xs" onclick="selectAllRefresh(true)">Select stale</button>';
+    h += '<button class="btn btn-xs" onclick="selectAllRefresh(false)">Clear all</button>';
+    h += '<button class="btn btn-xs btn-primary" onclick="btnGuard(this);runSmartRefresh(this)" id="btnRunRefresh">' + _ico('refresh', 12) + ' Update Selected</button>';
+    h += '</div></div>';
+
+    // Cron info
+    h += '<div style="font-size:0.65rem;color:var(--text3);margin-top:6px;">' + _ico('clock', 10, 'var(--text3)') + ' Auto-sync runs daily at 6am ET (Guesty every 6h, listings weekly Monday). SearchAPI crawls are always manual.</div>';
+
+    // Progress area
+    h += '<div id="refreshRunLog" style="display:none;margin-top:10px;"></div>';
+
+    el.innerHTML = h;
+    updateRefreshCost();
+  } catch (err) {
+    el.innerHTML = '<div style="color:var(--danger);font-size:0.78rem;">Error: ' + esc(err.message) + '</div>';
+  }
+}
+
+function updateRefreshCost() {
+  var el = document.getElementById('refreshCostSummary');
+  if (!el || !_refreshSteps) return;
+  var checks = document.querySelectorAll('[data-step-id]');
+  var selected = 0, freeCount = 0, paidCount = 0, apiCalls = 0;
+  checks.forEach(function(cb) {
+    if (cb.checked) {
+      selected++;
+      var step = _refreshSteps.find(function(s) { return s.id === cb.dataset.stepId; });
+      if (step) {
+        if (step.cost === 'paid') { paidCount++; apiCalls += (step.searchapi_est || 0); }
+        else freeCount++;
+      }
+    }
+  });
+  var parts = [];
+  parts.push(selected + ' selected');
+  if (freeCount > 0) parts.push(freeCount + ' free');
+  if (paidCount > 0) parts.push(paidCount + ' paid (~' + apiCalls + ' API calls)');
+  el.innerHTML = parts.join(' · ');
+  var btn = document.getElementById('btnRunRefresh');
+  if (btn) btn.disabled = selected === 0;
+}
+
+function selectAllRefresh(staleOnly) {
+  var checks = document.querySelectorAll('[data-step-id]');
+  checks.forEach(function(cb) {
+    if (cb.disabled) return;
+    if (staleOnly) {
+      var step = _refreshSteps.find(function(s) { return s.id === cb.dataset.stepId; });
+      cb.checked = step && step.recommended;
+    } else {
+      cb.checked = false;
+    }
+  });
+  updateRefreshCost();
+}
+
+async function runSmartRefresh(btn) {
+  var checks = document.querySelectorAll('[data-step-id]');
+  var selected = [];
+  checks.forEach(function(cb) { if (cb.checked) selected.push(cb.dataset.stepId); });
+  if (selected.length === 0) { toast('No steps selected'); return; }
+
+  var logEl = document.getElementById('refreshRunLog');
+  if (logEl) {
+    logEl.style.display = '';
+    logEl.innerHTML = '<div style="padding:10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;">' +
+      '<div style="font-size:0.78rem;font-weight:600;color:#60a5fa;margin-bottom:4px;">' + _ico('activity', 14, '#60a5fa') + ' Running ' + selected.length + ' updates...</div>' +
+      '<div style="font-size:0.72rem;color:var(--text3);">This may take a few minutes.</div></div>';
+  }
+  if (btn) { btn.disabled = true; btn.innerHTML = _ico('refresh', 12) + ' Running...'; }
+
+  try {
+    var d = await api('/api/portfolio/full-refresh', 'POST', { steps: selected });
+    var log = d.log || [];
+    var h = '';
+
+    log.forEach(function(entry) {
+      var icon = entry.status === 'ok' ? _ico('check', 11, 'var(--accent)')
+        : entry.status === 'skipped' ? _ico('minus', 11, 'var(--text3)')
+        : entry.status === 'warn' ? _ico('alertTriangle', 11, '#f59e0b')
+        : _ico('x', 11, 'var(--danger)');
+      var color = entry.status === 'ok' ? 'var(--accent)' : entry.status === 'error' ? 'var(--danger)' : 'var(--text3)';
+      var time = entry.ms > 0 ? ' (' + (entry.ms / 1000).toFixed(1) + 's)' : '';
+      h += '<div style="display:flex;align-items:flex-start;gap:6px;padding:2px 0;font-size:0.72rem;">';
+      h += '<span style="flex-shrink:0;margin-top:1px;">' + icon + '</span>';
+      h += '<span style="font-weight:600;min-width:130px;color:' + color + ';">' + esc(entry.name || entry.step) + '</span>';
+      h += '<span style="color:var(--text2);">' + esc(entry.detail || entry.reason || '') + time + '</span>';
+      h += '</div>';
+    });
+
+    var totalSec = Math.round((d.total_ms || 0) / 1000);
+    var okCount = d.steps_completed || 0;
+    var errCount = d.steps_errored || 0;
+    var sc = errCount > 0 ? 'var(--danger)' : 'var(--accent)';
+    h += '<div style="border-top:1px solid var(--border);margin-top:6px;padding-top:6px;font-weight:600;font-size:0.75rem;color:' + sc + ';">';
+    h += _ico(errCount > 0 ? 'alertTriangle' : 'check', 13, sc) + ' Done in ' + totalSec + 's — ' + okCount + ' completed' + (errCount > 0 ? ', ' + errCount + ' errors' : '');
+    h += '</div>';
+
+    if (logEl) logEl.innerHTML = '<div style="padding:10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;font-family:DM Mono,monospace;">' + h + '</div>';
+    toast('Refresh complete — ' + okCount + ' steps in ' + totalSec + 's');
+    setTimeout(function() { loadDashboard(); }, 2500);
+  } catch (err) {
+    if (logEl) logEl.innerHTML = '<div style="padding:10px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);border-radius:6px;color:var(--danger);font-size:0.78rem;">' + _ico('x', 14, 'var(--danger)') + ' Failed: ' + esc(err.message) + '</div>';
+    toast('Refresh failed: ' + err.message, 'error');
+  }
+  if (btn) { btn.disabled = false; btn.innerHTML = _ico('refresh', 12) + ' Update Selected'; }
 }
 
 // ── 01-globals.js ──
@@ -3727,6 +3992,23 @@ function goBack() {
   }
   _navIgnoreNext = false;
   _updateBackBtn();
+}
+
+async function refreshCurrentView() {
+  var btn = document.getElementById('refreshBtn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '↻ ...'; }
+  try {
+    // Reload core data
+    await loadProperties();
+    // Re-trigger current view's data load
+    var activeView = document.querySelector('.view.active');
+    var name = activeView ? activeView.id.replace('view-', '') : 'dashboard';
+    switchView(name);
+    toast('Data refreshed');
+  } catch (err) {
+    toast('Refresh failed: ' + err.message, 'error');
+  }
+  if (btn) { btn.disabled = false; btn.innerHTML = '↻ Refresh'; }
 }
 
 function switchView(name) {
@@ -4574,6 +4856,9 @@ function toggleMobileMore() {
         { label: 'Integrations', icon: 'link', view: 'pms' },
         { label: 'Admin', icon: 'settings', view: 'admin' },
       ];
+      if (currentUser && currentUser.role === 'admin') {
+        items.splice(5, 0, { label: 'Marketing', icon: 'star', view: 'marketing' });
+      }
       grid.innerHTML = items.map(function(item) {
         return '<button class="more-item" onclick="switchView(\'' + item.view + '\');setMobileActive(null);toggleMobileMore()">' + _ico(item.icon, 18) + '<span>' + item.label + '</span></button>';
       }).join('');
@@ -4882,72 +5167,87 @@ function renderPropertyFinance(propId) {
 
   var h = '';
 
-  // ── Compute blended average nightly rate ──
-  // Base alone is misleading — actual revenue includes weekend premiums, seasonal markups, and PriceLabs dynamic adjustments
+  // ── Actual revenue from Guesty (ground truth) ──
+  var actualData = (window._actualRevenue || {})[p.id];
+  var hasActuals = actualData && (actualData.monthly_avg > 0 || actualData.this_month_rev > 0);
+  var actualMonthlyAvg = hasActuals ? (actualData.monthly_avg || 0) : 0;
+  var actualADR = hasActuals ? (actualData.avg_adr || 0) : 0;
+  var actualOcc = hasActuals ? (actualData.avg_occ || 0) : 0;
+  var thisMonthRev = actualData ? (actualData.this_month_rev || 0) : 0;
+  var thisMonthOcc = actualData ? (actualData.this_month_occ || 0) : 0;
+  var lastMonthRev = actualData ? (actualData.last_month_rev || 0) : 0;
+
+  // ── PriceLabs projection data ──
   var base = p.pl_base_price || 0;
   var rec = p.pl_rec_base || base;
   var min = p.pl_min_price || base;
   var max = p.pl_max_price || base;
   var cleaning = p.pl_cleaning || p.cleaning_fee || 0;
 
-  // Blended ADR estimate: weighted average
-  // ~40% at base (weekdays), ~30% at rec/mid (demand-adjusted), ~20% at weekend premium (~1.2x), ~10% at peak
+  // Blended ADR estimate for projections
   var blendedADR = 0;
   var adrSource = '';
-  if (base > 0 && max > 0) {
+  if (actualADR > 0) {
+    blendedADR = actualADR;
+    adrSource = 'Actual ADR from Guesty';
+  } else if (base > 0 && max > 0) {
     var weekdayRate = base;
     var demandRate = rec > 0 ? rec : base;
     var weekendRate = Math.round(base * 1.2);
     var peakRate = Math.round((base + max) / 2);
     blendedADR = Math.round(weekdayRate * 0.4 + demandRate * 0.3 + weekendRate * 0.2 + peakRate * 0.1);
-    adrSource = 'Blended from PriceLabs: base $' + base + ' (40%) + recommended $' + demandRate + ' (30%) + weekend est $' + weekendRate + ' (20%) + peak est $' + peakRate + ' (10%)';
+    adrSource = 'Blended from PriceLabs (projected)';
   } else if (p.analysis_nightly_rate > 0) {
     blendedADR = p.analysis_nightly_rate;
-    adrSource = 'From pricing analysis';
+    adrSource = 'From pricing analysis (projected)';
   }
 
-  // Occupancy — PriceLabs forward-looking numbers are booking pace, NOT annual occupancy
-  // A property showing "13% occ next 30d" is normal — bookings come in closer to date
-  // For revenue projection, use realistic annual average occupancy for STR
+  // Occupancy — use actual if available
   var plFwdOcc = p.pl_occ_30d ? parseInt(p.pl_occ_30d) / 100 : 0;
   var plMktFwdOcc = p.pl_mkt_occ_30d ? parseInt(p.pl_mkt_occ_30d) / 100 : 0;
-
-  // Estimate actual annual occupancy:
-  // If PL forward occ is very low (<30%), it's just booking pace — use regional estimate
-  // If PL forward occ is high (>50%), property is performing well — use it
-  var annualOcc = 0.50; // default: 50% for STR
+  var annualOcc = 0.50;
   var occSource = '';
-  if (p.analysis_occ && p.analysis_occ > 0.2) {
+  if (actualOcc > 0.05) {
+    annualOcc = actualOcc;
+    occSource = 'Actual from Guesty: ' + Math.round(actualOcc * 100) + '%';
+  } else if (p.analysis_occ && p.analysis_occ > 0.2) {
     annualOcc = p.analysis_occ;
-    occSource = 'From analysis: ' + Math.round(annualOcc * 100) + '%';
-  }
-  if (plFwdOcc >= 0.50) {
-    // High forward occupancy means strong demand — use it
+    occSource = 'From analysis: ' + Math.round(annualOcc * 100) + '% (projected)';
+  } else if (plFwdOcc >= 0.50) {
     annualOcc = plFwdOcc;
-    occSource = 'PriceLabs 30d forward: ' + Math.round(plFwdOcc * 100) + '% (strong pace)';
+    occSource = 'PriceLabs 30d forward: ' + Math.round(plFwdOcc * 100) + '% (projected)';
   } else if (plFwdOcc > 0 && plMktFwdOcc > 0 && plFwdOcc > plMktFwdOcc) {
-    // Outperforming market — estimate annual at ~55-65%
     annualOcc = Math.max(0.55, Math.min(0.70, plFwdOcc * 3.5));
-    occSource = 'Est. ' + Math.round(annualOcc * 100) + '% annual (outperforming market ' + Math.round(plFwdOcc * 100) + '% vs ' + Math.round(plMktFwdOcc * 100) + '%)';
+    occSource = 'Est. ' + Math.round(annualOcc * 100) + '% annual (projected)';
   } else if (plFwdOcc > 0) {
-    // Underperforming or no market comparison — estimate conservatively
     annualOcc = Math.max(0.40, Math.min(0.60, plFwdOcc * 3));
-    occSource = 'Est. ' + Math.round(annualOcc * 100) + '% annual (PL forward: ' + Math.round(plFwdOcc * 100) + '%)';
+    occSource = 'Est. ' + Math.round(annualOcc * 100) + '% annual (projected)';
   } else {
-    occSource = 'Default estimate: 50% (no occupancy data)';
+    occSource = 'Default estimate: 50% (no data)';
   }
 
-  var occ30 = annualOcc; // use for all revenue calcs
+  var occ30 = annualOcc;
   var mktOcc30 = plMktFwdOcc;
 
-  // Revenue projections
-  var monthlyBaseRev = base > 0 ? Math.round(base * 30 * occ30) : 0;
+  // Revenue: use actual if available, otherwise project
+  var useActualRev = hasActuals && actualMonthlyAvg > 0;
+  var monthlyRev = useActualRev ? actualMonthlyAvg : 0;
+  var revSource = '';
+
+  // Projected revenue (always compute for comparison)
+  var turnovers = Math.round(occ30 * 30 / 3);
   var monthlyBlendedRev = blendedADR > 0 ? Math.round(blendedADR * 30 * occ30) : 0;
-  // Turnovers estimate: occupancy × 30 days / avg stay length (~3 nights)
-  var avgStay = 3;
-  var turnovers = Math.round(occ30 * 30 / avgStay);
   var monthlyCleanRev = cleaning > 0 ? Math.round(cleaning * turnovers) : 0;
-  var totalMonthlyRev = monthlyBlendedRev + monthlyCleanRev;
+  var projectedMonthlyRev = monthlyBlendedRev + monthlyCleanRev;
+
+  if (useActualRev) {
+    monthlyRev = actualMonthlyAvg;
+    revSource = 'actual';
+  } else {
+    monthlyRev = projectedMonthlyRev;
+    revSource = 'projected';
+  }
+  var totalMonthlyRev = monthlyRev;
 
   // Expenses
   var cleanerPay = p.cleaning_cost || 0; // what you pay the cleaner per turnover
@@ -5002,11 +5302,11 @@ function renderPropertyFinance(propId) {
 
   // ── Data source badges ──
   h += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;">';
-  if (p.pl_base_price) h += '<span style="font-size:0.68rem;padding:2px 8px;border-radius:4px;background:rgba(167,139,250,0.1);color:var(--purple);border:1px solid rgba(167,139,250,0.2);">' + _ico('barChart', 13) + ' PriceLabs data</span>';
-  if (p.analysis_nightly_rate) h += '<span style="font-size:0.68rem;padding:2px 8px;border-radius:4px;background:rgba(16,185,129,0.1);color:var(--accent);border:1px solid rgba(16,185,129,0.2);">' + _ico('sparkle', 13) + ' Analysis data</span>';
-  if (p.pl_occ_30d) h += '<span style="font-size:0.68rem;padding:2px 8px;border-radius:4px;background:rgba(59,130,246,0.1);color:var(--blue);border:1px solid rgba(59,130,246,0.2);">' + _ico('trendUp', 13) + ' Live occupancy</span>';
-  if (!p.pl_base_price && !p.analysis_nightly_rate) h += '<span style="font-size:0.68rem;padding:2px 8px;border-radius:4px;background:rgba(245,158,11,0.1);color:#f59e0b;border:1px solid rgba(245,158,11,0.2);">' + _ico('alertCircle', 13, '#f59e0b') + ' No pricing data — run analysis or sync PriceLabs</span>';
-
+  if (hasActuals) h += '<span style="font-size:0.68rem;padding:2px 8px;border-radius:4px;background:rgba(16,185,129,0.1);color:var(--accent);border:1px solid rgba(16,185,129,0.2);">' + _ico('database', 13) + ' Guesty actuals</span>';
+  if (p.pl_base_price) h += '<span style="font-size:0.68rem;padding:2px 8px;border-radius:4px;background:rgba(167,139,250,0.1);color:var(--purple);border:1px solid rgba(167,139,250,0.2);">' + _ico('barChart', 13) + ' PriceLabs</span>';
+  if (p.analysis_nightly_rate) h += '<span style="font-size:0.68rem;padding:2px 8px;border-radius:4px;background:rgba(59,130,246,0.1);color:var(--blue);border:1px solid rgba(59,130,246,0.2);">' + _ico('sparkle', 13) + ' Analysis</span>';
+  if (!hasActuals && !p.pl_base_price && !p.analysis_nightly_rate) h += '<span style="font-size:0.68rem;padding:2px 8px;border-radius:4px;background:rgba(245,158,11,0.1);color:#f59e0b;border:1px solid rgba(245,158,11,0.2);">' + _ico('alertCircle', 13, '#f59e0b') + ' No data — run analysis, sync PriceLabs, or sync Guesty</span>';
+  if (!hasActuals && (p.pl_base_price || p.analysis_nightly_rate)) h += '<span style="font-size:0.68rem;padding:2px 8px;border-radius:4px;background:rgba(245,158,11,0.1);color:#f59e0b;border:1px solid rgba(245,158,11,0.2);">' + _ico('alertTriangle', 13, '#f59e0b') + ' All numbers are projections — no booking data yet</span>';
   h += '</div>';
 
   // ── Key Metrics ──
@@ -5020,11 +5320,15 @@ function renderPropertyFinance(propId) {
       '</div>';
   }
 
-  if (blendedADR > 0) h += fc('Blended ADR', '$' + blendedADR + '/nt', 'var(--accent)', base > 0 ? 'base $' + base + ' · max $' + max : '', 'PriceLabs blended');
+  if (blendedADR > 0) h += fc(actualADR > 0 ? 'Actual ADR' : 'Est. ADR', '$' + blendedADR + '/nt', 'var(--accent)', base > 0 ? 'PL base $' + base : '', adrSource.includes('Actual') ? 'Guesty' : 'projected');
   else if (base > 0) h += fc('Base Rate', '$' + base + '/nt', 'var(--purple)', '', 'PriceLabs');
-  h += fc('Est. Annual Occ', Math.round(occ30 * 100) + '%', occ30 >= 0.50 ? 'var(--accent)' : '#f59e0b', occSource.substring(0, 40), '');
+  h += fc(actualOcc > 0.05 ? 'Actual Occ' : 'Est. Occ', Math.round(occ30 * 100) + '%', occ30 >= 0.50 ? 'var(--accent)' : '#f59e0b', occSource.substring(0, 40), actualOcc > 0.05 ? 'Guesty' : 'projected');
   if (plFwdOcc > 0) h += fc('PL Forward 30d', Math.round(plFwdOcc * 100) + '%', plFwdOcc > plMktFwdOcc ? 'var(--accent)' : 'var(--danger)', plMktFwdOcc > 0 ? 'market ' + Math.round(plMktFwdOcc * 100) + '%' : '', 'booking pace');
-  h += fc('Monthly Revenue', '$' + totalMonthlyRev.toLocaleString(), 'var(--accent)', 'nightly + cleaning', blendedADR > 0 ? 'Blended rate' : 'Base rate');
+  h += fc(useActualRev ? 'Avg Monthly Rev' : 'Proj Monthly Rev', '$' + totalMonthlyRev.toLocaleString(), 'var(--accent)', useActualRev ? 'from Guesty actuals' : 'projected', useActualRev ? 'actual' : 'estimate');
+  if (useActualRev && projectedMonthlyRev > 0) {
+    var vsProj = totalMonthlyRev - projectedMonthlyRev;
+    h += fc('vs Projection', (vsProj >= 0 ? '+' : '') + '$' + vsProj.toLocaleString(), vsProj >= 0 ? 'var(--accent)' : 'var(--danger)', 'proj: $' + projectedMonthlyRev.toLocaleString(), vsProj >= 0 ? 'ahead' : 'behind');
+  }
   h += fc('Monthly Expenses', '$' + totalExpense.toLocaleString(), 'var(--danger)', 'fixed + variable', '');
   h += fc('Monthly Net', (monthlyNet >= 0 ? '+' : '') + '$' + monthlyNet.toLocaleString(), monthlyNet >= 0 ? 'var(--accent)' : 'var(--danger)', '', '');
   h += fc('Annual Net', (annualNet >= 0 ? '+' : '') + '$' + annualNet.toLocaleString(), annualNet >= 0 ? 'var(--accent)' : 'var(--danger)', '', '');
@@ -5044,9 +5348,14 @@ function renderPropertyFinance(propId) {
       '$' + Math.round(monthly).toLocaleString() + '/mo · $' + Math.round(annual).toLocaleString() + '/yr</span></div>';
   }
 
-  h += '<div style="font-size:0.72rem;font-weight:600;color:var(--accent);margin-bottom:4px;">REVENUE</div>';
-  if (monthlyBlendedRev > 0) h += plRow('Nightly Revenue', monthlyBlendedRev, monthlyBlendedRev * 12, 'var(--accent)', true, '$' + blendedADR + ' ADR × ' + Math.round(occ30 * 30) + ' nights');
-  if (monthlyCleanRev > 0) h += plRow('Cleaning Fee Revenue', monthlyCleanRev, monthlyCleanRev * 12, 'var(--accent)', true, '$' + cleaning + ' × ' + turnovers + ' turnovers');
+  h += '<div style="font-size:0.72rem;font-weight:600;color:var(--accent);margin-bottom:4px;">REVENUE' + (useActualRev ? ' (actual from Guesty)' : ' (projected)') + '</div>';
+  if (useActualRev) {
+    h += plRow('Avg Monthly Revenue', totalMonthlyRev, totalMonthlyRev * 12, 'var(--accent)', true, actualData.months + ' months of data');
+    if (thisMonthRev > 0) h += plRow('This Month', thisMonthRev, 0, 'var(--accent)', true, thisMonthOcc > 0 ? thisMonthOcc + '% occ' : '');
+  } else {
+    if (monthlyBlendedRev > 0) h += plRow('Nightly Revenue', monthlyBlendedRev, monthlyBlendedRev * 12, 'var(--accent)', true, '$' + blendedADR + ' ADR × ' + Math.round(occ30 * 30) + ' nights (est.)');
+    if (monthlyCleanRev > 0) h += plRow('Cleaning Fee Revenue', monthlyCleanRev, monthlyCleanRev * 12, 'var(--accent)', true, '$' + cleaning + ' × ' + turnovers + ' turnovers (est.)');
+  }
   h += '<div style="border-top:1px solid var(--border);margin:4px 0;"></div>';
   h += plRow('Total Revenue', totalMonthlyRev, totalMonthlyRev * 12, 'var(--accent)', false);
 
@@ -5315,7 +5624,7 @@ function renderPropertyFinance(propId) {
       h += '<td style="font-family:DM Mono,monospace;font-weight:600;">' + (t.requiredADR > 0 ? '$' + Math.round(t.requiredADR) : '—') + '</td>';
       h += '<td style="font-family:DM Mono,monospace;">' + (t.currentRate > 0 ? '$' + Math.round(t.currentRate) : '—') + '</td>';
       h += '<td style="font-family:DM Mono,monospace;color:' + gapColor + ';">' + (t.currentRate > 0 && t.requiredADR > 0 ? (t.gap > 0 ? '+$' + Math.round(t.gap) : '-$' + Math.abs(Math.round(t.gap))) : '—') + '</td>';
-      h += '<td style="font-family:DM Mono,monospace;' + (actualRev > 0 ? 'color:var(--accent);' : '') + '">' + (actualRev > 0 ? '$' + Math.round(actualRev).toLocaleString() : (isPast ? '<span style="color:var(--danger);">$0</span>' : '—')) + '</td>';
+      h += '<td style="font-family:DM Mono,monospace;' + (actualRev > 0 ? 'color:var(--accent);' : '') + '">' + (actualRev > 0 ? '$' + Math.round(actualRev).toLocaleString() : (isPast || isCurrent ? '<span style="color:var(--text3);">$0</span>' : '—')) + '</td>';
       h += '<td>' + (actualRev > 0 ? '<span style="color:' + statusColor + ';">' + statusIcon + ' ' + pct + '%</span>' : statusIcon) + '</td>';
       h += '</tr>';
     });
@@ -5502,7 +5811,10 @@ function renderRevenueSnapshot(propId) {
   // Current PriceLabs rate
   if (p.pl_base_price) {
     h += snapCard('PriceLabs Base', '$' + p.pl_base_price + '/nt', 'set rate', 'var(--purple)');
-    if (p.pl_rec_base) h += snapCard('PL Recommended', '$' + p.pl_rec_base + '/nt', p.pl_rec_base > p.pl_base_price ? '↑ raise $' + (p.pl_rec_base - p.pl_base_price) : p.pl_rec_base < p.pl_base_price ? '↓ lower $' + (p.pl_base_price - p.pl_rec_base) : 'on target', p.pl_rec_base > p.pl_base_price ? 'var(--accent)' : 'var(--purple)');
+    if (p.pl_rec_base && !isNaN(p.pl_rec_base) && Number(p.pl_rec_base) > 0) {
+      var rec = Math.round(Number(p.pl_rec_base));
+      h += snapCard('PL Recommended', '$' + rec + '/nt', rec > p.pl_base_price ? '↑ raise $' + (rec - p.pl_base_price) : rec < p.pl_base_price ? '↓ lower $' + (p.pl_base_price - rec) : 'on target', rec > p.pl_base_price ? 'var(--accent)' : 'var(--purple)');
+    }
   }
 
   // Occupancy
@@ -5513,18 +5825,36 @@ function renderRevenueSnapshot(propId) {
   }
 
   // Current projected revenue
+  // Actual revenue from Guesty (ground truth)
+  var actualData = (window._actualRevenue || {})[p.id];
+  var actualMonthlyAvg = actualData && actualData.monthly_avg > 0 ? actualData.monthly_avg : 0;
+  var thisMonthRev = actualData && actualData.this_month_rev > 0 ? actualData.this_month_rev : 0;
+
   var plRev = 0;
   if (p.pl_base_price && p.pl_occ_30d) {
     plRev = Math.round(p.pl_base_price * 30 * parseInt(p.pl_occ_30d) / 100);
-    h += snapCard('Current Revenue', '$' + plRev.toLocaleString() + '/mo', '$' + (plRev * 12).toLocaleString() + '/yr', 'var(--accent)');
+  }
+
+  // Show ACTUAL revenue first (from Guesty), then PriceLabs projection separately
+  if (actualMonthlyAvg > 0) {
+    h += snapCard('Actual Revenue', '$' + actualMonthlyAvg.toLocaleString() + '/mo', thisMonthRev > 0 ? 'this month: $' + thisMonthRev.toLocaleString() : 'from Guesty actuals', 'var(--accent)');
+  }
+  if (plRev > 0) {
+    h += snapCard(actualMonthlyAvg > 0 ? 'PL Projection' : 'Projected Revenue', '$' + plRev.toLocaleString() + '/mo', '$' + p.pl_base_price + '/nt × ' + parseInt(p.pl_occ_30d) + '% occ', actualMonthlyAvg > 0 ? 'var(--text2)' : 'var(--purple)');
   }
 
   // Analysis projected
   if (p.analysis_monthly && p.analysis_monthly > 0) {
-    var diff = p.analysis_monthly - (plRev || 0);
-    h += snapCard('Analysis Projects', '$' + Math.round(p.analysis_monthly).toLocaleString() + '/mo', p.analysis_nightly_rate ? '$' + p.analysis_nightly_rate + '/nt @ ' + Math.round((p.analysis_occ || 0.5) * 100) + '%' : '', diff > 0 ? 'var(--accent)' : 'var(--text2)');
-    if (plRev > 0 && Math.abs(diff) > 50) {
-      h += snapCard('Revenue Gap', (diff > 0 ? '+' : '') + '$' + diff.toLocaleString() + '/mo', (diff > 0 ? '+' : '') + '$' + (diff * 12).toLocaleString() + '/yr', diff > 0 ? 'var(--accent)' : 'var(--danger)');
+    var compareBase = actualMonthlyAvg > 0 ? actualMonthlyAvg : plRev;
+    var compareLabel = actualMonthlyAvg > 0 ? 'actual' : 'PL projection';
+    var diff = compareBase > 0 ? Math.round(p.analysis_monthly) - compareBase : 0;
+    h += snapCard('Analysis Projects', '$' + Math.round(p.analysis_monthly).toLocaleString() + '/mo', p.analysis_nightly_rate ? '$' + p.analysis_nightly_rate + '/nt @ ' + Math.round((p.analysis_occ || 0.5) * 100) + '%' : '', 'var(--text2)');
+    if (compareBase > 0 && Math.abs(diff) > 50) {
+      var gapSub = 'vs ' + compareLabel;
+      if (diff < 0 && p.analysis_nightly_rate && p.pl_base_price && p.analysis_nightly_rate < p.pl_base_price) {
+        gapSub = 'analysis stale — re-run';
+      }
+      h += snapCard('Revenue Gap', (diff > 0 ? '+' : '') + '$' + diff.toLocaleString() + '/mo', gapSub, diff > 0 ? 'var(--accent)' : 'var(--warn)');
     }
   }
 
@@ -5541,10 +5871,13 @@ function renderRevenueSnapshot(propId) {
     cost += (p.expense_electric || 0) + (p.expense_gas || 0) + (p.expense_water || 0) + (p.expense_internet || 0) + (p.expense_trash || 0) + (p.expense_other || 0);
   }
   if (!isManagedProp && cost > 0) {
-    var displayRev = plRev || p.analysis_monthly || 0;
+    var useActualForNet = actualMonthlyAvg > 0;
+    var displayRev = useActualForNet ? actualMonthlyAvg : (plRev || p.analysis_monthly || 0);
     var netRev = displayRev - cost;
+    var netLabel = useActualForNet ? 'Net Income' : (displayRev > 0 ? 'Est. Net Income' : 'Net Income');
+    var netSub = useActualForNet ? '$' + (Math.round(netRev) * 12).toLocaleString() + '/yr · from actuals' : (displayRev > 0 ? '$' + (Math.round(netRev) * 12).toLocaleString() + '/yr · projected' : 'no revenue data');
     h += snapCard('Expenses', '$' + Math.round(cost).toLocaleString() + '/mo', '', 'var(--danger)');
-    h += snapCard('Net Income', (netRev >= 0 ? '+' : '') + '$' + Math.round(netRev).toLocaleString() + '/mo', '$' + (Math.round(netRev) * 12).toLocaleString() + '/yr', netRev >= 0 ? 'var(--accent)' : 'var(--danger)');
+    h += snapCard(netLabel, (netRev >= 0 ? '+' : '') + '$' + Math.round(netRev).toLocaleString() + '/mo', netSub, netRev >= 0 ? 'var(--accent)' : 'var(--danger)');
   }
 
   h += '</div></div>';
@@ -5995,7 +6328,7 @@ async function loadSavedReports(propId) {
       var pd = latest.pricing_analysis.data;
       var h = '';
       // Restored banner
-      var ago = Math.round((Date.now() - new Date(latest.pricing_analysis.created_at).getTime()) / 86400000);
+      var ago = Math.round((Date.now() - new Date(latest.pricing_analysis.created_at + 'Z').getTime()) / 86400000);
       var agoText = ago === 0 ? 'today' : ago === 1 ? 'yesterday' : ago + ' days ago';
       h += '<div style="font-size:0.7rem;color:var(--text3);padding:4px 8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;margin-bottom:8px;">' + _ico('refresh', 13) + ' Restored from ' + agoText + ' · ' + fmtUTC(latest.pricing_analysis.created_at) + ' · <em>Run Price Analysis to refresh</em></div>';
       // Sources
@@ -6045,7 +6378,7 @@ async function loadSavedReports(propId) {
 
     // Restore latest PL strategy into plStrategyResults
     var plStratEl = document.getElementById('plStrategyResults');
-    if (plStratEl && latest.pl_strategy && latest.pl_strategy.data && latest.pl_strategy.data.strategy && !latest.pl_strategy.data.context?.parse_error) {
+    if (plStratEl && latest.pl_strategy && latest.pl_strategy.data && latest.pl_strategy.data.strategy && (!latest.pl_strategy.data.context?.parse_error || latest.pl_strategy.data.strategy.base_price)) {
       renderPLStrategy(latest.pl_strategy.data, plStratEl);
       // Add "last updated" banner
       var plAgo = _agoText(latest.pl_strategy.created_at);
@@ -6138,7 +6471,13 @@ function renderPLStrategy(d, container) {
   if (s.strategy_summary) {
     h += '<div style="padding:14px;background:rgba(167,139,250,0.06);border:1px solid rgba(167,139,250,0.2);border-radius:8px;margin-bottom:14px;">';
     h += '<div style="font-weight:600;color:var(--purple);margin-bottom:6px;">Strategy Summary</div>';
-    h += '<div style="font-size:0.85rem;color:var(--text);">' + esc(s.strategy_summary) + '</div>';
+    h += '<div style="font-size:0.85rem;color:var(--text);white-space:pre-wrap;line-height:1.6;">' + esc(s.strategy_summary) + '</div>';
+    if (ctx.parse_error) {
+      h += '<div style="margin-top:8px;padding:8px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);border-radius:6px;font-size:0.72rem;color:var(--danger);">';
+      h += '<strong>Parse error:</strong> ' + esc(ctx.parse_detail || 'unknown') + '<br>';
+      h += '<em>Check Admin → System Log for details. The AI returned text instead of JSON — try generating again.</em>';
+      h += '</div>';
+    }
     h += '</div>';
   }
 
@@ -6472,32 +6811,50 @@ function renderPropertyCard(p, isBuilding, isChild) {
     monthlyCost += (p.expense_electric || 0) + (p.expense_gas || 0) + (p.expense_water || 0) + (p.expense_internet || 0) + (p.expense_trash || 0) + (p.expense_other || 0);
 
     var monthlyRev = p.est_monthly_revenue || 0;
+    var revIsActual = false; // true = Guesty actuals, false = projection
     var plMonthlyRev = 0;
     var cardADR = 0;
-    if (p.pl_base_price) {
-      var plB = parseFloat(p.pl_base_price) || 0;
-      var plM = parseFloat(p.pl_max_price) || plB;
-      var plR = parseFloat(p.pl_rec_base) || plB;
-      var plFwdPct = p.pl_occ_30d ? parseInt(p.pl_occ_30d) : null;
-      var plMktPct = p.pl_mkt_occ_30d ? parseInt(p.pl_mkt_occ_30d) : null;
-      var cardOcc = null;
-      if (plFwdPct !== null && plFwdPct > 10) cardOcc = plFwdPct / 100;
-      else if (plFwdPct === null && plMktPct !== null) cardOcc = Math.min(plMktPct / 100, 0.55);
-      if (cardOcc !== null && plB > 0) {
-        cardADR = Math.round(plB * 0.4 + plR * 0.3 + plB * 1.2 * 0.2 + (plB + plM) / 2 * 0.1);
-        plMonthlyRev = Math.round(cardADR * 30 * cardOcc);
-        if (plMonthlyRev > 0) monthlyRev = plMonthlyRev;
+
+    // Priority 1: Actual revenue from Guesty monthly_actuals
+    var cardActualData = (window._actualRevenue || {})[p.id];
+    if (cardActualData && cardActualData.monthly_avg > 0) {
+      monthlyRev = cardActualData.monthly_avg;
+      revIsActual = true;
+    } else {
+      // Priority 2: PriceLabs blended projection
+      if (p.pl_base_price) {
+        var plB = parseFloat(p.pl_base_price) || 0;
+        var plM = parseFloat(p.pl_max_price) || plB;
+        var plR = parseFloat(p.pl_rec_base) || plB;
+        var plFwdPct = p.pl_occ_30d ? parseInt(p.pl_occ_30d) : null;
+        var plMktPct = p.pl_mkt_occ_30d ? parseInt(p.pl_mkt_occ_30d) : null;
+        var cardOcc = null;
+        if (plFwdPct !== null && plFwdPct > 10) cardOcc = plFwdPct / 100;
+        else if (plFwdPct === null && plMktPct !== null) cardOcc = Math.min(plMktPct / 100, 0.55);
+        if (cardOcc !== null && plB > 0) {
+          cardADR = Math.round(plB * 0.4 + plR * 0.3 + plB * 1.2 * 0.2 + (plB + plM) / 2 * 0.1);
+          plMonthlyRev = Math.round(cardADR * 30 * cardOcc);
+          if (plMonthlyRev > 0) monthlyRev = plMonthlyRev;
+        }
       }
     }
     var analysisMonthly = p.analysis_monthly || 0;
     var net = isNaN(monthlyRev) ? 0 : monthlyRev - monthlyCost;
 
     // Profitability-based left border for quick glance scanning
+    // When using projections (not actuals), soften the colors to signal uncertainty
     var profitBorderColor = '';
     if (!p.is_research && (monthlyCost > 0 || monthlyRev > 0)) {
-      if (net >= 300) profitBorderColor = 'rgba(16,185,129,0.6)';       // profitable — green
-      else if (net >= 0) profitBorderColor = 'rgba(245,158,11,0.5)';    // breakeven — amber
-      else profitBorderColor = 'rgba(239,68,68,0.45)';                   // losing — red
+      if (revIsActual) {
+        if (net >= 300) profitBorderColor = 'rgba(16,185,129,0.6)';       // profitable — green
+        else if (net >= 0) profitBorderColor = 'rgba(245,158,11,0.5)';    // breakeven — amber
+        else profitBorderColor = 'rgba(239,68,68,0.45)';                   // losing — red
+      } else {
+        // Projections: use dimmer borders to signal "estimated"
+        if (net >= 300) profitBorderColor = 'rgba(16,185,129,0.3)';
+        else if (net >= 0) profitBorderColor = 'rgba(245,158,11,0.25)';
+        else profitBorderColor = 'rgba(239,68,68,0.25)';
+      }
     }
     var borderLeft = isChild
       ? '3px solid ' + (profitBorderColor || 'rgba(' + typeRgb + ',0.3)')
@@ -6681,7 +7038,7 @@ function renderPropertyCard(p, isBuilding, isChild) {
         '</div>' +
         '<div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">' +
           actualMark +
-          (net !== 0 && monthlyCost > 0 ? '<span style="font-size:0.72rem;font-weight:700;color:' + netColor + ';font-family:DM Mono,monospace;">' + (net >= 0 ? '+' : '') + '$' + Math.round(net).toLocaleString() + ' net</span>' : '') +
+          (net !== 0 && monthlyCost > 0 ? '<span title="' + (revIsActual ? 'Based on Guesty actuals' : 'Estimated from PriceLabs/analysis') + '" style="font-size:0.72rem;font-weight:700;color:' + netColor + ';font-family:DM Mono,monospace;' + (revIsActual ? '' : 'opacity:0.7;') + '">' + (revIsActual ? '' : '~') + (net >= 0 ? '+' : '') + '$' + Math.round(net).toLocaleString() + ' net</span>' : '') +
           trendHtml +
           healthBadge +
           (p.listing_status === 'active' ? '<span style="width:8px;height:8px;border-radius:50%;background:var(--accent);display:inline-block;" title="Live"></span>' : p.listing_status === 'paused' ? '<span style="width:8px;height:8px;border-radius:50%;background:#f59e0b;display:inline-block;" title="Paused"></span>' : '') +
@@ -7100,13 +7457,16 @@ function buildMonthlyTargets(p, actuals, seasonality, monthlyExpense, currentADR
   var histByPropMonth = {};
   var currentMonth = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
   (actuals || []).forEach(function(a) {
-    if (a.month >= currentMonth) return; // exclude partial current month
     var mn = parseInt(a.month.substring(5));
     var yr = parseInt(a.month.substring(0, 4));
-    if (!histByMonth[mn]) histByMonth[mn] = { revs: [], occs: [], adrs: [] };
-    histByMonth[mn].revs.push(a.total_revenue || 0);
-    histByMonth[mn].occs.push(a.occupancy_pct || 0);
-    if (a.avg_nightly_rate > 0) histByMonth[mn].adrs.push(a.avg_nightly_rate);
+    // For historical averages: exclude current month (partial data skews averages)
+    if (a.month < currentMonth) {
+      if (!histByMonth[mn]) histByMonth[mn] = { revs: [], occs: [], adrs: [] };
+      histByMonth[mn].revs.push(a.total_revenue || 0);
+      histByMonth[mn].occs.push(a.occupancy_pct || 0);
+      if (a.avg_nightly_rate > 0) histByMonth[mn].adrs.push(a.avg_nightly_rate);
+    }
+    // For actuals column: store per year-month (include current month — partial is better than $0)
     histByPropMonth[yr + '-' + mn] = { rev: a.total_revenue || 0, occ: a.occupancy_pct || 0, adr: a.avg_nightly_rate || 0 };
   });
   var hasActuals = Object.keys(histByMonth).length >= 3;
@@ -7224,6 +7584,14 @@ function buildMonthlyTargets(p, actuals, seasonality, monthlyExpense, currentADR
     // Actual revenue for this month (current year)
     var thisYearData = histByPropMonth[currentYear + '-' + mn];
     var actualRev = thisYearData ? thisYearData.rev : 0;
+
+    // For current month: also check _actualRevenue which may have fresher data
+    if (mn === currentMonthNum && actualRev === 0) {
+      var arData = (window._actualRevenue || {})[p.id];
+      if (arData && arData.this_month_rev > 0) {
+        actualRev = arData.this_month_rev;
+      }
+    }
 
     // Flag if this month is partial (current month)
     var isCurrentMonth = mn === currentMonthNum && thisYearData;
@@ -8018,7 +8386,7 @@ async function openProperty(id, initialTab) {
         // Latest analysis badge
         var latestStrat = (d.strategies && d.strategies.length > 0) ? d.strategies[0] : null;
         if (latestStrat) {
-          var stratAge = Math.round((Date.now() - new Date(latestStrat.created_at).getTime()) / 86400000);
+          var stratAge = Math.round((Date.now() - new Date(latestStrat.created_at + 'Z').getTime()) / 86400000);
           var stratAgeLabel = stratAge === 0 ? 'today' : stratAge === 1 ? 'yesterday' : stratAge + 'd ago';
           var stratColor = stratAge <= 7 ? 'var(--accent)' : stratAge <= 30 ? '#f0b840' : 'var(--text3)';
           mh += '<span style="font-size:0.62rem;padding:2px 8px;background:var(--surface3);border-radius:4px;color:' + stratColor + ';border:1px solid ' + stratColor + ';">' + _ico('dollarSign', 10, stratColor) + ' $' + (latestStrat.base_nightly_rate || 0) + '/nt · ' + Math.round((latestStrat.projected_occupancy || 0) * 100) + '% · $' + Math.round(latestStrat.projected_monthly_avg || 0).toLocaleString() + '/mo <span style="opacity:0.7;">(' + stratAgeLabel + ')</span></span>';
@@ -11975,6 +12343,29 @@ function renderMarketProfile(d) {
     h += '</div></div>';
   }
 
+  // Rate Matrix — bed/bath breakdown
+  var rateMatrix = _mktJson(p.rate_matrix_json, null);
+  if (rateMatrix && rateMatrix.entries && rateMatrix.entries.length > 0) {
+    h += '<div style="margin-top:12px;margin-bottom:12px;">';
+    h += '<div style="font-size:0.72rem;font-weight:600;color:var(--text2);margin-bottom:6px;">' + _ico('dollarSign', 13) + ' Rate Matrix <span style="color:var(--text3);font-weight:400;">(' + rateMatrix.total_listings + ' listings)</span></div>';
+    h += '<table style="width:100%;border-collapse:collapse;font-size:0.75rem;">';
+    h += '<thead><tr style="border-bottom:1px solid var(--border);"><th style="text-align:left;padding:4px 8px;color:var(--text3);font-weight:500;">Beds/Baths</th><th style="text-align:right;padding:4px 8px;color:var(--text3);font-weight:500;">Median</th><th style="text-align:right;padding:4px 8px;color:var(--text3);font-weight:500;">Range (p25-p75)</th><th style="text-align:right;padding:4px 8px;color:var(--text3);font-weight:500;">Listings</th></tr></thead><tbody>';
+    rateMatrix.entries.forEach(function(e) {
+      h += '<tr style="border-bottom:1px solid var(--border2);"><td style="padding:4px 8px;font-weight:600;">' + e.beds + 'BR / ' + e.baths + 'BA</td>';
+      h += '<td style="text-align:right;padding:4px 8px;font-family:DM Mono,monospace;color:var(--accent);font-weight:600;">$' + e.median + '</td>';
+      h += '<td style="text-align:right;padding:4px 8px;font-family:DM Mono,monospace;color:var(--text2);">$' + e.p25 + ' – $' + e.p75 + '</td>';
+      h += '<td style="text-align:right;padding:4px 8px;color:var(--text3);">' + e.count + '</td></tr>';
+    });
+    h += '</tbody></table>';
+    if (rateMatrix.increments && (rateMatrix.increments.per_bedroom || rateMatrix.increments.per_bathroom)) {
+      h += '<div style="margin-top:6px;font-size:0.72rem;color:var(--text3);">';
+      if (rateMatrix.increments.per_bedroom) h += _ico('plus', 11) + ' <strong>$' + rateMatrix.increments.per_bedroom + '</strong>/bedroom  ';
+      if (rateMatrix.increments.per_bathroom) h += _ico('plus', 11) + ' <strong>$' + rateMatrix.increments.per_bathroom + '</strong>/bathroom';
+      h += '</div>';
+    }
+    h += '</div>';
+  }
+
   // Top hosts in market
   var topHosts = d.top_hosts || [];
   if (topHosts.length > 0) {
@@ -13013,7 +13404,7 @@ var _currentIntelTab = 'data';
 
 function switchIntelTab(tab) {
   _currentIntelTab = tab;
-  ['data','guests','markets','channels','monitoring','algo'].forEach(function(t) {
+  ['data','guests','markets','channels','monitoring','algo','insights'].forEach(function(t) {
     var el = document.getElementById('intelTab-' + t);
     if (el) el.style.display = t === tab ? '' : 'none';
   });
@@ -13033,6 +13424,7 @@ function loadIntelSubTabContent(tab) {
   if (tab === 'channels') loadChannelIntelligencePanel();
   if (tab === 'monitoring') loadMarketWatchlist();
   if (tab === 'algo') { loadAlgoHealth(); loadAlgoTemplates(); }
+  if (tab === 'insights') loadPortfolioInsights();
 }
 
 // ── Market Watchlist ──────────────────────────────────────────────────────────
@@ -13355,6 +13747,295 @@ function renderCalendarSummary(d) {
   }
   h += '</div>';
   el.innerHTML = h;
+}
+
+// ── Portfolio Insights Tab ────────────────────────────────────────────────
+
+async function loadPortfolioInsights() {
+  var el = document.getElementById('insightsContent');
+  if (!el) return;
+  el.innerHTML = '<div style="color:var(--text3);font-size:0.82rem;">Loading insights...</div>';
+
+  try {
+    var d = await api('/api/intelligence/insights');
+    var metrics = d.metrics || [];
+    var propRevpan = d.property_revpan || [];
+
+    if (metrics.length === 0) {
+      el.innerHTML = '<div style="padding:16px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;text-align:center;">' +
+        '<div style="font-size:0.88rem;color:var(--text2);margin-bottom:6px;">No insights data yet</div>' +
+        '<div style="font-size:0.78rem;color:var(--text3);margin-bottom:10px;">Run an intelligence rebuild to generate advanced analytics from your Guesty + PriceLabs data.</div>' +
+        '<button class="btn btn-primary btn-sm" onclick="btnGuard(this);api(\'/api/intelligence/rebuild\',\'POST\',{sections:[\'guests\',\'channels\',\'advanced\']}).then(function(){toast(\'Rebuild complete\');loadPortfolioInsights()}).catch(function(e){toast(e.message,\'error\')})">Rebuild Intelligence</button></div>';
+      return;
+    }
+
+    // Parse metrics into a lookup
+    var m = {};
+    metrics.forEach(function(r) {
+      var key = r.metric_key + (r.period !== 'all_time' ? '_' + r.period : '');
+      m[key] = { v: r.metric_value, n: r.sample_size };
+    });
+
+    var h = '';
+
+    // ── RevPAN Section ──
+    if (m.revpan) {
+      h += '<div style="margin-bottom:18px;">';
+      h += '<div style="font-size:0.72rem;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">' + _ico('target', 14, 'var(--text3)') + ' REVENUE EFFICIENCY — RevPAN</div>';
+      h += '<div class="market-grid">';
+      h += '<div class="market-stat"><div class="val" style="color:var(--accent);">$' + m.revpan.v.toFixed(2) + '</div><div class="lbl">Portfolio RevPAN</div></div>';
+      if (m.portfolio_adr) h += '<div class="market-stat"><div class="val">$' + Math.round(m.portfolio_adr.v) + '</div><div class="lbl">Portfolio ADR</div></div>';
+      if (m.portfolio_occ) h += '<div class="market-stat"><div class="val">' + m.portfolio_occ.v + '%</div><div class="lbl">Portfolio Occupancy</div></div>';
+      h += '</div>';
+      h += '<div style="font-size:0.72rem;color:var(--text3);margin-top:4px;">RevPAN = Revenue ÷ Available Nights. Combines ADR × occupancy into one number. Higher is better. Hotel industry gold standard.</div>';
+
+      // Per-property RevPAN ranking
+      if (propRevpan.length > 0) {
+        h += '<div style="margin-top:10px;">';
+        h += '<div style="font-size:0.68rem;font-weight:600;color:var(--text2);margin-bottom:4px;">Property RevPAN Ranking</div>';
+        var maxRevpan = propRevpan[0].revpan || 1;
+        propRevpan.forEach(function(p) {
+          var pct = Math.round(p.revpan / maxRevpan * 100);
+          var color = pct >= 75 ? 'var(--accent)' : pct >= 50 ? '#f59e0b' : 'var(--danger)';
+          h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;font-size:0.75rem;">';
+          h += '<span style="min-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text2);" title="' + esc(p.label) + '">' + esc(p.label) + '</span>';
+          h += '<div style="flex:1;height:14px;background:var(--surface2);border-radius:3px;overflow:hidden;"><div style="height:100%;width:' + pct + '%;background:' + color + ';border-radius:3px;transition:width 0.3s;"></div></div>';
+          h += '<span style="font-family:DM Mono,monospace;font-weight:600;color:' + color + ';min-width:55px;text-align:right;">$' + p.revpan.toFixed(2) + '</span>';
+          h += '<span style="font-size:0.62rem;color:var(--text3);min-width:35px;">' + p.months + 'mo</span>';
+          h += '</div>';
+        });
+        h += '</div>';
+      }
+      h += '</div>';
+    }
+
+    // ── Booking Pace Section ──
+    var paceTY = m.pace_bookings_ty_ytd;
+    var paceLY = m.pace_bookings_ly_ytd;
+    if (paceTY || paceLY) {
+      h += '<div style="margin-bottom:18px;">';
+      // Check if we have booking_date data or need to fall back to completed stays
+      var hasBookingDates = m.pace_has_booking_dates_ytd && m.pace_has_booking_dates_ytd.v > 0;
+      var compTY = m.completed_bookings_ty_ytd;
+      var compLY = m.completed_bookings_ly_ytd;
+      var compRevTY = m.completed_revenue_ty_ytd;
+      var compRevLY = m.completed_revenue_ly_ytd;
+
+      // Decide which dataset to show: forward pace (needs booking_date) or completed stays
+      var showForwardPace = hasBookingDates && paceTY && paceLY && (paceTY.v > 0 || paceLY.v > 0);
+      var showCompleted = compTY || compLY;
+
+      if (showForwardPace) {
+        h += '<div style="font-size:0.72rem;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">' + _ico('trendUp', 14, 'var(--text3)') + ' FORWARD BOOKING PACE — Year over Year</div>';
+        h += '<div class="market-grid">';
+        if (paceTY) h += '<div class="market-stat"><div class="val" style="color:var(--accent);">' + paceTY.v + '</div><div class="lbl">Forward Bookings TY</div></div>';
+        if (paceLY) h += '<div class="market-stat"><div class="val">' + paceLY.v + '</div><div class="lbl">Same Date Last Year</div></div>';
+        var revTY = m.pace_revenue_ty_ytd;
+        var revLY = m.pace_revenue_ly_ytd;
+        if (revTY) h += '<div class="market-stat"><div class="val" style="color:var(--accent);">$' + Math.round(revTY.v).toLocaleString() + '</div><div class="lbl">Revenue Booked TY</div></div>';
+        if (revLY) h += '<div class="market-stat"><div class="val">$' + Math.round(revLY.v).toLocaleString() + '</div><div class="lbl">Revenue Booked LY</div></div>';
+        var paceChg = m.pace_change_pct_ytd;
+        if (paceChg) {
+          var pColor = paceChg.v >= 0 ? 'var(--accent)' : 'var(--danger)';
+          h += '<div class="market-stat"><div class="val" style="color:' + pColor + ';">' + (paceChg.v >= 0 ? '+' : '') + paceChg.v + '%</div><div class="lbl">Pace Change</div></div>';
+        }
+        h += '</div>';
+        if (paceLY && paceLY.v === 0 && paceTY && paceTY.v > 0) {
+          h += '<div style="padding:6px 10px;background:var(--surface2);border-radius:6px;font-size:0.72rem;color:var(--text3);margin-top:4px;">' + _ico('info', 11, 'var(--text3)') + ' Last year shows 0 — booking_date data may be missing for older reservations (CSV imports). See completed stays below for a fuller comparison.</div>';
+        } else {
+          h += '<div style="font-size:0.72rem;color:var(--text3);margin-top:4px;">Forward bookings as of today vs same calendar date last year. Requires booking_date field.</div>';
+        }
+      } else {
+        h += '<div style="font-size:0.72rem;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">' + _ico('trendUp', 14, 'var(--text3)') + ' BOOKING PACE — Year over Year</div>';
+      }
+
+      // Always show completed stays comparison (doesn't need booking_date)
+      if (showCompleted) {
+        if (showForwardPace) h += '<div style="margin-top:12px;">';
+        h += '<div style="font-size:0.68rem;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">' + _ico('calendar', 12, 'var(--text3)') + ' COMPLETED STAYS — YTD vs Same Period Last Year</div>';
+        h += '<div class="market-grid">';
+        if (compTY) h += '<div class="market-stat"><div class="val" style="color:var(--accent);">' + compTY.v + '</div><div class="lbl">Stays YTD ' + new Date().getFullYear() + '</div></div>';
+        if (compLY) h += '<div class="market-stat"><div class="val">' + compLY.v + '</div><div class="lbl">Same Period ' + (new Date().getFullYear() - 1) + '</div></div>';
+        if (compRevTY) h += '<div class="market-stat"><div class="val" style="color:var(--accent);">$' + Math.round(compRevTY.v).toLocaleString() + '</div><div class="lbl">Revenue YTD ' + new Date().getFullYear() + '</div></div>';
+        if (compRevLY) h += '<div class="market-stat"><div class="val">$' + Math.round(compRevLY.v).toLocaleString() + '</div><div class="lbl">Revenue Same Period LY</div></div>';
+        if (compTY && compLY && compLY.v > 0) {
+          var compChg = Math.round((compTY.v - compLY.v) / compLY.v * 100);
+          var compColor = compChg >= 0 ? 'var(--accent)' : 'var(--danger)';
+          h += '<div class="market-stat"><div class="val" style="color:' + compColor + ';">' + (compChg >= 0 ? '+' : '') + compChg + '%</div><div class="lbl">YoY Change</div></div>';
+        }
+        h += '</div>';
+        h += '<div style="font-size:0.72rem;color:var(--text3);margin-top:4px;">Actual check-ins Jan 1 through today, compared to same window last year. Does not require booking_date.</div>';
+        if (showForwardPace) h += '</div>';
+      }
+      h += '</div>';
+    }
+
+    // ── Day-of-Week Patterns ──
+    var dowDays = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    var hasDow = dowDays.some(function(d) { return m['dow_revenue_' + d]; });
+    if (hasDow) {
+      h += '<div style="margin-bottom:18px;">';
+      h += '<div style="font-size:0.72rem;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">' + _ico('calendar', 14, 'var(--text3)') + ' CHECK-IN DAY PATTERNS</div>';
+      var maxDowRev = 0;
+      dowDays.forEach(function(d) { var v = m['dow_revenue_' + d]; if (v && v.v > maxDowRev) maxDowRev = v.v; });
+      h += '<div style="display:flex;gap:6px;align-items:flex-end;height:120px;">';
+      dowDays.forEach(function(d) {
+        var v = m['dow_revenue_' + d];
+        if (!v) return;
+        var pct = maxDowRev > 0 ? Math.round(v.v / maxDowRev * 100) : 0;
+        var isWeekend = d === 'Fri' || d === 'Sat';
+        var barColor = isWeekend ? 'var(--accent)' : 'var(--purple)';
+        h += '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;">';
+        h += '<span style="font-size:0.58rem;font-family:DM Mono,monospace;color:var(--text2);">$' + Math.round(v.v) + '</span>';
+        h += '<div style="width:100%;height:' + Math.max(pct, 5) + '%;background:' + barColor + ';border-radius:3px 3px 0 0;min-height:4px;opacity:0.8;"></div>';
+        h += '<span style="font-size:0.62rem;color:var(--text3);font-weight:600;">' + d + '</span>';
+        h += '<span style="font-size:0.55rem;color:var(--text3);">' + v.n + '</span>';
+        h += '</div>';
+      });
+      h += '</div>';
+      h += '<div style="font-size:0.72rem;color:var(--text3);margin-top:6px;">Average revenue per booking by check-in day. Weekend check-ins often show lower avg revenue because stays are shorter (1-2 nights). Weekday check-ins average higher because they include longer corporate/mid-term stays.</div>';
+      h += '</div>';
+    }
+
+    // ── Lead Time Trends ──
+    var ltCurr = m.lead_time_avg_current_q;
+    var ltPrev = m.lead_time_avg_prev_q;
+    if (ltCurr || ltPrev) {
+      h += '<div style="margin-bottom:18px;">';
+      h += '<div style="font-size:0.72rem;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">' + _ico('clock', 14, 'var(--text3)') + ' BOOKING LEAD TIME</div>';
+      h += '<div class="market-grid">';
+      if (ltCurr) {
+        h += '<div class="market-stat"><div class="val">' + Math.round(ltCurr.v) + ' days</div><div class="lbl">Current Quarter Avg' + (ltCurr.n ? ' (' + ltCurr.n + ' bookings)' : '') + '</div></div>';
+        var lmPct = m.lead_time_pct_last_minute_current_q;
+        if (lmPct) h += '<div class="market-stat"><div class="val" style="color:' + (lmPct.v > 30 ? 'var(--danger)' : 'var(--text)') + ';">' + Math.round(lmPct.v) + '%</div><div class="lbl">Last-Minute (&lt;7d)</div></div>';
+        var advPct = m.lead_time_pct_advance_current_q;
+        if (advPct) h += '<div class="market-stat"><div class="val">' + Math.round(advPct.v) + '%</div><div class="lbl">Advance (30d+)</div></div>';
+      }
+      if (ltPrev) h += '<div class="market-stat"><div class="val">' + Math.round(ltPrev.v) + ' days</div><div class="lbl">Previous Quarter Avg' + (ltPrev.n ? ' (' + ltPrev.n + ' bookings)' : '') + '</div></div>';
+      h += '</div>';
+      if (ltCurr && ltPrev && ltCurr.v < ltPrev.v - 3) {
+        h += '<div style="padding:8px 12px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:6px;font-size:0.78rem;color:var(--danger);margin-top:6px;">' + _ico('alertTriangle', 13, 'var(--danger)') + ' Lead time shrinking by ' + Math.round(ltPrev.v - ltCurr.v) + ' days — guests booking closer to check-in. Consider reducing far-out discounts.</div>';
+      }
+      h += '</div>';
+    }
+
+    // ── Price Elasticity ──
+    var elastUp = m.elasticity_price_up_occ_delta;
+    var elastDown = m.elasticity_price_down_occ_delta;
+    if (elastUp || elastDown) {
+      h += '<div style="margin-bottom:18px;">';
+      h += '<div style="font-size:0.72rem;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">' + _ico('dollarSign', 14, 'var(--text3)') + ' PRICE ELASTICITY SIGNALS</div>';
+      h += '<div class="market-grid">';
+      if (elastUp) {
+        var upColor = elastUp.v >= -5 ? 'var(--accent)' : 'var(--danger)';
+        h += '<div class="market-stat"><div class="val" style="color:' + upColor + ';">' + (elastUp.v >= 0 ? '+' : '') + elastUp.v + '%</div><div class="lbl">Occ After Price ↑ (' + elastUp.n + ')</div></div>';
+      }
+      if (elastDown) {
+        h += '<div class="market-stat"><div class="val" style="color:var(--accent);">' + (elastDown.v >= 0 ? '+' : '') + elastDown.v + '%</div><div class="lbl">Occ After Price ↓ (' + elastDown.n + ')</div></div>';
+      }
+      h += '</div>';
+      var interpretation = '';
+      if (elastUp && elastUp.v >= -5) interpretation = 'Your market is price-insensitive — raising rates doesn\'t significantly hurt occupancy. Room to push pricing.';
+      else if (elastUp && elastUp.v < -10) interpretation = 'Price-sensitive market — rate increases led to noticeable occupancy drops. Be surgical with increases.';
+      if (interpretation) h += '<div style="font-size:0.72rem;color:var(--text2);margin-top:4px;">' + _ico('lightbulb', 12, '#f59e0b') + ' ' + interpretation + '</div>';
+      h += '</div>';
+    }
+
+    // ── Guest Origins ──
+    var originStates = metrics.filter(function(r) { return r.metric_key.indexOf('guest_origin_state_') === 0; }).sort(function(a, b) { return b.sample_size - a.sample_size; }).slice(0, 8);
+    var originCountries = metrics.filter(function(r) { return r.metric_key.indexOf('guest_origin_country_') === 0; }).sort(function(a, b) { return b.sample_size - a.sample_size; }).slice(0, 5);
+    if (originStates.length > 0) {
+      h += '<div style="margin-bottom:18px;">';
+      h += '<div style="font-size:0.72rem;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">' + _ico('mapPin', 14, 'var(--text3)') + ' GUEST ORIGINS — Top Feeder Markets</div>';
+      var maxGuests = originStates[0].sample_size || 1;
+      h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;">';
+      originStates.forEach(function(o) {
+        var st = o.metric_key.replace('guest_origin_state_', '');
+        var pct = Math.round(o.sample_size / maxGuests * 100);
+        h += '<div style="display:flex;align-items:center;gap:6px;padding:4px 8px;background:var(--surface2);border-radius:4px;">';
+        h += '<span style="font-weight:700;font-size:0.78rem;color:var(--text);min-width:24px;">' + st + '</span>';
+        h += '<div style="flex:1;height:10px;background:var(--bg);border-radius:2px;overflow:hidden;"><div style="height:100%;width:' + pct + '%;background:var(--purple);border-radius:2px;"></div></div>';
+        h += '<span style="font-size:0.68rem;color:var(--text2);min-width:55px;text-align:right;">' + o.sample_size + ' guests</span>';
+        h += '</div>';
+      });
+      h += '</div>';
+      if (originCountries.length > 1) {
+        h += '<div style="font-size:0.72rem;color:var(--text3);margin-top:6px;">Countries: ' + originCountries.map(function(c) { return c.metric_key.replace('guest_origin_country_', '') + ' (' + c.sample_size + ')'; }).join(' · ') + '</div>';
+      }
+      h += '<div style="font-size:0.72rem;color:var(--text3);margin-top:4px;">Target listing descriptions and marketing toward these origin markets.</div>';
+      h += '</div>';
+    }
+
+    // ── Rate Context — Pricing vs Occupancy ──
+    var underpricedCount = m.underpriced_high_occ_count;
+    var rateContextProps = metrics.filter(function(r) { return r.metric_key.indexOf('rate_context_prop_') === 0; });
+    var underpricedEntries = metrics.filter(function(r) { return r.metric_key.indexOf('underpriced_') === 0 && r.metric_key.indexOf('_pid') > 0; });
+    if (rateContextProps.length > 0 || underpricedCount) {
+      h += '<div style="margin-bottom:18px;">';
+      h += '<div style="font-size:0.72rem;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">' + _ico('dollarSign', 14, 'var(--text3)') + ' RATE CONTEXT — Did Pricing Drive Occupancy?</div>';
+
+      // Count by classification
+      var underpriced = rateContextProps.filter(function(r) { return r.period === 'underpriced_high_occ'; });
+      var possiblyUnder = rateContextProps.filter(function(r) { return r.period === 'possibly_underpriced'; });
+      var wellPriced = rateContextProps.filter(function(r) { return r.period === 'well_priced'; });
+      var overpriced = rateContextProps.filter(function(r) { return r.period === 'overpriced_low_occ'; });
+
+      h += '<div class="market-grid">';
+      if (underpriced.length > 0) h += '<div class="market-stat"><div class="val" style="color:var(--danger);">' + underpriced.length + '</div><div class="lbl">Underpriced + High Occ</div></div>';
+      if (possiblyUnder.length > 0) h += '<div class="market-stat"><div class="val" style="color:#f59e0b;">' + possiblyUnder.length + '</div><div class="lbl">Possibly Underpriced</div></div>';
+      if (wellPriced.length > 0) h += '<div class="market-stat"><div class="val" style="color:var(--accent);">' + wellPriced.length + '</div><div class="lbl">Well Priced</div></div>';
+      if (overpriced.length > 0) h += '<div class="market-stat"><div class="val" style="color:var(--purple);">' + overpriced.length + '</div><div class="lbl">Overpriced + Low Occ</div></div>';
+      h += '</div>';
+
+      // Show underpriced property details
+      var underpricedAll = underpriced.concat(possiblyUnder);
+      if (underpricedAll.length > 0) {
+        h += '<div style="margin-top:8px;">';
+        h += '<div style="font-size:0.68rem;font-weight:600;color:var(--danger);margin-bottom:4px;">' + _ico('alertTriangle', 12, 'var(--danger)') + ' Properties where high occupancy was driven by below-market pricing:</div>';
+        underpricedAll.sort(function(a, b) { return a.metric_value - b.metric_value; }).forEach(function(p) {
+          var pid = parseInt(p.metric_key.replace('rate_context_prop_', ''));
+          var gap = Math.round(p.metric_value);
+          var color = gap < -15 ? 'var(--danger)' : '#f59e0b';
+          var propLabel = '';
+          // Find property label from RevPAN data or properties
+          if (propRevpan.length > 0) {
+            var match = propRevpan.find(function(pr) { return pr.property_id === pid; });
+            if (match) propLabel = match.label;
+          }
+          if (!propLabel) propLabel = 'Property #' + pid;
+          h += '<div style="display:flex;align-items:center;gap:8px;padding:4px 8px;background:var(--surface2);border-radius:4px;margin-bottom:3px;font-size:0.75rem;cursor:pointer;" onclick="switchView(\'properties\');setTimeout(function(){openPropertyDetail(' + pid + ')},200)">';
+          h += '<span style="color:var(--text2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(propLabel) + '</span>';
+          h += '<span style="font-family:DM Mono,monospace;font-weight:700;color:' + color + ';">' + gap + '% vs set rate</span>';
+          h += '<span style="font-size:0.62rem;color:var(--text3);">(' + p.sample_size + 'mo avg)</span>';
+          h += '</div>';
+        });
+        h += '</div>';
+      }
+
+      h += '<div style="font-size:0.72rem;color:var(--text3);margin-top:6px;">Compares actual ADR (what guests paid) vs the base rate set in PriceLabs. High occupancy at low rates may indicate pricing too aggressively — bookings come in fast but at a revenue loss. Consider raising min prices or reducing PriceLabs last-minute discounts for flagged properties.</div>';
+      h += '</div>';
+    }
+
+    // ── Cancellation Patterns ──
+    var cancelMetrics = metrics.filter(function(r) { return r.metric_key.indexOf('cancel_rate_') === 0; }).sort(function(a, b) { return b.metric_value - a.metric_value; });
+    if (cancelMetrics.length > 0) {
+      h += '<div style="margin-bottom:18px;">';
+      h += '<div style="font-size:0.72rem;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">' + _ico('x', 14, 'var(--text3)') + ' CANCELLATION PATTERNS BY CHANNEL</div>';
+      h += '<div class="market-grid">';
+      cancelMetrics.forEach(function(cm) {
+        var ch = cm.metric_key.replace('cancel_rate_', '').replace(/_/g, ' ');
+        var rate = Math.round(cm.metric_value);
+        var color = rate > 15 ? 'var(--danger)' : rate > 8 ? '#f59e0b' : 'var(--accent)';
+        h += '<div class="market-stat"><div class="val" style="color:' + color + ';">' + rate + '%</div><div class="lbl">' + esc(ch) + ' (' + cm.sample_size + ' cancels)</div></div>';
+      });
+      h += '</div></div>';
+    }
+
+    if (!h) h = '<div style="padding:16px;text-align:center;color:var(--text3);">No advanced intel data found. Run a full intelligence rebuild.</div>';
+    el.innerHTML = h;
+  } catch (err) {
+    el.innerHTML = '<p style="color:var(--danger);">Error: ' + esc(err.message) + '</p>';
+  }
 }
 
 // ── 10-finances.js ──
@@ -14093,7 +14774,7 @@ function fmtNum(n) {
 
 function renderFinanceByCity(cities) {
   if (!cities || cities.length === 0) { document.getElementById('finByCity').innerHTML = '<p style="color:var(--text3);font-size:0.85rem;">No data yet.</p>'; return; }
-  var h = '<table class="comp-table"><thead><tr><th>Market</th><th>Properties</th><th>Value</th><th>Revenue/mo</th><th>Cost/mo</th><th>Net/mo</th></tr></thead><tbody>';
+  var h = '<table class="comp-table"><thead><tr><th>Market</th><th>Properties</th><th>Value</th><th>Est. Rev/mo</th><th>Cost/mo</th><th>Est. Net/mo</th></tr></thead><tbody>';
   cities.forEach(function(c) {
     var net = (c.revenue || 0) - (c.cost || 0);
     var netColor = net >= 0 ? 'var(--accent)' : 'var(--danger)';
@@ -14116,7 +14797,7 @@ function renderFinancePropertyTable(props) {
   var inactiveProps = props.filter(function(p) { return p.is_inactive; });
 
   function buildTable(list, showTotals) {
-    var h = '<table class="comp-table"><thead><tr><th>Property</th><th>Type</th><th>Rev/mo</th><th>Cost/mo</th><th>Services</th><th>Net/mo</th><th>Annual Net</th></tr></thead><tbody>';
+    var h = '<table class="comp-table"><thead><tr><th>Property</th><th>Type</th><th>Est. Rev/mo</th><th>Cost/mo</th><th>Services</th><th>Est. Net/mo</th><th>Est. Annual</th></tr></thead><tbody>';
     var totalRev = 0, totalCost = 0, totalSvc = 0;
     list.forEach(function(p) {
       var netColor = (p.monthly_net || 0) >= 0 ? 'var(--accent)' : 'var(--danger)';
@@ -15017,7 +15698,22 @@ async function loadPlatformList() {
       var link = p.listing_url ? '<a href="' + esc(p.listing_url) + '" target="_blank" style="color:var(--text2);font-size:0.78rem;">' + esc(urlShort) + '</a>' : '<span style="color:var(--text3);font-size:0.78rem;">No URL</span>';
       h += '<tr><td style="color:' + color + ';font-weight:600;white-space:nowrap;">' + icon + ' ' + esc(name) + '</td>';
       h += '<td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;">' + link + '</td>';
-      h += '<td style="font-family:DM Mono,monospace;font-weight:600;">' + (p.nightly_rate ? '$' + Math.round(p.nightly_rate) : '<span style="color:var(--text3);">—</span>') + '</td>';
+      var rateLabel = '';
+      var rateVal = p.nightly_rate ? Math.round(p.nightly_rate) : 0;
+      if (p.rate_source === 'manual' && rateVal > 0) {
+        // Manual override — trusted, show with edit pencil
+        rateLabel = '<span onclick="inlineEditRate(' + p.id + ', this)" style="cursor:pointer;" title="Click to edit (manual override)">$' + rateVal + ' <span style="font-size:0.6rem;color:var(--text2);">✎</span></span>';
+      } else if (p.rate_source === 'live' && rateVal > 0) {
+        // Live API rate — trusted
+        rateLabel = '$' + rateVal + ' <span style="font-size:0.6rem;color:var(--accent);" title="Live rate from platform API">✓</span>';
+      } else if (p.rate_source === 'estimate' && rateVal > 0) {
+        // Google estimate — unreliable, show dimmed with warning
+        rateLabel = '<span style="opacity:0.4;" title="Estimated from Google — click to enter actual rate">~$' + rateVal + '</span> <span onclick="inlineEditRate(' + p.id + ', this)" style="cursor:pointer;font-size:0.6rem;color:var(--warn);" title="Click to enter actual rate">✎ set</span>';
+      } else {
+        // No rate — show edit prompt
+        rateLabel = '<span onclick="inlineEditRate(' + p.id + ', this)" style="cursor:pointer;color:var(--text3);" title="Click to enter nightly rate">— ✎</span>';
+      }
+      h += '<td style="font-family:DM Mono,monospace;font-weight:600;" data-plat-id="' + p.id + '">' + rateLabel + '</td>';
       h += '<td style="font-family:DM Mono,monospace;">' + (p.cleaning_fee > 0 ? '$' + Math.round(p.cleaning_fee) : '—') + '</td>';
       h += '<td>' + (p.rating ? Number(p.rating).toFixed(1) + '★' : '—') + '</td>';
       h += '<td style="font-size:0.78rem;">' + (p.review_count > 0 ? p.review_count : '—') + '</td>';
@@ -15105,6 +15801,35 @@ async function deletePlatform(id) {
     await api('/api/properties/' + pricingPropertyId + '/platforms/' + id, 'DELETE');
     toast('Platform removed');
     loadPlatformList();
+  } catch (err) { toast(err.message, 'error'); }
+}
+
+function inlineEditRate(platId, el) {
+  var td = el.closest('td');
+  var current = td.textContent.replace(/[^0-9]/g, '') || '';
+  td.innerHTML = '<input type="number" value="' + current + '" min="0" max="9999" style="width:80px;padding:3px 6px;font-size:0.82rem;font-family:DM Mono,monospace;background:var(--bg);border:1px solid var(--accent);border-radius:4px;color:var(--text);" onblur="saveInlineRate(' + platId + ', this, false)" onkeydown="if(event.key===\'Enter\')this.blur()" autofocus placeholder="$/nt">';
+  td.querySelector('input').focus();
+}
+
+function inlineEditPropRate(platId, el) {
+  var td = el.closest('td');
+  var current = td.textContent.replace(/[^0-9]/g, '') || '';
+  td.innerHTML = '<input type="number" value="' + current + '" min="0" max="9999" style="width:80px;padding:3px 6px;font-size:0.82rem;font-family:DM Mono,monospace;background:var(--bg);border:1px solid var(--accent);border-radius:4px;color:var(--text);" onblur="saveInlineRate(' + platId + ', this, true)" onkeydown="if(event.key===\'Enter\')this.blur()" autofocus placeholder="$/nt">';
+  td.querySelector('input').focus();
+}
+
+async function saveInlineRate(platId, input, isPropDetail) {
+  var val = parseInt(input.value) || 0;
+  var propId = isPropDetail ? (document.getElementById('f_editId') || {}).value : pricingPropertyId;
+  if (!propId) return;
+  try {
+    await api('/api/properties/' + propId + '/platforms/' + platId, 'PUT', {
+      nightly_rate: val > 0 ? val : null,
+      rate_source: val > 0 ? 'manual' : null,
+    });
+    toast(val > 0 ? 'Rate set to $' + val + '/nt' : 'Rate cleared');
+    if (isPropDetail) loadPropertyPlatforms(propId);
+    else loadPlatformList();
   } catch (err) { toast(err.message, 'error'); }
 }
 
@@ -15351,7 +16076,18 @@ async function loadPropertyPlatforms(propId) {
         var urlLink = p.listing_url ? '<a href="' + esc(p.listing_url) + '" target="_blank" style="color:var(--text2);font-size:0.78rem;">' + esc(urlShort) + '</a>' : '<span style="color:var(--text3);">—</span>';
         h += '<tr><td style="color:' + color + ';font-weight:600;white-space:nowrap;">' + icon + ' ' + esc(name) + '</td>';
         h += '<td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;">' + urlLink + '</td>';
-        h += '<td style="font-family:DM Mono,monospace;">' + (p.nightly_rate ? '$' + p.nightly_rate : '—') + '</td>';
+        var prv = p.nightly_rate ? Math.round(p.nightly_rate) : 0;
+        var propRateLabel = '';
+        if (p.rate_source === 'manual' && prv > 0) {
+          propRateLabel = '<span onclick="inlineEditPropRate(' + p.id + ', this)" style="cursor:pointer;" title="Manual override — click to edit">$' + prv + ' <span style="font-size:0.6rem;color:var(--text2);">✎</span></span>';
+        } else if (p.rate_source === 'live' && prv > 0) {
+          propRateLabel = '$' + prv + ' <span style="font-size:0.6rem;color:var(--accent);">✓</span>';
+        } else if (p.rate_source === 'estimate' && prv > 0) {
+          propRateLabel = '<span style="opacity:0.4;">~$' + prv + '</span> <span onclick="inlineEditPropRate(' + p.id + ', this)" style="cursor:pointer;font-size:0.6rem;color:var(--warn);">✎ set</span>';
+        } else {
+          propRateLabel = '<span onclick="inlineEditPropRate(' + p.id + ', this)" style="cursor:pointer;color:var(--text3);">— ✎</span>';
+        }
+        h += '<td style="font-family:DM Mono,monospace;">' + propRateLabel + '</td>';
         h += '<td style="font-family:DM Mono,monospace;">' + (p.cleaning_fee > 0 ? '$' + p.cleaning_fee : '—') + '</td>';
         h += '<td>' + (p.rating ? p.rating.toFixed(1) + '★' : '—') + '</td>';
         h += '<td><button class="btn btn-xs" style="color:var(--danger);border-color:var(--danger);padding:2px 6px;" onclick="deletePropPlatform(' + p.id + ')" title="Remove">✗</button></td></tr>';
@@ -15395,6 +16131,24 @@ function togglePropPlatformAdd() {
   var form = document.getElementById('propPlatformAdd');
   form.style.display = form.style.display === 'none' ? '' : 'none';
   propPlatEditId = null;
+}
+
+async function scrapePropPlatforms() {
+  var propId = (document.getElementById('f_editId') || {}).value;
+  if (!propId) { toast('Save the property first', 'error'); return; }
+  var statusEl = document.getElementById('platformSearchStatus');
+  if (statusEl) statusEl.textContent = 'Scraping all platforms...';
+  showLoading('Scraping platform pricing...');
+  try {
+    var d = await api('/api/properties/' + propId + '/platforms/scrape', 'POST');
+    toast(d.message || 'Done');
+    if (statusEl) statusEl.innerHTML = '<span style="color:var(--accent);">' + esc(d.message || 'Scraped') + '</span>';
+    loadPropertyPlatforms(propId);
+  } catch (err) {
+    toast(err.message, 'error');
+    if (statusEl) statusEl.innerHTML = '<span style="color:var(--danger);">' + esc(err.message) + '</span>';
+  }
+  hideLoading();
 }
 
 async function savePropPlatform() {
@@ -16640,7 +17394,7 @@ function renderPLNotLinked(propId) {
 
 function renderPLComparePanel(pl, bestStrat, prop, allStrats) {
   var now = new Date();
-  var syncAge = pl.last_synced ? Math.round((now - new Date(pl.last_synced)) / 3600000) : null;
+  var syncAge = pl.last_synced ? Math.round((now - new Date(pl.last_synced + (pl.last_synced.includes('Z') ? '' : 'Z'))) / 3600000) : null;
   var syncLabel = syncAge === null ? 'never synced' : syncAge < 1 ? 'synced just now' : syncAge < 24 ? 'synced ' + syncAge + 'h ago' : 'synced ' + Math.round(syncAge / 24) + 'd ago';
   var syncStale = syncAge !== null && syncAge > 48;
 
@@ -17646,7 +18400,7 @@ function renderGuestyConnectionPanel() {
 
   if (d.configured && d.connected_at) {
     // Connected state
-    var syncAge = d.last_sync ? timeSince(new Date(d.last_sync)) : 'never';
+    var syncAge = d.last_sync ? timeSince(new Date(d.last_sync + (d.last_sync.includes('Z') ? '' : 'Z'))) : 'never';
     var tokenColor = d.token_valid ? 'var(--accent)' : '#f59e0b';
     var tokenLabel = d.token_valid ? '✓ Valid' :'' + _ico('alertTriangle', 13, '#f59e0b') + ' Expired (will auto-refresh)';
 

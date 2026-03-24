@@ -541,7 +541,7 @@ function renderPLNotLinked(propId) {
 
 function renderPLComparePanel(pl, bestStrat, prop, allStrats) {
   var now = new Date();
-  var syncAge = pl.last_synced ? Math.round((now - new Date(pl.last_synced)) / 3600000) : null;
+  var syncAge = pl.last_synced ? Math.round((now - new Date(pl.last_synced + (pl.last_synced.includes('Z') ? '' : 'Z'))) / 3600000) : null;
   var syncLabel = syncAge === null ? 'never synced' : syncAge < 1 ? 'synced just now' : syncAge < 24 ? 'synced ' + syncAge + 'h ago' : 'synced ' + Math.round(syncAge / 24) + 'd ago';
   var syncStale = syncAge !== null && syncAge > 48;
 

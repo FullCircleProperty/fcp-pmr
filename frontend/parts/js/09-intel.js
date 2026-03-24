@@ -232,7 +232,7 @@ var _currentIntelTab = 'data';
 
 function switchIntelTab(tab) {
   _currentIntelTab = tab;
-  ['data','guests','markets','channels','monitoring','algo'].forEach(function(t) {
+  ['data','guests','markets','channels','monitoring','algo','insights'].forEach(function(t) {
     var el = document.getElementById('intelTab-' + t);
     if (el) el.style.display = t === tab ? '' : 'none';
   });
@@ -252,6 +252,7 @@ function loadIntelSubTabContent(tab) {
   if (tab === 'channels') loadChannelIntelligencePanel();
   if (tab === 'monitoring') loadMarketWatchlist();
   if (tab === 'algo') { loadAlgoHealth(); loadAlgoTemplates(); }
+  if (tab === 'insights') loadPortfolioInsights();
 }
 
 // ── Market Watchlist ──────────────────────────────────────────────────────────
@@ -574,4 +575,293 @@ function renderCalendarSummary(d) {
   }
   h += '</div>';
   el.innerHTML = h;
+}
+
+// ── Portfolio Insights Tab ────────────────────────────────────────────────
+
+async function loadPortfolioInsights() {
+  var el = document.getElementById('insightsContent');
+  if (!el) return;
+  el.innerHTML = '<div style="color:var(--text3);font-size:0.82rem;">Loading insights...</div>';
+
+  try {
+    var d = await api('/api/intelligence/insights');
+    var metrics = d.metrics || [];
+    var propRevpan = d.property_revpan || [];
+
+    if (metrics.length === 0) {
+      el.innerHTML = '<div style="padding:16px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;text-align:center;">' +
+        '<div style="font-size:0.88rem;color:var(--text2);margin-bottom:6px;">No insights data yet</div>' +
+        '<div style="font-size:0.78rem;color:var(--text3);margin-bottom:10px;">Run an intelligence rebuild to generate advanced analytics from your Guesty + PriceLabs data.</div>' +
+        '<button class="btn btn-primary btn-sm" onclick="btnGuard(this);api(\'/api/intelligence/rebuild\',\'POST\',{sections:[\'guests\',\'channels\',\'advanced\']}).then(function(){toast(\'Rebuild complete\');loadPortfolioInsights()}).catch(function(e){toast(e.message,\'error\')})">Rebuild Intelligence</button></div>';
+      return;
+    }
+
+    // Parse metrics into a lookup
+    var m = {};
+    metrics.forEach(function(r) {
+      var key = r.metric_key + (r.period !== 'all_time' ? '_' + r.period : '');
+      m[key] = { v: r.metric_value, n: r.sample_size };
+    });
+
+    var h = '';
+
+    // ── RevPAN Section ──
+    if (m.revpan) {
+      h += '<div style="margin-bottom:18px;">';
+      h += '<div style="font-size:0.72rem;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">' + _ico('target', 14, 'var(--text3)') + ' REVENUE EFFICIENCY — RevPAN</div>';
+      h += '<div class="market-grid">';
+      h += '<div class="market-stat"><div class="val" style="color:var(--accent);">$' + m.revpan.v.toFixed(2) + '</div><div class="lbl">Portfolio RevPAN</div></div>';
+      if (m.portfolio_adr) h += '<div class="market-stat"><div class="val">$' + Math.round(m.portfolio_adr.v) + '</div><div class="lbl">Portfolio ADR</div></div>';
+      if (m.portfolio_occ) h += '<div class="market-stat"><div class="val">' + m.portfolio_occ.v + '%</div><div class="lbl">Portfolio Occupancy</div></div>';
+      h += '</div>';
+      h += '<div style="font-size:0.72rem;color:var(--text3);margin-top:4px;">RevPAN = Revenue ÷ Available Nights. Combines ADR × occupancy into one number. Higher is better. Hotel industry gold standard.</div>';
+
+      // Per-property RevPAN ranking
+      if (propRevpan.length > 0) {
+        h += '<div style="margin-top:10px;">';
+        h += '<div style="font-size:0.68rem;font-weight:600;color:var(--text2);margin-bottom:4px;">Property RevPAN Ranking</div>';
+        var maxRevpan = propRevpan[0].revpan || 1;
+        propRevpan.forEach(function(p) {
+          var pct = Math.round(p.revpan / maxRevpan * 100);
+          var color = pct >= 75 ? 'var(--accent)' : pct >= 50 ? '#f59e0b' : 'var(--danger)';
+          h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;font-size:0.75rem;">';
+          h += '<span style="min-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text2);" title="' + esc(p.label) + '">' + esc(p.label) + '</span>';
+          h += '<div style="flex:1;height:14px;background:var(--surface2);border-radius:3px;overflow:hidden;"><div style="height:100%;width:' + pct + '%;background:' + color + ';border-radius:3px;transition:width 0.3s;"></div></div>';
+          h += '<span style="font-family:DM Mono,monospace;font-weight:600;color:' + color + ';min-width:55px;text-align:right;">$' + p.revpan.toFixed(2) + '</span>';
+          h += '<span style="font-size:0.62rem;color:var(--text3);min-width:35px;">' + p.months + 'mo</span>';
+          h += '</div>';
+        });
+        h += '</div>';
+      }
+      h += '</div>';
+    }
+
+    // ── Booking Pace Section ──
+    var paceTY = m.pace_bookings_ty_ytd;
+    var paceLY = m.pace_bookings_ly_ytd;
+    if (paceTY || paceLY) {
+      h += '<div style="margin-bottom:18px;">';
+      // Check if we have booking_date data or need to fall back to completed stays
+      var hasBookingDates = m.pace_has_booking_dates_ytd && m.pace_has_booking_dates_ytd.v > 0;
+      var compTY = m.completed_bookings_ty_ytd;
+      var compLY = m.completed_bookings_ly_ytd;
+      var compRevTY = m.completed_revenue_ty_ytd;
+      var compRevLY = m.completed_revenue_ly_ytd;
+
+      // Decide which dataset to show: forward pace (needs booking_date) or completed stays
+      var showForwardPace = hasBookingDates && paceTY && paceLY && (paceTY.v > 0 || paceLY.v > 0);
+      var showCompleted = compTY || compLY;
+
+      if (showForwardPace) {
+        h += '<div style="font-size:0.72rem;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">' + _ico('trendUp', 14, 'var(--text3)') + ' FORWARD BOOKING PACE — Year over Year</div>';
+        h += '<div class="market-grid">';
+        if (paceTY) h += '<div class="market-stat"><div class="val" style="color:var(--accent);">' + paceTY.v + '</div><div class="lbl">Forward Bookings TY</div></div>';
+        if (paceLY) h += '<div class="market-stat"><div class="val">' + paceLY.v + '</div><div class="lbl">Same Date Last Year</div></div>';
+        var revTY = m.pace_revenue_ty_ytd;
+        var revLY = m.pace_revenue_ly_ytd;
+        if (revTY) h += '<div class="market-stat"><div class="val" style="color:var(--accent);">$' + Math.round(revTY.v).toLocaleString() + '</div><div class="lbl">Revenue Booked TY</div></div>';
+        if (revLY) h += '<div class="market-stat"><div class="val">$' + Math.round(revLY.v).toLocaleString() + '</div><div class="lbl">Revenue Booked LY</div></div>';
+        var paceChg = m.pace_change_pct_ytd;
+        if (paceChg) {
+          var pColor = paceChg.v >= 0 ? 'var(--accent)' : 'var(--danger)';
+          h += '<div class="market-stat"><div class="val" style="color:' + pColor + ';">' + (paceChg.v >= 0 ? '+' : '') + paceChg.v + '%</div><div class="lbl">Pace Change</div></div>';
+        }
+        h += '</div>';
+        if (paceLY && paceLY.v === 0 && paceTY && paceTY.v > 0) {
+          h += '<div style="padding:6px 10px;background:var(--surface2);border-radius:6px;font-size:0.72rem;color:var(--text3);margin-top:4px;">' + _ico('info', 11, 'var(--text3)') + ' Last year shows 0 — booking_date data may be missing for older reservations (CSV imports). See completed stays below for a fuller comparison.</div>';
+        } else {
+          h += '<div style="font-size:0.72rem;color:var(--text3);margin-top:4px;">Forward bookings as of today vs same calendar date last year. Requires booking_date field.</div>';
+        }
+      } else {
+        h += '<div style="font-size:0.72rem;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">' + _ico('trendUp', 14, 'var(--text3)') + ' BOOKING PACE — Year over Year</div>';
+      }
+
+      // Always show completed stays comparison (doesn't need booking_date)
+      if (showCompleted) {
+        if (showForwardPace) h += '<div style="margin-top:12px;">';
+        h += '<div style="font-size:0.68rem;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">' + _ico('calendar', 12, 'var(--text3)') + ' COMPLETED STAYS — YTD vs Same Period Last Year</div>';
+        h += '<div class="market-grid">';
+        if (compTY) h += '<div class="market-stat"><div class="val" style="color:var(--accent);">' + compTY.v + '</div><div class="lbl">Stays YTD ' + new Date().getFullYear() + '</div></div>';
+        if (compLY) h += '<div class="market-stat"><div class="val">' + compLY.v + '</div><div class="lbl">Same Period ' + (new Date().getFullYear() - 1) + '</div></div>';
+        if (compRevTY) h += '<div class="market-stat"><div class="val" style="color:var(--accent);">$' + Math.round(compRevTY.v).toLocaleString() + '</div><div class="lbl">Revenue YTD ' + new Date().getFullYear() + '</div></div>';
+        if (compRevLY) h += '<div class="market-stat"><div class="val">$' + Math.round(compRevLY.v).toLocaleString() + '</div><div class="lbl">Revenue Same Period LY</div></div>';
+        if (compTY && compLY && compLY.v > 0) {
+          var compChg = Math.round((compTY.v - compLY.v) / compLY.v * 100);
+          var compColor = compChg >= 0 ? 'var(--accent)' : 'var(--danger)';
+          h += '<div class="market-stat"><div class="val" style="color:' + compColor + ';">' + (compChg >= 0 ? '+' : '') + compChg + '%</div><div class="lbl">YoY Change</div></div>';
+        }
+        h += '</div>';
+        h += '<div style="font-size:0.72rem;color:var(--text3);margin-top:4px;">Actual check-ins Jan 1 through today, compared to same window last year. Does not require booking_date.</div>';
+        if (showForwardPace) h += '</div>';
+      }
+      h += '</div>';
+    }
+
+    // ── Day-of-Week Patterns ──
+    var dowDays = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    var hasDow = dowDays.some(function(d) { return m['dow_revenue_' + d]; });
+    if (hasDow) {
+      h += '<div style="margin-bottom:18px;">';
+      h += '<div style="font-size:0.72rem;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">' + _ico('calendar', 14, 'var(--text3)') + ' CHECK-IN DAY PATTERNS</div>';
+      var maxDowRev = 0;
+      dowDays.forEach(function(d) { var v = m['dow_revenue_' + d]; if (v && v.v > maxDowRev) maxDowRev = v.v; });
+      h += '<div style="display:flex;gap:6px;align-items:flex-end;height:120px;">';
+      dowDays.forEach(function(d) {
+        var v = m['dow_revenue_' + d];
+        if (!v) return;
+        var pct = maxDowRev > 0 ? Math.round(v.v / maxDowRev * 100) : 0;
+        var isWeekend = d === 'Fri' || d === 'Sat';
+        var barColor = isWeekend ? 'var(--accent)' : 'var(--purple)';
+        h += '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;">';
+        h += '<span style="font-size:0.58rem;font-family:DM Mono,monospace;color:var(--text2);">$' + Math.round(v.v) + '</span>';
+        h += '<div style="width:100%;height:' + Math.max(pct, 5) + '%;background:' + barColor + ';border-radius:3px 3px 0 0;min-height:4px;opacity:0.8;"></div>';
+        h += '<span style="font-size:0.62rem;color:var(--text3);font-weight:600;">' + d + '</span>';
+        h += '<span style="font-size:0.55rem;color:var(--text3);">' + v.n + '</span>';
+        h += '</div>';
+      });
+      h += '</div>';
+      h += '<div style="font-size:0.72rem;color:var(--text3);margin-top:6px;">Average revenue per booking by check-in day. Weekend check-ins often show lower avg revenue because stays are shorter (1-2 nights). Weekday check-ins average higher because they include longer corporate/mid-term stays.</div>';
+      h += '</div>';
+    }
+
+    // ── Lead Time Trends ──
+    var ltCurr = m.lead_time_avg_current_q;
+    var ltPrev = m.lead_time_avg_prev_q;
+    if (ltCurr || ltPrev) {
+      h += '<div style="margin-bottom:18px;">';
+      h += '<div style="font-size:0.72rem;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">' + _ico('clock', 14, 'var(--text3)') + ' BOOKING LEAD TIME</div>';
+      h += '<div class="market-grid">';
+      if (ltCurr) {
+        h += '<div class="market-stat"><div class="val">' + Math.round(ltCurr.v) + ' days</div><div class="lbl">Current Quarter Avg' + (ltCurr.n ? ' (' + ltCurr.n + ' bookings)' : '') + '</div></div>';
+        var lmPct = m.lead_time_pct_last_minute_current_q;
+        if (lmPct) h += '<div class="market-stat"><div class="val" style="color:' + (lmPct.v > 30 ? 'var(--danger)' : 'var(--text)') + ';">' + Math.round(lmPct.v) + '%</div><div class="lbl">Last-Minute (&lt;7d)</div></div>';
+        var advPct = m.lead_time_pct_advance_current_q;
+        if (advPct) h += '<div class="market-stat"><div class="val">' + Math.round(advPct.v) + '%</div><div class="lbl">Advance (30d+)</div></div>';
+      }
+      if (ltPrev) h += '<div class="market-stat"><div class="val">' + Math.round(ltPrev.v) + ' days</div><div class="lbl">Previous Quarter Avg' + (ltPrev.n ? ' (' + ltPrev.n + ' bookings)' : '') + '</div></div>';
+      h += '</div>';
+      if (ltCurr && ltPrev && ltCurr.v < ltPrev.v - 3) {
+        h += '<div style="padding:8px 12px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:6px;font-size:0.78rem;color:var(--danger);margin-top:6px;">' + _ico('alertTriangle', 13, 'var(--danger)') + ' Lead time shrinking by ' + Math.round(ltPrev.v - ltCurr.v) + ' days — guests booking closer to check-in. Consider reducing far-out discounts.</div>';
+      }
+      h += '</div>';
+    }
+
+    // ── Price Elasticity ──
+    var elastUp = m.elasticity_price_up_occ_delta;
+    var elastDown = m.elasticity_price_down_occ_delta;
+    if (elastUp || elastDown) {
+      h += '<div style="margin-bottom:18px;">';
+      h += '<div style="font-size:0.72rem;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">' + _ico('dollarSign', 14, 'var(--text3)') + ' PRICE ELASTICITY SIGNALS</div>';
+      h += '<div class="market-grid">';
+      if (elastUp) {
+        var upColor = elastUp.v >= -5 ? 'var(--accent)' : 'var(--danger)';
+        h += '<div class="market-stat"><div class="val" style="color:' + upColor + ';">' + (elastUp.v >= 0 ? '+' : '') + elastUp.v + '%</div><div class="lbl">Occ After Price ↑ (' + elastUp.n + ')</div></div>';
+      }
+      if (elastDown) {
+        h += '<div class="market-stat"><div class="val" style="color:var(--accent);">' + (elastDown.v >= 0 ? '+' : '') + elastDown.v + '%</div><div class="lbl">Occ After Price ↓ (' + elastDown.n + ')</div></div>';
+      }
+      h += '</div>';
+      var interpretation = '';
+      if (elastUp && elastUp.v >= -5) interpretation = 'Your market is price-insensitive — raising rates doesn\'t significantly hurt occupancy. Room to push pricing.';
+      else if (elastUp && elastUp.v < -10) interpretation = 'Price-sensitive market — rate increases led to noticeable occupancy drops. Be surgical with increases.';
+      if (interpretation) h += '<div style="font-size:0.72rem;color:var(--text2);margin-top:4px;">' + _ico('lightbulb', 12, '#f59e0b') + ' ' + interpretation + '</div>';
+      h += '</div>';
+    }
+
+    // ── Guest Origins ──
+    var originStates = metrics.filter(function(r) { return r.metric_key.indexOf('guest_origin_state_') === 0; }).sort(function(a, b) { return b.sample_size - a.sample_size; }).slice(0, 8);
+    var originCountries = metrics.filter(function(r) { return r.metric_key.indexOf('guest_origin_country_') === 0; }).sort(function(a, b) { return b.sample_size - a.sample_size; }).slice(0, 5);
+    if (originStates.length > 0) {
+      h += '<div style="margin-bottom:18px;">';
+      h += '<div style="font-size:0.72rem;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">' + _ico('mapPin', 14, 'var(--text3)') + ' GUEST ORIGINS — Top Feeder Markets</div>';
+      var maxGuests = originStates[0].sample_size || 1;
+      h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;">';
+      originStates.forEach(function(o) {
+        var st = o.metric_key.replace('guest_origin_state_', '');
+        var pct = Math.round(o.sample_size / maxGuests * 100);
+        h += '<div style="display:flex;align-items:center;gap:6px;padding:4px 8px;background:var(--surface2);border-radius:4px;">';
+        h += '<span style="font-weight:700;font-size:0.78rem;color:var(--text);min-width:24px;">' + st + '</span>';
+        h += '<div style="flex:1;height:10px;background:var(--bg);border-radius:2px;overflow:hidden;"><div style="height:100%;width:' + pct + '%;background:var(--purple);border-radius:2px;"></div></div>';
+        h += '<span style="font-size:0.68rem;color:var(--text2);min-width:55px;text-align:right;">' + o.sample_size + ' guests</span>';
+        h += '</div>';
+      });
+      h += '</div>';
+      if (originCountries.length > 1) {
+        h += '<div style="font-size:0.72rem;color:var(--text3);margin-top:6px;">Countries: ' + originCountries.map(function(c) { return c.metric_key.replace('guest_origin_country_', '') + ' (' + c.sample_size + ')'; }).join(' · ') + '</div>';
+      }
+      h += '<div style="font-size:0.72rem;color:var(--text3);margin-top:4px;">Target listing descriptions and marketing toward these origin markets.</div>';
+      h += '</div>';
+    }
+
+    // ── Rate Context — Pricing vs Occupancy ──
+    var underpricedCount = m.underpriced_high_occ_count;
+    var rateContextProps = metrics.filter(function(r) { return r.metric_key.indexOf('rate_context_prop_') === 0; });
+    var underpricedEntries = metrics.filter(function(r) { return r.metric_key.indexOf('underpriced_') === 0 && r.metric_key.indexOf('_pid') > 0; });
+    if (rateContextProps.length > 0 || underpricedCount) {
+      h += '<div style="margin-bottom:18px;">';
+      h += '<div style="font-size:0.72rem;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">' + _ico('dollarSign', 14, 'var(--text3)') + ' RATE CONTEXT — Did Pricing Drive Occupancy?</div>';
+
+      // Count by classification
+      var underpriced = rateContextProps.filter(function(r) { return r.period === 'underpriced_high_occ'; });
+      var possiblyUnder = rateContextProps.filter(function(r) { return r.period === 'possibly_underpriced'; });
+      var wellPriced = rateContextProps.filter(function(r) { return r.period === 'well_priced'; });
+      var overpriced = rateContextProps.filter(function(r) { return r.period === 'overpriced_low_occ'; });
+
+      h += '<div class="market-grid">';
+      if (underpriced.length > 0) h += '<div class="market-stat"><div class="val" style="color:var(--danger);">' + underpriced.length + '</div><div class="lbl">Underpriced + High Occ</div></div>';
+      if (possiblyUnder.length > 0) h += '<div class="market-stat"><div class="val" style="color:#f59e0b;">' + possiblyUnder.length + '</div><div class="lbl">Possibly Underpriced</div></div>';
+      if (wellPriced.length > 0) h += '<div class="market-stat"><div class="val" style="color:var(--accent);">' + wellPriced.length + '</div><div class="lbl">Well Priced</div></div>';
+      if (overpriced.length > 0) h += '<div class="market-stat"><div class="val" style="color:var(--purple);">' + overpriced.length + '</div><div class="lbl">Overpriced + Low Occ</div></div>';
+      h += '</div>';
+
+      // Show underpriced property details
+      var underpricedAll = underpriced.concat(possiblyUnder);
+      if (underpricedAll.length > 0) {
+        h += '<div style="margin-top:8px;">';
+        h += '<div style="font-size:0.68rem;font-weight:600;color:var(--danger);margin-bottom:4px;">' + _ico('alertTriangle', 12, 'var(--danger)') + ' Properties where high occupancy was driven by below-market pricing:</div>';
+        underpricedAll.sort(function(a, b) { return a.metric_value - b.metric_value; }).forEach(function(p) {
+          var pid = parseInt(p.metric_key.replace('rate_context_prop_', ''));
+          var gap = Math.round(p.metric_value);
+          var color = gap < -15 ? 'var(--danger)' : '#f59e0b';
+          var propLabel = '';
+          // Find property label from RevPAN data or properties
+          if (propRevpan.length > 0) {
+            var match = propRevpan.find(function(pr) { return pr.property_id === pid; });
+            if (match) propLabel = match.label;
+          }
+          if (!propLabel) propLabel = 'Property #' + pid;
+          h += '<div style="display:flex;align-items:center;gap:8px;padding:4px 8px;background:var(--surface2);border-radius:4px;margin-bottom:3px;font-size:0.75rem;cursor:pointer;" onclick="switchView(\'properties\');setTimeout(function(){openPropertyDetail(' + pid + ')},200)">';
+          h += '<span style="color:var(--text2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(propLabel) + '</span>';
+          h += '<span style="font-family:DM Mono,monospace;font-weight:700;color:' + color + ';">' + gap + '% vs set rate</span>';
+          h += '<span style="font-size:0.62rem;color:var(--text3);">(' + p.sample_size + 'mo avg)</span>';
+          h += '</div>';
+        });
+        h += '</div>';
+      }
+
+      h += '<div style="font-size:0.72rem;color:var(--text3);margin-top:6px;">Compares actual ADR (what guests paid) vs the base rate set in PriceLabs. High occupancy at low rates may indicate pricing too aggressively — bookings come in fast but at a revenue loss. Consider raising min prices or reducing PriceLabs last-minute discounts for flagged properties.</div>';
+      h += '</div>';
+    }
+
+    // ── Cancellation Patterns ──
+    var cancelMetrics = metrics.filter(function(r) { return r.metric_key.indexOf('cancel_rate_') === 0; }).sort(function(a, b) { return b.metric_value - a.metric_value; });
+    if (cancelMetrics.length > 0) {
+      h += '<div style="margin-bottom:18px;">';
+      h += '<div style="font-size:0.72rem;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">' + _ico('x', 14, 'var(--text3)') + ' CANCELLATION PATTERNS BY CHANNEL</div>';
+      h += '<div class="market-grid">';
+      cancelMetrics.forEach(function(cm) {
+        var ch = cm.metric_key.replace('cancel_rate_', '').replace(/_/g, ' ');
+        var rate = Math.round(cm.metric_value);
+        var color = rate > 15 ? 'var(--danger)' : rate > 8 ? '#f59e0b' : 'var(--accent)';
+        h += '<div class="market-stat"><div class="val" style="color:' + color + ';">' + rate + '%</div><div class="lbl">' + esc(ch) + ' (' + cm.sample_size + ' cancels)</div></div>';
+      });
+      h += '</div></div>';
+    }
+
+    if (!h) h = '<div style="padding:16px;text-align:center;color:var(--text3);">No advanced intel data found. Run a full intelligence rebuild.</div>';
+    el.innerHTML = h;
+  } catch (err) {
+    el.innerHTML = '<p style="color:var(--danger);">Error: ' + esc(err.message) + '</p>';
+  }
 }

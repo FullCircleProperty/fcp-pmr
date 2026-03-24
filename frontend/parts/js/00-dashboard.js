@@ -178,7 +178,7 @@ function renderDashboard(d) {
     var chartH = 240;
     var chartW = '100%';
 
-    h += '<div class="card" style="margin-bottom:16px;padding:14px 16px;">';
+    h += '<div class="card" style="margin-bottom:16px;padding:14px 16px;position:relative;">';
     h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">';
     h += '<div style="font-size:0.78rem;font-weight:600;color:var(--text2);display:flex;align-items:center;gap:6px;">' + _ico('trendUp', 15, 'var(--accent)') + ' ' + new Date().getFullYear() + ' REVENUE PROJECTION</div>';
     h += '<div style="display:flex;gap:12px;font-size:0.72rem;">';
@@ -207,70 +207,134 @@ function renderDashboard(d) {
       h += '<text x="' + (padL - 4) + '" y="' + (gy + 4) + '" text-anchor="end" fill="var(--text3)" font-size="11">' + gLabel + '</text>';
     }
 
-    // Build line paths
+    // Build line paths — hover tooltips instead of static labels for clean visuals
     var actualPts = [], bookedPts = [], targetPts = [];
     var barW = plotW / 12;
     var lastActualX = 0, lastActualY = 0;
+    var dotsBuf = [];
+    var hoverZones = []; // invisible hit areas per month
+    var fmtVal = function(v) { return '$' + (v >= 1000 ? Math.round(v / 1000) + 'k' : v); };
+    var fmtFull = function(v) { return '$' + Math.round(v).toLocaleString(); };
+    var toY = function(v) { return padT + plotH - (v / maxVal * plotH); };
+    var projId = 'projChart_' + Date.now();
+
+    // Store data for tooltip access
+    var _projData = [];
 
     proj.forEach(function(p, i) {
       var cx = padL + barW * i + barW / 2;
-      var toY = function(v) { return padT + plotH - (v / maxVal * plotH); };
 
       // Month labels
       h += '<text x="' + cx + '" y="' + (svgH - 5) + '" text-anchor="middle" fill="var(--text3)" font-size="12" font-weight="' + (p.is_current ? '700' : '400') + '">' + mNames[i] + '</text>';
 
-      // Current month marker
       if (p.is_current) {
         h += '<rect x="' + (padL + barW * i) + '" y="' + padT + '" width="' + barW + '" height="' + plotH + '" fill="var(--accent)" opacity="0.04" rx="3" />';
       }
 
-      // Target
-      if (p.target != null && p.target > 0) targetPts.push(cx + ',' + toY(p.target));
-
-      // Actual
-      if (p.actual != null) {
-        actualPts.push(cx + ',' + toY(p.actual));
-        lastActualX = cx;
-        lastActualY = toY(p.actual);
-        // Value label on actual
-        if (p.actual > 0) {
-          h += '<text x="' + cx + '" y="' + (toY(p.actual) - 7) + '" text-anchor="middle" fill="var(--accent)" font-size="11" font-weight="600">$' + (p.actual >= 1000 ? Math.round(p.actual / 1000) + 'k' : p.actual) + '</text>';
-        }
-      }
-
-      // Booked (future)
-      if (!p.is_past && p.booked != null && p.booked > 0) {
-        bookedPts.push(cx + ',' + toY(p.booked));
-        h += '<text x="' + cx + '" y="' + (toY(p.booked) - 7) + '" text-anchor="middle" fill="#60a5fa" font-size="11">$' + (p.booked >= 1000 ? Math.round(p.booked / 1000) + 'k' : p.booked) + '</text>';
-      }
+      // Collect line points
+      if (p.target != null && p.target > 0) targetPts.push({ x: cx, y: toY(p.target), val: p.target, month: i });
+      if (p.actual != null) { actualPts.push(cx + ',' + toY(p.actual)); lastActualX = cx; lastActualY = toY(p.actual); }
+      var hasBooked = !p.is_past && p.booked != null && p.booked > 0;
+      if (hasBooked) bookedPts.push(cx + ',' + toY(p.booked));
 
       // Dots
-      if (p.actual != null && p.actual > 0) h += '<circle cx="' + cx + '" cy="' + toY(p.actual) + '" r="3.5" fill="var(--accent)" />';
-      if (!p.is_past && p.booked != null && p.booked > 0) h += '<circle cx="' + cx + '" cy="' + toY(p.booked) + '" r="3" fill="#60a5fa" stroke="#fff" stroke-width="1" />';
-      if (p.target != null && p.target > 0) h += '<circle cx="' + cx + '" cy="' + toY(p.target) + '" r="2" fill="#f59e0b" opacity="0.6" />';
+      if (p.actual != null && p.actual > 0) dotsBuf.push('<circle cx="' + cx + '" cy="' + toY(p.actual) + '" r="4" fill="var(--accent)" />');
+      if (hasBooked) dotsBuf.push('<circle cx="' + cx + '" cy="' + toY(p.booked) + '" r="3.5" fill="#60a5fa" stroke="var(--bg)" stroke-width="1.5" />');
+      if (p.target != null && p.target > 0) dotsBuf.push('<circle cx="' + cx + '" cy="' + toY(p.target) + '" r="2.5" fill="#f59e0b" opacity="0.7" />');
+
+      // All labels shown on hover — clean chart with just dots and lines
+
+      // Invisible hover zone per month column
+      hoverZones.push('<rect x="' + (padL + barW * i) + '" y="' + padT + '" width="' + barW + '" height="' + plotH + '" fill="transparent" data-mi="' + i + '" style="cursor:crosshair;" />');
+
+      _projData.push({ month: mNames[i], actual: p.actual, booked: p.booked, target: p.target, is_past: p.is_past, is_current: p.is_current });
     });
 
-    // Area fill under actual line — subtle green gradient
+    // === RENDER ORDER: area fill > lines > dots+labels > hover zones (on top for mouse events) ===
+
     if (actualPts.length > 1) {
       var bottomY = padT + plotH;
       var areaPath = actualPts[0].split(',')[0] + ',' + bottomY + ' ' + actualPts.join(' ') + ' ' + actualPts[actualPts.length - 1].split(',')[0] + ',' + bottomY;
       h += '<polygon points="' + areaPath + '" fill="var(--accent)" opacity="0.06" />';
     }
 
-    // Draw lines (order: target first as background, then booked, then actual on top)
-    if (targetPts.length > 1) h += '<polyline points="' + targetPts.join(' ') + '" fill="none" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="3,3" opacity="0.7" stroke-linejoin="round" />';
+    var targetPtStr = targetPts.map(function(t) { return t.x + ',' + t.y; });
+    if (targetPtStr.length > 1) h += '<polyline points="' + targetPtStr.join(' ') + '" fill="none" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="3,3" opacity="0.7" stroke-linejoin="round" />';
     if (bookedPts.length > 1) h += '<polyline points="' + bookedPts.join(' ') + '" fill="none" stroke="#60a5fa" stroke-width="2" stroke-dasharray="6,3" stroke-linejoin="round" />';
-    // Connect last actual point to first booked point with dashed bridge line
     if (bookedPts.length >= 1 && actualPts.length > 0) {
-      var firstBookedX = bookedPts[0].split(',')[0];
-      var firstBookedY = bookedPts[0].split(',')[1];
-      if (Math.abs(parseFloat(firstBookedX) - lastActualX) > 5) {
-        h += '<line x1="' + lastActualX + '" y1="' + lastActualY + '" x2="' + firstBookedX + '" y2="' + firstBookedY + '" stroke="#60a5fa" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.6" />';
-      }
+      var fbX = bookedPts[0].split(',')[0], fbY = bookedPts[0].split(',')[1];
+      if (Math.abs(parseFloat(fbX) - lastActualX) > 5) h += '<line x1="' + lastActualX + '" y1="' + lastActualY + '" x2="' + fbX + '" y2="' + fbY + '" stroke="#60a5fa" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.6" />';
     }
     if (actualPts.length > 1) h += '<polyline points="' + actualPts.join(' ') + '" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round" />';
 
-    h += '</svg></div>';
+    h += dotsBuf.join('');
+    h += hoverZones.join('');
+
+    // Vertical guide line (hidden, shown on hover via JS)
+    h += '<line id="' + projId + '_guide" x1="0" y1="' + padT + '" x2="0" y2="' + (padT + plotH) + '" stroke="var(--text3)" stroke-width="1" stroke-dasharray="3,2" opacity="0" />';
+
+    h += '</svg>';
+
+    // Tooltip div (hidden by default, positioned absolute over chart)
+    h += '<div id="' + projId + '_tip" style="display:none;position:absolute;pointer-events:none;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-size:0.78rem;box-shadow:0 4px 12px rgba(0,0,0,0.3);z-index:100;min-width:160px;line-height:1.7;"></div>';
+    if (actualPts.length === 0) {
+      h += '<div style="font-size:0.72rem;color:#f59e0b;padding:6px 0;">' + _ico('alertTriangle', 13, '#f59e0b') + ' No actual revenue data — go to Integrations → Process Monthly Actuals to rebuild from Guesty.</div>';
+    }
+    h += '</div>';
+
+    // Wire up hover events after render
+    window._projData = _projData;
+    window._projId = projId;
+    window._projFmtFull = fmtFull;
+    setTimeout(function() {
+      var wrap = document.getElementById(projId + '_tip');
+      if (!wrap) return;
+      var container = wrap.parentElement;
+      var svg = container.querySelector('svg');
+      if (!svg) return;
+      svg.querySelectorAll('rect[data-mi]').forEach(function(zone) {
+        zone.addEventListener('mouseenter', function(e) {
+          var mi = parseInt(zone.getAttribute('data-mi'));
+          var d = window._projData[mi];
+          if (!d) return;
+          // Show vertical guide line at column center
+          var guide = document.getElementById(window._projId + '_guide');
+          var zx = parseFloat(zone.getAttribute('x')) + parseFloat(zone.getAttribute('width')) / 2;
+          if (guide) { guide.setAttribute('x1', zx); guide.setAttribute('x2', zx); guide.setAttribute('opacity', '0.4'); }
+          zone.setAttribute('fill', 'var(--text3)'); zone.setAttribute('opacity', '0.06');
+          var tip = '';
+          tip += '<div style="font-weight:700;font-size:0.85rem;margin-bottom:4px;color:var(--text);">' + d.month + (d.is_current ? ' (current)' : d.is_past ? '' : ' (future)') + '</div>';
+          if (d.actual != null && d.actual > 0) tip += '<div style="color:var(--accent);">\u25CF Actual: <strong>' + window._projFmtFull(d.actual) + '</strong></div>';
+          if (d.booked != null && d.booked > 0) tip += '<div style="color:#60a5fa;">\u25CB Booked: <strong>' + window._projFmtFull(d.booked) + '</strong></div>';
+          if (d.target != null && d.target > 0) tip += '<div style="color:#f59e0b;">\u25CC Target: <strong>' + window._projFmtFull(d.target) + '</strong></div>';
+          if (d.target && d.actual != null && d.actual > 0) {
+            var diff = d.actual - d.target;
+            var pct = Math.round(diff / d.target * 100);
+            tip += '<div style="margin-top:3px;font-size:0.72rem;color:' + (diff >= 0 ? 'var(--accent)' : 'var(--danger)') + ';">' + (diff >= 0 ? '\u2191' : '\u2193') + ' ' + Math.abs(pct) + '% ' + (diff >= 0 ? 'above' : 'below') + ' target</div>';
+          } else if (d.target && d.booked != null && d.booked > 0 && !d.is_past) {
+            var bDiff = d.booked - d.target;
+            var bPct = Math.round(bDiff / d.target * 100);
+            tip += '<div style="margin-top:3px;font-size:0.72rem;color:' + (bDiff >= 0 ? 'var(--accent)' : '#f59e0b') + ';">' + (bDiff >= 0 ? '\u2191 ' + bPct + '% of target booked' : Math.abs(bPct) + '% gap to fill') + '</div>';
+          }
+          wrap.innerHTML = tip;
+          wrap.style.display = '';
+        });
+        zone.addEventListener('mousemove', function(e) {
+          var rect = container.getBoundingClientRect();
+          var x = e.clientX - rect.left + 12;
+          var y = e.clientY - rect.top - 10;
+          if (x + 180 > rect.width) x = x - 190;
+          wrap.style.left = x + 'px';
+          wrap.style.top = y + 'px';
+        });
+        zone.addEventListener('mouseleave', function() {
+          wrap.style.display = 'none';
+          var guide = document.getElementById(window._projId + '_guide');
+          if (guide) guide.setAttribute('opacity', '0');
+          zone.setAttribute('fill', 'transparent'); zone.setAttribute('opacity', '1');
+        });
+      });
+    }, 100);
 
     // Summary row
     var ytdActual = 0, ytdTarget = 0, totalBooked = 0;
@@ -729,6 +793,16 @@ function renderDashboard(d) {
     h += '</div>';
   }
 
+  // ── Smart Portfolio Refresh ────────────────────────────────────────────
+  h += '<div class="card" style="margin-bottom:16px;padding:14px 16px;border-left:4px solid #60a5fa;">';
+  h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">';
+  h += '<div style="font-size:0.78rem;font-weight:600;color:#60a5fa;display:flex;align-items:center;gap:6px;">' + _ico('refresh', 16, '#60a5fa') + ' DATA FRESHNESS</div>';
+  h += '<button class="btn btn-xs btn-primary" onclick="btnGuard(this);loadRefreshPanel()" id="btnRefreshPanel">' + _ico('activity', 12) + ' Check & Update</button>';
+  h += '</div>';
+  h += '<div style="font-size:0.72rem;color:var(--text3);">Shows what\'s fresh, what\'s stale, and lets you update selectively. Free updates auto-selected when stale.</div>';
+  h += '<div id="refreshPanel" style="display:none;margin-top:10px;"></div>';
+  h += '</div>';
+
   el.innerHTML = h;
 }
 
@@ -839,4 +913,183 @@ async function runBulkAnalysis() {
   }
   btn.disabled = false;
   btn.innerHTML = _ico('zap', 11, 'var(--accent)') + ' Analyze All';
+}
+
+// ── Smart Portfolio Refresh ────────────────────────────────────────────────
+
+var _refreshSteps = null;
+
+async function loadRefreshPanel() {
+  var el = document.getElementById('refreshPanel');
+  if (!el) return;
+  el.style.display = '';
+  el.innerHTML = '<div style="color:var(--text3);font-size:0.78rem;">Checking data freshness...</div>';
+
+  try {
+    var d = await api('/api/portfolio/full-refresh', 'POST', { dry_run: true });
+    _refreshSteps = d.steps || [];
+    var intg = d.integrations || {};
+    var budget = d.searchapi_budget || {};
+    var summary = d.summary || {};
+
+    var h = '';
+
+    // Integration status bar
+    h += '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;font-size:0.72rem;">';
+    h += '<span style="color:' + (intg.guesty ? 'var(--accent)' : 'var(--danger)') + ';">' + _ico(intg.guesty ? 'check' : 'x', 11) + ' Guesty</span>';
+    h += '<span style="color:' + (intg.pricelabs ? 'var(--accent)' : 'var(--danger)') + ';">' + _ico(intg.pricelabs ? 'check' : 'x', 11) + ' PriceLabs</span>';
+    h += '<span style="color:' + (intg.searchapi ? 'var(--accent)' : 'var(--text3)') + ';">' + _ico(intg.searchapi ? 'check' : 'x', 11) + ' SearchAPI (' + budget.remaining + '/' + budget.limit + ' calls left)</span>';
+    h += '</div>';
+
+    // Group steps
+    var groups = { sync: { label: 'DATA SYNC', icon: 'refresh', color: '#60a5fa' }, compute: { label: 'REBUILD & COMPUTE', icon: 'cpu', color: 'var(--purple)' }, crawl: { label: 'MARKET RESEARCH', icon: 'radar', color: '#f59e0b' }, maintenance: { label: 'MAINTENANCE', icon: 'trash', color: 'var(--text3)' } };
+
+    for (var gKey in groups) {
+      var grp = groups[gKey];
+      var grpSteps = _refreshSteps.filter(function(s) { return s.group === gKey; });
+      if (grpSteps.length === 0) continue;
+
+      h += '<div style="margin-bottom:10px;">';
+      h += '<div style="font-size:0.65rem;font-weight:700;color:' + grp.color + ';text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">' + _ico(grp.icon, 11, grp.color) + ' ' + grp.label + '</div>';
+
+      grpSteps.forEach(function(s) {
+        var freshColor = s.status === 'fresh' ? 'var(--accent)' : s.status === 'aging' ? '#f59e0b' : s.status === 'unavailable' ? 'var(--text3)' : 'var(--danger)';
+        var freshLabel = s.status === 'fresh' ? 'Fresh' : s.status === 'aging' ? 'Aging' : s.status === 'unavailable' ? 'N/A' : 'Stale';
+        var timeLabel = s.hours_ago !== null ? (s.hours_ago < 1 ? '<1h ago' : s.hours_ago < 24 ? s.hours_ago + 'h ago' : Math.round(s.hours_ago / 24) + 'd ago') : 'Never synced';
+        var costBadge = s.cost === 'paid' ? '<span style="font-size:0.58rem;background:rgba(245,158,11,0.15);color:#f59e0b;padding:1px 5px;border-radius:3px;font-weight:700;">~' + (s.searchapi_est || '?') + ' API calls</span>' : '<span style="font-size:0.58rem;color:var(--text3);">Free</span>';
+        var isDisabled = !s.available;
+        var isChecked = s.selected;
+
+        h += '<label style="display:flex;align-items:center;gap:8px;padding:5px 8px;background:var(--bg);border:1px solid var(--border);border-radius:5px;margin-bottom:3px;cursor:' + (isDisabled ? 'not-allowed' : 'pointer') + ';opacity:' + (isDisabled ? '0.5' : '1') + ';" onmouseenter="this.style.background=\'var(--surface2)\'" onmouseleave="this.style.background=\'var(--bg)\'">';
+
+        h += '<input type="checkbox" data-step-id="' + s.id + '" ' + (isChecked ? 'checked' : '') + ' ' + (isDisabled ? 'disabled' : '') + ' onchange="updateRefreshCost()" style="accent-color:var(--accent);flex-shrink:0;">';
+
+        // Freshness bar
+        h += '<div style="width:4px;height:28px;border-radius:2px;background:' + freshColor + ';flex-shrink:0;opacity:0.7;"></div>';
+
+        h += '<div style="flex:1;min-width:0;">';
+        h += '<div style="display:flex;justify-content:space-between;align-items:center;">';
+        h += '<span style="font-size:0.75rem;font-weight:600;color:var(--text);">' + esc(s.name) + '</span>';
+        h += '<span style="font-size:0.62rem;color:' + freshColor + ';font-weight:700;">' + freshLabel + ' · ' + timeLabel + '</span>';
+        h += '</div>';
+        h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:1px;">';
+        h += '<span style="font-size:0.65rem;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:70%;">' + esc(s.benefit) + '</span>';
+        h += costBadge;
+        h += '</div>';
+        if (!s.available) h += '<div style="font-size:0.6rem;color:var(--danger);">' + _ico('x', 10, 'var(--danger)') + ' ' + esc(s.skip_reason) + '</div>';
+        h += '</div></label>';
+      });
+      h += '</div>';
+    }
+
+    // Cost summary + action bar
+    h += '<div id="refreshCostBar" style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;margin-top:6px;">';
+    h += '<div id="refreshCostSummary" style="font-size:0.72rem;color:var(--text2);"></div>';
+    h += '<div style="display:flex;gap:6px;">';
+    h += '<button class="btn btn-xs" onclick="selectAllRefresh(true)">Select stale</button>';
+    h += '<button class="btn btn-xs" onclick="selectAllRefresh(false)">Clear all</button>';
+    h += '<button class="btn btn-xs btn-primary" onclick="btnGuard(this);runSmartRefresh(this)" id="btnRunRefresh">' + _ico('refresh', 12) + ' Update Selected</button>';
+    h += '</div></div>';
+
+    // Cron info
+    h += '<div style="font-size:0.65rem;color:var(--text3);margin-top:6px;">' + _ico('clock', 10, 'var(--text3)') + ' Auto-sync runs daily at 6am ET (Guesty every 6h, listings weekly Monday). SearchAPI crawls are always manual.</div>';
+
+    // Progress area
+    h += '<div id="refreshRunLog" style="display:none;margin-top:10px;"></div>';
+
+    el.innerHTML = h;
+    updateRefreshCost();
+  } catch (err) {
+    el.innerHTML = '<div style="color:var(--danger);font-size:0.78rem;">Error: ' + esc(err.message) + '</div>';
+  }
+}
+
+function updateRefreshCost() {
+  var el = document.getElementById('refreshCostSummary');
+  if (!el || !_refreshSteps) return;
+  var checks = document.querySelectorAll('[data-step-id]');
+  var selected = 0, freeCount = 0, paidCount = 0, apiCalls = 0;
+  checks.forEach(function(cb) {
+    if (cb.checked) {
+      selected++;
+      var step = _refreshSteps.find(function(s) { return s.id === cb.dataset.stepId; });
+      if (step) {
+        if (step.cost === 'paid') { paidCount++; apiCalls += (step.searchapi_est || 0); }
+        else freeCount++;
+      }
+    }
+  });
+  var parts = [];
+  parts.push(selected + ' selected');
+  if (freeCount > 0) parts.push(freeCount + ' free');
+  if (paidCount > 0) parts.push(paidCount + ' paid (~' + apiCalls + ' API calls)');
+  el.innerHTML = parts.join(' · ');
+  var btn = document.getElementById('btnRunRefresh');
+  if (btn) btn.disabled = selected === 0;
+}
+
+function selectAllRefresh(staleOnly) {
+  var checks = document.querySelectorAll('[data-step-id]');
+  checks.forEach(function(cb) {
+    if (cb.disabled) return;
+    if (staleOnly) {
+      var step = _refreshSteps.find(function(s) { return s.id === cb.dataset.stepId; });
+      cb.checked = step && step.recommended;
+    } else {
+      cb.checked = false;
+    }
+  });
+  updateRefreshCost();
+}
+
+async function runSmartRefresh(btn) {
+  var checks = document.querySelectorAll('[data-step-id]');
+  var selected = [];
+  checks.forEach(function(cb) { if (cb.checked) selected.push(cb.dataset.stepId); });
+  if (selected.length === 0) { toast('No steps selected'); return; }
+
+  var logEl = document.getElementById('refreshRunLog');
+  if (logEl) {
+    logEl.style.display = '';
+    logEl.innerHTML = '<div style="padding:10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;">' +
+      '<div style="font-size:0.78rem;font-weight:600;color:#60a5fa;margin-bottom:4px;">' + _ico('activity', 14, '#60a5fa') + ' Running ' + selected.length + ' updates...</div>' +
+      '<div style="font-size:0.72rem;color:var(--text3);">This may take a few minutes.</div></div>';
+  }
+  if (btn) { btn.disabled = true; btn.innerHTML = _ico('refresh', 12) + ' Running...'; }
+
+  try {
+    var d = await api('/api/portfolio/full-refresh', 'POST', { steps: selected });
+    var log = d.log || [];
+    var h = '';
+
+    log.forEach(function(entry) {
+      var icon = entry.status === 'ok' ? _ico('check', 11, 'var(--accent)')
+        : entry.status === 'skipped' ? _ico('minus', 11, 'var(--text3)')
+        : entry.status === 'warn' ? _ico('alertTriangle', 11, '#f59e0b')
+        : _ico('x', 11, 'var(--danger)');
+      var color = entry.status === 'ok' ? 'var(--accent)' : entry.status === 'error' ? 'var(--danger)' : 'var(--text3)';
+      var time = entry.ms > 0 ? ' (' + (entry.ms / 1000).toFixed(1) + 's)' : '';
+      h += '<div style="display:flex;align-items:flex-start;gap:6px;padding:2px 0;font-size:0.72rem;">';
+      h += '<span style="flex-shrink:0;margin-top:1px;">' + icon + '</span>';
+      h += '<span style="font-weight:600;min-width:130px;color:' + color + ';">' + esc(entry.name || entry.step) + '</span>';
+      h += '<span style="color:var(--text2);">' + esc(entry.detail || entry.reason || '') + time + '</span>';
+      h += '</div>';
+    });
+
+    var totalSec = Math.round((d.total_ms || 0) / 1000);
+    var okCount = d.steps_completed || 0;
+    var errCount = d.steps_errored || 0;
+    var sc = errCount > 0 ? 'var(--danger)' : 'var(--accent)';
+    h += '<div style="border-top:1px solid var(--border);margin-top:6px;padding-top:6px;font-weight:600;font-size:0.75rem;color:' + sc + ';">';
+    h += _ico(errCount > 0 ? 'alertTriangle' : 'check', 13, sc) + ' Done in ' + totalSec + 's — ' + okCount + ' completed' + (errCount > 0 ? ', ' + errCount + ' errors' : '');
+    h += '</div>';
+
+    if (logEl) logEl.innerHTML = '<div style="padding:10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;font-family:DM Mono,monospace;">' + h + '</div>';
+    toast('Refresh complete — ' + okCount + ' steps in ' + totalSec + 's');
+    setTimeout(function() { loadDashboard(); }, 2500);
+  } catch (err) {
+    if (logEl) logEl.innerHTML = '<div style="padding:10px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);border-radius:6px;color:var(--danger);font-size:0.78rem;">' + _ico('x', 14, 'var(--danger)') + ' Failed: ' + esc(err.message) + '</div>';
+    toast('Refresh failed: ' + err.message, 'error');
+  }
+  if (btn) { btn.disabled = false; btn.innerHTML = _ico('refresh', 12) + ' Update Selected'; }
 }

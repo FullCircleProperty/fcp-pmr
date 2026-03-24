@@ -57,7 +57,22 @@ async function loadPlatformList() {
       var link = p.listing_url ? '<a href="' + esc(p.listing_url) + '" target="_blank" style="color:var(--text2);font-size:0.78rem;">' + esc(urlShort) + '</a>' : '<span style="color:var(--text3);font-size:0.78rem;">No URL</span>';
       h += '<tr><td style="color:' + color + ';font-weight:600;white-space:nowrap;">' + icon + ' ' + esc(name) + '</td>';
       h += '<td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;">' + link + '</td>';
-      h += '<td style="font-family:DM Mono,monospace;font-weight:600;">' + (p.nightly_rate ? '$' + Math.round(p.nightly_rate) : '<span style="color:var(--text3);">—</span>') + '</td>';
+      var rateLabel = '';
+      var rateVal = p.nightly_rate ? Math.round(p.nightly_rate) : 0;
+      if (p.rate_source === 'manual' && rateVal > 0) {
+        // Manual override — trusted, show with edit pencil
+        rateLabel = '<span onclick="inlineEditRate(' + p.id + ', this)" style="cursor:pointer;" title="Click to edit (manual override)">$' + rateVal + ' <span style="font-size:0.6rem;color:var(--text2);">✎</span></span>';
+      } else if (p.rate_source === 'live' && rateVal > 0) {
+        // Live API rate — trusted
+        rateLabel = '$' + rateVal + ' <span style="font-size:0.6rem;color:var(--accent);" title="Live rate from platform API">✓</span>';
+      } else if (p.rate_source === 'estimate' && rateVal > 0) {
+        // Google estimate — unreliable, show dimmed with warning
+        rateLabel = '<span style="opacity:0.4;" title="Estimated from Google — click to enter actual rate">~$' + rateVal + '</span> <span onclick="inlineEditRate(' + p.id + ', this)" style="cursor:pointer;font-size:0.6rem;color:var(--warn);" title="Click to enter actual rate">✎ set</span>';
+      } else {
+        // No rate — show edit prompt
+        rateLabel = '<span onclick="inlineEditRate(' + p.id + ', this)" style="cursor:pointer;color:var(--text3);" title="Click to enter nightly rate">— ✎</span>';
+      }
+      h += '<td style="font-family:DM Mono,monospace;font-weight:600;" data-plat-id="' + p.id + '">' + rateLabel + '</td>';
       h += '<td style="font-family:DM Mono,monospace;">' + (p.cleaning_fee > 0 ? '$' + Math.round(p.cleaning_fee) : '—') + '</td>';
       h += '<td>' + (p.rating ? Number(p.rating).toFixed(1) + '★' : '—') + '</td>';
       h += '<td style="font-size:0.78rem;">' + (p.review_count > 0 ? p.review_count : '—') + '</td>';
@@ -145,6 +160,35 @@ async function deletePlatform(id) {
     await api('/api/properties/' + pricingPropertyId + '/platforms/' + id, 'DELETE');
     toast('Platform removed');
     loadPlatformList();
+  } catch (err) { toast(err.message, 'error'); }
+}
+
+function inlineEditRate(platId, el) {
+  var td = el.closest('td');
+  var current = td.textContent.replace(/[^0-9]/g, '') || '';
+  td.innerHTML = '<input type="number" value="' + current + '" min="0" max="9999" style="width:80px;padding:3px 6px;font-size:0.82rem;font-family:DM Mono,monospace;background:var(--bg);border:1px solid var(--accent);border-radius:4px;color:var(--text);" onblur="saveInlineRate(' + platId + ', this, false)" onkeydown="if(event.key===\'Enter\')this.blur()" autofocus placeholder="$/nt">';
+  td.querySelector('input').focus();
+}
+
+function inlineEditPropRate(platId, el) {
+  var td = el.closest('td');
+  var current = td.textContent.replace(/[^0-9]/g, '') || '';
+  td.innerHTML = '<input type="number" value="' + current + '" min="0" max="9999" style="width:80px;padding:3px 6px;font-size:0.82rem;font-family:DM Mono,monospace;background:var(--bg);border:1px solid var(--accent);border-radius:4px;color:var(--text);" onblur="saveInlineRate(' + platId + ', this, true)" onkeydown="if(event.key===\'Enter\')this.blur()" autofocus placeholder="$/nt">';
+  td.querySelector('input').focus();
+}
+
+async function saveInlineRate(platId, input, isPropDetail) {
+  var val = parseInt(input.value) || 0;
+  var propId = isPropDetail ? (document.getElementById('f_editId') || {}).value : pricingPropertyId;
+  if (!propId) return;
+  try {
+    await api('/api/properties/' + propId + '/platforms/' + platId, 'PUT', {
+      nightly_rate: val > 0 ? val : null,
+      rate_source: val > 0 ? 'manual' : null,
+    });
+    toast(val > 0 ? 'Rate set to $' + val + '/nt' : 'Rate cleared');
+    if (isPropDetail) loadPropertyPlatforms(propId);
+    else loadPlatformList();
   } catch (err) { toast(err.message, 'error'); }
 }
 
@@ -391,7 +435,18 @@ async function loadPropertyPlatforms(propId) {
         var urlLink = p.listing_url ? '<a href="' + esc(p.listing_url) + '" target="_blank" style="color:var(--text2);font-size:0.78rem;">' + esc(urlShort) + '</a>' : '<span style="color:var(--text3);">—</span>';
         h += '<tr><td style="color:' + color + ';font-weight:600;white-space:nowrap;">' + icon + ' ' + esc(name) + '</td>';
         h += '<td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;">' + urlLink + '</td>';
-        h += '<td style="font-family:DM Mono,monospace;">' + (p.nightly_rate ? '$' + p.nightly_rate : '—') + '</td>';
+        var prv = p.nightly_rate ? Math.round(p.nightly_rate) : 0;
+        var propRateLabel = '';
+        if (p.rate_source === 'manual' && prv > 0) {
+          propRateLabel = '<span onclick="inlineEditPropRate(' + p.id + ', this)" style="cursor:pointer;" title="Manual override — click to edit">$' + prv + ' <span style="font-size:0.6rem;color:var(--text2);">✎</span></span>';
+        } else if (p.rate_source === 'live' && prv > 0) {
+          propRateLabel = '$' + prv + ' <span style="font-size:0.6rem;color:var(--accent);">✓</span>';
+        } else if (p.rate_source === 'estimate' && prv > 0) {
+          propRateLabel = '<span style="opacity:0.4;">~$' + prv + '</span> <span onclick="inlineEditPropRate(' + p.id + ', this)" style="cursor:pointer;font-size:0.6rem;color:var(--warn);">✎ set</span>';
+        } else {
+          propRateLabel = '<span onclick="inlineEditPropRate(' + p.id + ', this)" style="cursor:pointer;color:var(--text3);">— ✎</span>';
+        }
+        h += '<td style="font-family:DM Mono,monospace;">' + propRateLabel + '</td>';
         h += '<td style="font-family:DM Mono,monospace;">' + (p.cleaning_fee > 0 ? '$' + p.cleaning_fee : '—') + '</td>';
         h += '<td>' + (p.rating ? p.rating.toFixed(1) + '★' : '—') + '</td>';
         h += '<td><button class="btn btn-xs" style="color:var(--danger);border-color:var(--danger);padding:2px 6px;" onclick="deletePropPlatform(' + p.id + ')" title="Remove">✗</button></td></tr>';
@@ -435,6 +490,24 @@ function togglePropPlatformAdd() {
   var form = document.getElementById('propPlatformAdd');
   form.style.display = form.style.display === 'none' ? '' : 'none';
   propPlatEditId = null;
+}
+
+async function scrapePropPlatforms() {
+  var propId = (document.getElementById('f_editId') || {}).value;
+  if (!propId) { toast('Save the property first', 'error'); return; }
+  var statusEl = document.getElementById('platformSearchStatus');
+  if (statusEl) statusEl.textContent = 'Scraping all platforms...';
+  showLoading('Scraping platform pricing...');
+  try {
+    var d = await api('/api/properties/' + propId + '/platforms/scrape', 'POST');
+    toast(d.message || 'Done');
+    if (statusEl) statusEl.innerHTML = '<span style="color:var(--accent);">' + esc(d.message || 'Scraped') + '</span>';
+    loadPropertyPlatforms(propId);
+  } catch (err) {
+    toast(err.message, 'error');
+    if (statusEl) statusEl.innerHTML = '<span style="color:var(--danger);">' + esc(err.message) + '</span>';
+  }
+  hideLoading();
 }
 
 async function savePropPlatform() {

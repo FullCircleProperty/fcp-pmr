@@ -118,72 +118,87 @@ function renderPropertyFinance(propId) {
 
   var h = '';
 
-  // ── Compute blended average nightly rate ──
-  // Base alone is misleading — actual revenue includes weekend premiums, seasonal markups, and PriceLabs dynamic adjustments
+  // ── Actual revenue from Guesty (ground truth) ──
+  var actualData = (window._actualRevenue || {})[p.id];
+  var hasActuals = actualData && (actualData.monthly_avg > 0 || actualData.this_month_rev > 0);
+  var actualMonthlyAvg = hasActuals ? (actualData.monthly_avg || 0) : 0;
+  var actualADR = hasActuals ? (actualData.avg_adr || 0) : 0;
+  var actualOcc = hasActuals ? (actualData.avg_occ || 0) : 0;
+  var thisMonthRev = actualData ? (actualData.this_month_rev || 0) : 0;
+  var thisMonthOcc = actualData ? (actualData.this_month_occ || 0) : 0;
+  var lastMonthRev = actualData ? (actualData.last_month_rev || 0) : 0;
+
+  // ── PriceLabs projection data ──
   var base = p.pl_base_price || 0;
   var rec = p.pl_rec_base || base;
   var min = p.pl_min_price || base;
   var max = p.pl_max_price || base;
   var cleaning = p.pl_cleaning || p.cleaning_fee || 0;
 
-  // Blended ADR estimate: weighted average
-  // ~40% at base (weekdays), ~30% at rec/mid (demand-adjusted), ~20% at weekend premium (~1.2x), ~10% at peak
+  // Blended ADR estimate for projections
   var blendedADR = 0;
   var adrSource = '';
-  if (base > 0 && max > 0) {
+  if (actualADR > 0) {
+    blendedADR = actualADR;
+    adrSource = 'Actual ADR from Guesty';
+  } else if (base > 0 && max > 0) {
     var weekdayRate = base;
     var demandRate = rec > 0 ? rec : base;
     var weekendRate = Math.round(base * 1.2);
     var peakRate = Math.round((base + max) / 2);
     blendedADR = Math.round(weekdayRate * 0.4 + demandRate * 0.3 + weekendRate * 0.2 + peakRate * 0.1);
-    adrSource = 'Blended from PriceLabs: base $' + base + ' (40%) + recommended $' + demandRate + ' (30%) + weekend est $' + weekendRate + ' (20%) + peak est $' + peakRate + ' (10%)';
+    adrSource = 'Blended from PriceLabs (projected)';
   } else if (p.analysis_nightly_rate > 0) {
     blendedADR = p.analysis_nightly_rate;
-    adrSource = 'From pricing analysis';
+    adrSource = 'From pricing analysis (projected)';
   }
 
-  // Occupancy — PriceLabs forward-looking numbers are booking pace, NOT annual occupancy
-  // A property showing "13% occ next 30d" is normal — bookings come in closer to date
-  // For revenue projection, use realistic annual average occupancy for STR
+  // Occupancy — use actual if available
   var plFwdOcc = p.pl_occ_30d ? parseInt(p.pl_occ_30d) / 100 : 0;
   var plMktFwdOcc = p.pl_mkt_occ_30d ? parseInt(p.pl_mkt_occ_30d) / 100 : 0;
-
-  // Estimate actual annual occupancy:
-  // If PL forward occ is very low (<30%), it's just booking pace — use regional estimate
-  // If PL forward occ is high (>50%), property is performing well — use it
-  var annualOcc = 0.50; // default: 50% for STR
+  var annualOcc = 0.50;
   var occSource = '';
-  if (p.analysis_occ && p.analysis_occ > 0.2) {
+  if (actualOcc > 0.05) {
+    annualOcc = actualOcc;
+    occSource = 'Actual from Guesty: ' + Math.round(actualOcc * 100) + '%';
+  } else if (p.analysis_occ && p.analysis_occ > 0.2) {
     annualOcc = p.analysis_occ;
-    occSource = 'From analysis: ' + Math.round(annualOcc * 100) + '%';
-  }
-  if (plFwdOcc >= 0.50) {
-    // High forward occupancy means strong demand — use it
+    occSource = 'From analysis: ' + Math.round(annualOcc * 100) + '% (projected)';
+  } else if (plFwdOcc >= 0.50) {
     annualOcc = plFwdOcc;
-    occSource = 'PriceLabs 30d forward: ' + Math.round(plFwdOcc * 100) + '% (strong pace)';
+    occSource = 'PriceLabs 30d forward: ' + Math.round(plFwdOcc * 100) + '% (projected)';
   } else if (plFwdOcc > 0 && plMktFwdOcc > 0 && plFwdOcc > plMktFwdOcc) {
-    // Outperforming market — estimate annual at ~55-65%
     annualOcc = Math.max(0.55, Math.min(0.70, plFwdOcc * 3.5));
-    occSource = 'Est. ' + Math.round(annualOcc * 100) + '% annual (outperforming market ' + Math.round(plFwdOcc * 100) + '% vs ' + Math.round(plMktFwdOcc * 100) + '%)';
+    occSource = 'Est. ' + Math.round(annualOcc * 100) + '% annual (projected)';
   } else if (plFwdOcc > 0) {
-    // Underperforming or no market comparison — estimate conservatively
     annualOcc = Math.max(0.40, Math.min(0.60, plFwdOcc * 3));
-    occSource = 'Est. ' + Math.round(annualOcc * 100) + '% annual (PL forward: ' + Math.round(plFwdOcc * 100) + '%)';
+    occSource = 'Est. ' + Math.round(annualOcc * 100) + '% annual (projected)';
   } else {
-    occSource = 'Default estimate: 50% (no occupancy data)';
+    occSource = 'Default estimate: 50% (no data)';
   }
 
-  var occ30 = annualOcc; // use for all revenue calcs
+  var occ30 = annualOcc;
   var mktOcc30 = plMktFwdOcc;
 
-  // Revenue projections
-  var monthlyBaseRev = base > 0 ? Math.round(base * 30 * occ30) : 0;
+  // Revenue: use actual if available, otherwise project
+  var useActualRev = hasActuals && actualMonthlyAvg > 0;
+  var monthlyRev = useActualRev ? actualMonthlyAvg : 0;
+  var revSource = '';
+
+  // Projected revenue (always compute for comparison)
+  var turnovers = Math.round(occ30 * 30 / 3);
   var monthlyBlendedRev = blendedADR > 0 ? Math.round(blendedADR * 30 * occ30) : 0;
-  // Turnovers estimate: occupancy × 30 days / avg stay length (~3 nights)
-  var avgStay = 3;
-  var turnovers = Math.round(occ30 * 30 / avgStay);
   var monthlyCleanRev = cleaning > 0 ? Math.round(cleaning * turnovers) : 0;
-  var totalMonthlyRev = monthlyBlendedRev + monthlyCleanRev;
+  var projectedMonthlyRev = monthlyBlendedRev + monthlyCleanRev;
+
+  if (useActualRev) {
+    monthlyRev = actualMonthlyAvg;
+    revSource = 'actual';
+  } else {
+    monthlyRev = projectedMonthlyRev;
+    revSource = 'projected';
+  }
+  var totalMonthlyRev = monthlyRev;
 
   // Expenses
   var cleanerPay = p.cleaning_cost || 0; // what you pay the cleaner per turnover
@@ -238,11 +253,11 @@ function renderPropertyFinance(propId) {
 
   // ── Data source badges ──
   h += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;">';
-  if (p.pl_base_price) h += '<span style="font-size:0.68rem;padding:2px 8px;border-radius:4px;background:rgba(167,139,250,0.1);color:var(--purple);border:1px solid rgba(167,139,250,0.2);">' + _ico('barChart', 13) + ' PriceLabs data</span>';
-  if (p.analysis_nightly_rate) h += '<span style="font-size:0.68rem;padding:2px 8px;border-radius:4px;background:rgba(16,185,129,0.1);color:var(--accent);border:1px solid rgba(16,185,129,0.2);">' + _ico('sparkle', 13) + ' Analysis data</span>';
-  if (p.pl_occ_30d) h += '<span style="font-size:0.68rem;padding:2px 8px;border-radius:4px;background:rgba(59,130,246,0.1);color:var(--blue);border:1px solid rgba(59,130,246,0.2);">' + _ico('trendUp', 13) + ' Live occupancy</span>';
-  if (!p.pl_base_price && !p.analysis_nightly_rate) h += '<span style="font-size:0.68rem;padding:2px 8px;border-radius:4px;background:rgba(245,158,11,0.1);color:#f59e0b;border:1px solid rgba(245,158,11,0.2);">' + _ico('alertCircle', 13, '#f59e0b') + ' No pricing data — run analysis or sync PriceLabs</span>';
-
+  if (hasActuals) h += '<span style="font-size:0.68rem;padding:2px 8px;border-radius:4px;background:rgba(16,185,129,0.1);color:var(--accent);border:1px solid rgba(16,185,129,0.2);">' + _ico('database', 13) + ' Guesty actuals</span>';
+  if (p.pl_base_price) h += '<span style="font-size:0.68rem;padding:2px 8px;border-radius:4px;background:rgba(167,139,250,0.1);color:var(--purple);border:1px solid rgba(167,139,250,0.2);">' + _ico('barChart', 13) + ' PriceLabs</span>';
+  if (p.analysis_nightly_rate) h += '<span style="font-size:0.68rem;padding:2px 8px;border-radius:4px;background:rgba(59,130,246,0.1);color:var(--blue);border:1px solid rgba(59,130,246,0.2);">' + _ico('sparkle', 13) + ' Analysis</span>';
+  if (!hasActuals && !p.pl_base_price && !p.analysis_nightly_rate) h += '<span style="font-size:0.68rem;padding:2px 8px;border-radius:4px;background:rgba(245,158,11,0.1);color:#f59e0b;border:1px solid rgba(245,158,11,0.2);">' + _ico('alertCircle', 13, '#f59e0b') + ' No data — run analysis, sync PriceLabs, or sync Guesty</span>';
+  if (!hasActuals && (p.pl_base_price || p.analysis_nightly_rate)) h += '<span style="font-size:0.68rem;padding:2px 8px;border-radius:4px;background:rgba(245,158,11,0.1);color:#f59e0b;border:1px solid rgba(245,158,11,0.2);">' + _ico('alertTriangle', 13, '#f59e0b') + ' All numbers are projections — no booking data yet</span>';
   h += '</div>';
 
   // ── Key Metrics ──
@@ -256,11 +271,15 @@ function renderPropertyFinance(propId) {
       '</div>';
   }
 
-  if (blendedADR > 0) h += fc('Blended ADR', '$' + blendedADR + '/nt', 'var(--accent)', base > 0 ? 'base $' + base + ' · max $' + max : '', 'PriceLabs blended');
+  if (blendedADR > 0) h += fc(actualADR > 0 ? 'Actual ADR' : 'Est. ADR', '$' + blendedADR + '/nt', 'var(--accent)', base > 0 ? 'PL base $' + base : '', adrSource.includes('Actual') ? 'Guesty' : 'projected');
   else if (base > 0) h += fc('Base Rate', '$' + base + '/nt', 'var(--purple)', '', 'PriceLabs');
-  h += fc('Est. Annual Occ', Math.round(occ30 * 100) + '%', occ30 >= 0.50 ? 'var(--accent)' : '#f59e0b', occSource.substring(0, 40), '');
+  h += fc(actualOcc > 0.05 ? 'Actual Occ' : 'Est. Occ', Math.round(occ30 * 100) + '%', occ30 >= 0.50 ? 'var(--accent)' : '#f59e0b', occSource.substring(0, 40), actualOcc > 0.05 ? 'Guesty' : 'projected');
   if (plFwdOcc > 0) h += fc('PL Forward 30d', Math.round(plFwdOcc * 100) + '%', plFwdOcc > plMktFwdOcc ? 'var(--accent)' : 'var(--danger)', plMktFwdOcc > 0 ? 'market ' + Math.round(plMktFwdOcc * 100) + '%' : '', 'booking pace');
-  h += fc('Monthly Revenue', '$' + totalMonthlyRev.toLocaleString(), 'var(--accent)', 'nightly + cleaning', blendedADR > 0 ? 'Blended rate' : 'Base rate');
+  h += fc(useActualRev ? 'Avg Monthly Rev' : 'Proj Monthly Rev', '$' + totalMonthlyRev.toLocaleString(), 'var(--accent)', useActualRev ? 'from Guesty actuals' : 'projected', useActualRev ? 'actual' : 'estimate');
+  if (useActualRev && projectedMonthlyRev > 0) {
+    var vsProj = totalMonthlyRev - projectedMonthlyRev;
+    h += fc('vs Projection', (vsProj >= 0 ? '+' : '') + '$' + vsProj.toLocaleString(), vsProj >= 0 ? 'var(--accent)' : 'var(--danger)', 'proj: $' + projectedMonthlyRev.toLocaleString(), vsProj >= 0 ? 'ahead' : 'behind');
+  }
   h += fc('Monthly Expenses', '$' + totalExpense.toLocaleString(), 'var(--danger)', 'fixed + variable', '');
   h += fc('Monthly Net', (monthlyNet >= 0 ? '+' : '') + '$' + monthlyNet.toLocaleString(), monthlyNet >= 0 ? 'var(--accent)' : 'var(--danger)', '', '');
   h += fc('Annual Net', (annualNet >= 0 ? '+' : '') + '$' + annualNet.toLocaleString(), annualNet >= 0 ? 'var(--accent)' : 'var(--danger)', '', '');
@@ -280,9 +299,14 @@ function renderPropertyFinance(propId) {
       '$' + Math.round(monthly).toLocaleString() + '/mo · $' + Math.round(annual).toLocaleString() + '/yr</span></div>';
   }
 
-  h += '<div style="font-size:0.72rem;font-weight:600;color:var(--accent);margin-bottom:4px;">REVENUE</div>';
-  if (monthlyBlendedRev > 0) h += plRow('Nightly Revenue', monthlyBlendedRev, monthlyBlendedRev * 12, 'var(--accent)', true, '$' + blendedADR + ' ADR × ' + Math.round(occ30 * 30) + ' nights');
-  if (monthlyCleanRev > 0) h += plRow('Cleaning Fee Revenue', monthlyCleanRev, monthlyCleanRev * 12, 'var(--accent)', true, '$' + cleaning + ' × ' + turnovers + ' turnovers');
+  h += '<div style="font-size:0.72rem;font-weight:600;color:var(--accent);margin-bottom:4px;">REVENUE' + (useActualRev ? ' (actual from Guesty)' : ' (projected)') + '</div>';
+  if (useActualRev) {
+    h += plRow('Avg Monthly Revenue', totalMonthlyRev, totalMonthlyRev * 12, 'var(--accent)', true, actualData.months + ' months of data');
+    if (thisMonthRev > 0) h += plRow('This Month', thisMonthRev, 0, 'var(--accent)', true, thisMonthOcc > 0 ? thisMonthOcc + '% occ' : '');
+  } else {
+    if (monthlyBlendedRev > 0) h += plRow('Nightly Revenue', monthlyBlendedRev, monthlyBlendedRev * 12, 'var(--accent)', true, '$' + blendedADR + ' ADR × ' + Math.round(occ30 * 30) + ' nights (est.)');
+    if (monthlyCleanRev > 0) h += plRow('Cleaning Fee Revenue', monthlyCleanRev, monthlyCleanRev * 12, 'var(--accent)', true, '$' + cleaning + ' × ' + turnovers + ' turnovers (est.)');
+  }
   h += '<div style="border-top:1px solid var(--border);margin:4px 0;"></div>';
   h += plRow('Total Revenue', totalMonthlyRev, totalMonthlyRev * 12, 'var(--accent)', false);
 
@@ -551,7 +575,7 @@ function renderPropertyFinance(propId) {
       h += '<td style="font-family:DM Mono,monospace;font-weight:600;">' + (t.requiredADR > 0 ? '$' + Math.round(t.requiredADR) : '—') + '</td>';
       h += '<td style="font-family:DM Mono,monospace;">' + (t.currentRate > 0 ? '$' + Math.round(t.currentRate) : '—') + '</td>';
       h += '<td style="font-family:DM Mono,monospace;color:' + gapColor + ';">' + (t.currentRate > 0 && t.requiredADR > 0 ? (t.gap > 0 ? '+$' + Math.round(t.gap) : '-$' + Math.abs(Math.round(t.gap))) : '—') + '</td>';
-      h += '<td style="font-family:DM Mono,monospace;' + (actualRev > 0 ? 'color:var(--accent);' : '') + '">' + (actualRev > 0 ? '$' + Math.round(actualRev).toLocaleString() : (isPast ? '<span style="color:var(--danger);">$0</span>' : '—')) + '</td>';
+      h += '<td style="font-family:DM Mono,monospace;' + (actualRev > 0 ? 'color:var(--accent);' : '') + '">' + (actualRev > 0 ? '$' + Math.round(actualRev).toLocaleString() : (isPast || isCurrent ? '<span style="color:var(--text3);">$0</span>' : '—')) + '</td>';
       h += '<td>' + (actualRev > 0 ? '<span style="color:' + statusColor + ';">' + statusIcon + ' ' + pct + '%</span>' : statusIcon) + '</td>';
       h += '</tr>';
     });
@@ -738,7 +762,10 @@ function renderRevenueSnapshot(propId) {
   // Current PriceLabs rate
   if (p.pl_base_price) {
     h += snapCard('PriceLabs Base', '$' + p.pl_base_price + '/nt', 'set rate', 'var(--purple)');
-    if (p.pl_rec_base) h += snapCard('PL Recommended', '$' + p.pl_rec_base + '/nt', p.pl_rec_base > p.pl_base_price ? '↑ raise $' + (p.pl_rec_base - p.pl_base_price) : p.pl_rec_base < p.pl_base_price ? '↓ lower $' + (p.pl_base_price - p.pl_rec_base) : 'on target', p.pl_rec_base > p.pl_base_price ? 'var(--accent)' : 'var(--purple)');
+    if (p.pl_rec_base && !isNaN(p.pl_rec_base) && Number(p.pl_rec_base) > 0) {
+      var rec = Math.round(Number(p.pl_rec_base));
+      h += snapCard('PL Recommended', '$' + rec + '/nt', rec > p.pl_base_price ? '↑ raise $' + (rec - p.pl_base_price) : rec < p.pl_base_price ? '↓ lower $' + (p.pl_base_price - rec) : 'on target', rec > p.pl_base_price ? 'var(--accent)' : 'var(--purple)');
+    }
   }
 
   // Occupancy
@@ -749,18 +776,36 @@ function renderRevenueSnapshot(propId) {
   }
 
   // Current projected revenue
+  // Actual revenue from Guesty (ground truth)
+  var actualData = (window._actualRevenue || {})[p.id];
+  var actualMonthlyAvg = actualData && actualData.monthly_avg > 0 ? actualData.monthly_avg : 0;
+  var thisMonthRev = actualData && actualData.this_month_rev > 0 ? actualData.this_month_rev : 0;
+
   var plRev = 0;
   if (p.pl_base_price && p.pl_occ_30d) {
     plRev = Math.round(p.pl_base_price * 30 * parseInt(p.pl_occ_30d) / 100);
-    h += snapCard('Current Revenue', '$' + plRev.toLocaleString() + '/mo', '$' + (plRev * 12).toLocaleString() + '/yr', 'var(--accent)');
+  }
+
+  // Show ACTUAL revenue first (from Guesty), then PriceLabs projection separately
+  if (actualMonthlyAvg > 0) {
+    h += snapCard('Actual Revenue', '$' + actualMonthlyAvg.toLocaleString() + '/mo', thisMonthRev > 0 ? 'this month: $' + thisMonthRev.toLocaleString() : 'from Guesty actuals', 'var(--accent)');
+  }
+  if (plRev > 0) {
+    h += snapCard(actualMonthlyAvg > 0 ? 'PL Projection' : 'Projected Revenue', '$' + plRev.toLocaleString() + '/mo', '$' + p.pl_base_price + '/nt × ' + parseInt(p.pl_occ_30d) + '% occ', actualMonthlyAvg > 0 ? 'var(--text2)' : 'var(--purple)');
   }
 
   // Analysis projected
   if (p.analysis_monthly && p.analysis_monthly > 0) {
-    var diff = p.analysis_monthly - (plRev || 0);
-    h += snapCard('Analysis Projects', '$' + Math.round(p.analysis_monthly).toLocaleString() + '/mo', p.analysis_nightly_rate ? '$' + p.analysis_nightly_rate + '/nt @ ' + Math.round((p.analysis_occ || 0.5) * 100) + '%' : '', diff > 0 ? 'var(--accent)' : 'var(--text2)');
-    if (plRev > 0 && Math.abs(diff) > 50) {
-      h += snapCard('Revenue Gap', (diff > 0 ? '+' : '') + '$' + diff.toLocaleString() + '/mo', (diff > 0 ? '+' : '') + '$' + (diff * 12).toLocaleString() + '/yr', diff > 0 ? 'var(--accent)' : 'var(--danger)');
+    var compareBase = actualMonthlyAvg > 0 ? actualMonthlyAvg : plRev;
+    var compareLabel = actualMonthlyAvg > 0 ? 'actual' : 'PL projection';
+    var diff = compareBase > 0 ? Math.round(p.analysis_monthly) - compareBase : 0;
+    h += snapCard('Analysis Projects', '$' + Math.round(p.analysis_monthly).toLocaleString() + '/mo', p.analysis_nightly_rate ? '$' + p.analysis_nightly_rate + '/nt @ ' + Math.round((p.analysis_occ || 0.5) * 100) + '%' : '', 'var(--text2)');
+    if (compareBase > 0 && Math.abs(diff) > 50) {
+      var gapSub = 'vs ' + compareLabel;
+      if (diff < 0 && p.analysis_nightly_rate && p.pl_base_price && p.analysis_nightly_rate < p.pl_base_price) {
+        gapSub = 'analysis stale — re-run';
+      }
+      h += snapCard('Revenue Gap', (diff > 0 ? '+' : '') + '$' + diff.toLocaleString() + '/mo', gapSub, diff > 0 ? 'var(--accent)' : 'var(--warn)');
     }
   }
 
@@ -777,10 +822,13 @@ function renderRevenueSnapshot(propId) {
     cost += (p.expense_electric || 0) + (p.expense_gas || 0) + (p.expense_water || 0) + (p.expense_internet || 0) + (p.expense_trash || 0) + (p.expense_other || 0);
   }
   if (!isManagedProp && cost > 0) {
-    var displayRev = plRev || p.analysis_monthly || 0;
+    var useActualForNet = actualMonthlyAvg > 0;
+    var displayRev = useActualForNet ? actualMonthlyAvg : (plRev || p.analysis_monthly || 0);
     var netRev = displayRev - cost;
+    var netLabel = useActualForNet ? 'Net Income' : (displayRev > 0 ? 'Est. Net Income' : 'Net Income');
+    var netSub = useActualForNet ? '$' + (Math.round(netRev) * 12).toLocaleString() + '/yr · from actuals' : (displayRev > 0 ? '$' + (Math.round(netRev) * 12).toLocaleString() + '/yr · projected' : 'no revenue data');
     h += snapCard('Expenses', '$' + Math.round(cost).toLocaleString() + '/mo', '', 'var(--danger)');
-    h += snapCard('Net Income', (netRev >= 0 ? '+' : '') + '$' + Math.round(netRev).toLocaleString() + '/mo', '$' + (Math.round(netRev) * 12).toLocaleString() + '/yr', netRev >= 0 ? 'var(--accent)' : 'var(--danger)');
+    h += snapCard(netLabel, (netRev >= 0 ? '+' : '') + '$' + Math.round(netRev).toLocaleString() + '/mo', netSub, netRev >= 0 ? 'var(--accent)' : 'var(--danger)');
   }
 
   h += '</div></div>';
@@ -1231,7 +1279,7 @@ async function loadSavedReports(propId) {
       var pd = latest.pricing_analysis.data;
       var h = '';
       // Restored banner
-      var ago = Math.round((Date.now() - new Date(latest.pricing_analysis.created_at).getTime()) / 86400000);
+      var ago = Math.round((Date.now() - new Date(latest.pricing_analysis.created_at + 'Z').getTime()) / 86400000);
       var agoText = ago === 0 ? 'today' : ago === 1 ? 'yesterday' : ago + ' days ago';
       h += '<div style="font-size:0.7rem;color:var(--text3);padding:4px 8px;background:var(--bg);border:1px solid var(--border);border-radius:4px;margin-bottom:8px;">' + _ico('refresh', 13) + ' Restored from ' + agoText + ' · ' + fmtUTC(latest.pricing_analysis.created_at) + ' · <em>Run Price Analysis to refresh</em></div>';
       // Sources
@@ -1281,7 +1329,7 @@ async function loadSavedReports(propId) {
 
     // Restore latest PL strategy into plStrategyResults
     var plStratEl = document.getElementById('plStrategyResults');
-    if (plStratEl && latest.pl_strategy && latest.pl_strategy.data && latest.pl_strategy.data.strategy && !latest.pl_strategy.data.context?.parse_error) {
+    if (plStratEl && latest.pl_strategy && latest.pl_strategy.data && latest.pl_strategy.data.strategy && (!latest.pl_strategy.data.context?.parse_error || latest.pl_strategy.data.strategy.base_price)) {
       renderPLStrategy(latest.pl_strategy.data, plStratEl);
       // Add "last updated" banner
       var plAgo = _agoText(latest.pl_strategy.created_at);
@@ -1374,7 +1422,13 @@ function renderPLStrategy(d, container) {
   if (s.strategy_summary) {
     h += '<div style="padding:14px;background:rgba(167,139,250,0.06);border:1px solid rgba(167,139,250,0.2);border-radius:8px;margin-bottom:14px;">';
     h += '<div style="font-weight:600;color:var(--purple);margin-bottom:6px;">Strategy Summary</div>';
-    h += '<div style="font-size:0.85rem;color:var(--text);">' + esc(s.strategy_summary) + '</div>';
+    h += '<div style="font-size:0.85rem;color:var(--text);white-space:pre-wrap;line-height:1.6;">' + esc(s.strategy_summary) + '</div>';
+    if (ctx.parse_error) {
+      h += '<div style="margin-top:8px;padding:8px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);border-radius:6px;font-size:0.72rem;color:var(--danger);">';
+      h += '<strong>Parse error:</strong> ' + esc(ctx.parse_detail || 'unknown') + '<br>';
+      h += '<em>Check Admin → System Log for details. The AI returned text instead of JSON — try generating again.</em>';
+      h += '</div>';
+    }
     h += '</div>';
   }
 
@@ -1708,32 +1762,50 @@ function renderPropertyCard(p, isBuilding, isChild) {
     monthlyCost += (p.expense_electric || 0) + (p.expense_gas || 0) + (p.expense_water || 0) + (p.expense_internet || 0) + (p.expense_trash || 0) + (p.expense_other || 0);
 
     var monthlyRev = p.est_monthly_revenue || 0;
+    var revIsActual = false; // true = Guesty actuals, false = projection
     var plMonthlyRev = 0;
     var cardADR = 0;
-    if (p.pl_base_price) {
-      var plB = parseFloat(p.pl_base_price) || 0;
-      var plM = parseFloat(p.pl_max_price) || plB;
-      var plR = parseFloat(p.pl_rec_base) || plB;
-      var plFwdPct = p.pl_occ_30d ? parseInt(p.pl_occ_30d) : null;
-      var plMktPct = p.pl_mkt_occ_30d ? parseInt(p.pl_mkt_occ_30d) : null;
-      var cardOcc = null;
-      if (plFwdPct !== null && plFwdPct > 10) cardOcc = plFwdPct / 100;
-      else if (plFwdPct === null && plMktPct !== null) cardOcc = Math.min(plMktPct / 100, 0.55);
-      if (cardOcc !== null && plB > 0) {
-        cardADR = Math.round(plB * 0.4 + plR * 0.3 + plB * 1.2 * 0.2 + (plB + plM) / 2 * 0.1);
-        plMonthlyRev = Math.round(cardADR * 30 * cardOcc);
-        if (plMonthlyRev > 0) monthlyRev = plMonthlyRev;
+
+    // Priority 1: Actual revenue from Guesty monthly_actuals
+    var cardActualData = (window._actualRevenue || {})[p.id];
+    if (cardActualData && cardActualData.monthly_avg > 0) {
+      monthlyRev = cardActualData.monthly_avg;
+      revIsActual = true;
+    } else {
+      // Priority 2: PriceLabs blended projection
+      if (p.pl_base_price) {
+        var plB = parseFloat(p.pl_base_price) || 0;
+        var plM = parseFloat(p.pl_max_price) || plB;
+        var plR = parseFloat(p.pl_rec_base) || plB;
+        var plFwdPct = p.pl_occ_30d ? parseInt(p.pl_occ_30d) : null;
+        var plMktPct = p.pl_mkt_occ_30d ? parseInt(p.pl_mkt_occ_30d) : null;
+        var cardOcc = null;
+        if (plFwdPct !== null && plFwdPct > 10) cardOcc = plFwdPct / 100;
+        else if (plFwdPct === null && plMktPct !== null) cardOcc = Math.min(plMktPct / 100, 0.55);
+        if (cardOcc !== null && plB > 0) {
+          cardADR = Math.round(plB * 0.4 + plR * 0.3 + plB * 1.2 * 0.2 + (plB + plM) / 2 * 0.1);
+          plMonthlyRev = Math.round(cardADR * 30 * cardOcc);
+          if (plMonthlyRev > 0) monthlyRev = plMonthlyRev;
+        }
       }
     }
     var analysisMonthly = p.analysis_monthly || 0;
     var net = isNaN(monthlyRev) ? 0 : monthlyRev - monthlyCost;
 
     // Profitability-based left border for quick glance scanning
+    // When using projections (not actuals), soften the colors to signal uncertainty
     var profitBorderColor = '';
     if (!p.is_research && (monthlyCost > 0 || monthlyRev > 0)) {
-      if (net >= 300) profitBorderColor = 'rgba(16,185,129,0.6)';       // profitable — green
-      else if (net >= 0) profitBorderColor = 'rgba(245,158,11,0.5)';    // breakeven — amber
-      else profitBorderColor = 'rgba(239,68,68,0.45)';                   // losing — red
+      if (revIsActual) {
+        if (net >= 300) profitBorderColor = 'rgba(16,185,129,0.6)';       // profitable — green
+        else if (net >= 0) profitBorderColor = 'rgba(245,158,11,0.5)';    // breakeven — amber
+        else profitBorderColor = 'rgba(239,68,68,0.45)';                   // losing — red
+      } else {
+        // Projections: use dimmer borders to signal "estimated"
+        if (net >= 300) profitBorderColor = 'rgba(16,185,129,0.3)';
+        else if (net >= 0) profitBorderColor = 'rgba(245,158,11,0.25)';
+        else profitBorderColor = 'rgba(239,68,68,0.25)';
+      }
     }
     var borderLeft = isChild
       ? '3px solid ' + (profitBorderColor || 'rgba(' + typeRgb + ',0.3)')
@@ -1917,7 +1989,7 @@ function renderPropertyCard(p, isBuilding, isChild) {
         '</div>' +
         '<div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">' +
           actualMark +
-          (net !== 0 && monthlyCost > 0 ? '<span style="font-size:0.72rem;font-weight:700;color:' + netColor + ';font-family:DM Mono,monospace;">' + (net >= 0 ? '+' : '') + '$' + Math.round(net).toLocaleString() + ' net</span>' : '') +
+          (net !== 0 && monthlyCost > 0 ? '<span title="' + (revIsActual ? 'Based on Guesty actuals' : 'Estimated from PriceLabs/analysis') + '" style="font-size:0.72rem;font-weight:700;color:' + netColor + ';font-family:DM Mono,monospace;' + (revIsActual ? '' : 'opacity:0.7;') + '">' + (revIsActual ? '' : '~') + (net >= 0 ? '+' : '') + '$' + Math.round(net).toLocaleString() + ' net</span>' : '') +
           trendHtml +
           healthBadge +
           (p.listing_status === 'active' ? '<span style="width:8px;height:8px;border-radius:50%;background:var(--accent);display:inline-block;" title="Live"></span>' : p.listing_status === 'paused' ? '<span style="width:8px;height:8px;border-radius:50%;background:#f59e0b;display:inline-block;" title="Paused"></span>' : '') +
@@ -2336,13 +2408,16 @@ function buildMonthlyTargets(p, actuals, seasonality, monthlyExpense, currentADR
   var histByPropMonth = {};
   var currentMonth = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
   (actuals || []).forEach(function(a) {
-    if (a.month >= currentMonth) return; // exclude partial current month
     var mn = parseInt(a.month.substring(5));
     var yr = parseInt(a.month.substring(0, 4));
-    if (!histByMonth[mn]) histByMonth[mn] = { revs: [], occs: [], adrs: [] };
-    histByMonth[mn].revs.push(a.total_revenue || 0);
-    histByMonth[mn].occs.push(a.occupancy_pct || 0);
-    if (a.avg_nightly_rate > 0) histByMonth[mn].adrs.push(a.avg_nightly_rate);
+    // For historical averages: exclude current month (partial data skews averages)
+    if (a.month < currentMonth) {
+      if (!histByMonth[mn]) histByMonth[mn] = { revs: [], occs: [], adrs: [] };
+      histByMonth[mn].revs.push(a.total_revenue || 0);
+      histByMonth[mn].occs.push(a.occupancy_pct || 0);
+      if (a.avg_nightly_rate > 0) histByMonth[mn].adrs.push(a.avg_nightly_rate);
+    }
+    // For actuals column: store per year-month (include current month — partial is better than $0)
     histByPropMonth[yr + '-' + mn] = { rev: a.total_revenue || 0, occ: a.occupancy_pct || 0, adr: a.avg_nightly_rate || 0 };
   });
   var hasActuals = Object.keys(histByMonth).length >= 3;
@@ -2460,6 +2535,14 @@ function buildMonthlyTargets(p, actuals, seasonality, monthlyExpense, currentADR
     // Actual revenue for this month (current year)
     var thisYearData = histByPropMonth[currentYear + '-' + mn];
     var actualRev = thisYearData ? thisYearData.rev : 0;
+
+    // For current month: also check _actualRevenue which may have fresher data
+    if (mn === currentMonthNum && actualRev === 0) {
+      var arData = (window._actualRevenue || {})[p.id];
+      if (arData && arData.this_month_rev > 0) {
+        actualRev = arData.this_month_rev;
+      }
+    }
 
     // Flag if this month is partial (current month)
     var isCurrentMonth = mn === currentMonthNum && thisYearData;
@@ -3254,7 +3337,7 @@ async function openProperty(id, initialTab) {
         // Latest analysis badge
         var latestStrat = (d.strategies && d.strategies.length > 0) ? d.strategies[0] : null;
         if (latestStrat) {
-          var stratAge = Math.round((Date.now() - new Date(latestStrat.created_at).getTime()) / 86400000);
+          var stratAge = Math.round((Date.now() - new Date(latestStrat.created_at + 'Z').getTime()) / 86400000);
           var stratAgeLabel = stratAge === 0 ? 'today' : stratAge === 1 ? 'yesterday' : stratAge + 'd ago';
           var stratColor = stratAge <= 7 ? 'var(--accent)' : stratAge <= 30 ? '#f0b840' : 'var(--text3)';
           mh += '<span style="font-size:0.62rem;padding:2px 8px;background:var(--surface3);border-radius:4px;color:' + stratColor + ';border:1px solid ' + stratColor + ';">' + _ico('dollarSign', 10, stratColor) + ' $' + (latestStrat.base_nightly_rate || 0) + '/nt · ' + Math.round((latestStrat.projected_occupancy || 0) * 100) + '% · $' + Math.round(latestStrat.projected_monthly_avg || 0).toLocaleString() + '/mo <span style="opacity:0.7;">(' + stratAgeLabel + ')</span></span>';
