@@ -8,6 +8,7 @@ async function loadDashboard() {
   try {
     var d = await api('/api/dashboard');
     renderDashboard(d);
+    loadDashBills();
   } catch (err) {
     el.innerHTML = '<div style="color:var(--danger);padding:20px;">' + esc(err.message) + '</div>';
   }
@@ -404,6 +405,9 @@ function renderDashboard(d) {
     });
     h += '</div>';
   }
+
+  // ── Bills Due Widget ────────────────────────────────────────────────────
+  h += '<div id="dashBillsWidget"></div>';
 
   // ── Setup Prompts — things that need manual action ────────────────────
   var sys = d.system_health || {};
@@ -1092,4 +1096,38 @@ async function runSmartRefresh(btn) {
     toast('Refresh failed: ' + err.message, 'error');
   }
   if (btn) { btn.disabled = false; btn.innerHTML = _ico('refresh', 12) + ' Update Selected'; }
+}
+
+// ── Dashboard Bills Widget ──────────────────────────────────────────────────
+async function loadDashBills() {
+  var el = document.getElementById('dashBillsWidget');
+  if (!el) return;
+  try {
+    var d = await api('/api/bills/dashboard');
+    if ((d.month_count || 0) === 0) return; // No bills configured
+    var overdue = d.overdue || [];
+
+    // Only show on dashboard if there are overdue bills
+    if (overdue.length === 0) return;
+
+    var h = '<div class="card" style="margin-bottom:16px;padding:12px 16px;border-left:4px solid #dc2626;">';
+    h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">';
+    h += '<div style="font-size:0.78rem;font-weight:600;color:#dc2626;display:flex;align-items:center;gap:6px;">' + _ico('alertTriangle', 16, '#dc2626') + ' OVERDUE BILLS';
+    h += ' <span style="font-weight:400;color:var(--text3);">(' + overdue.length + ')</span></div>';
+    h += '<button class="btn btn-xs" onclick="switchView(\'bills\')" style="font-size:0.68rem;">View All Bills</button>';
+    h += '</div>';
+
+    overdue.forEach(function(b) {
+      var propLabel = b.unit ? b.unit + ' — ' : '';
+      propLabel += b.prop_name || '';
+      h += '<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:0.78rem;color:#dc2626;">';
+      h += '<span>' + _ico('receipt', 12, '#dc2626') + ' ' + esc(b.name) + (propLabel ? ' <span style="color:var(--text3);font-size:0.68rem;">(' + esc(propLabel) + ')</span>' : '') + '</span>';
+      h += '<span style="font-family:DM Mono,monospace;">$' + (b.amount_due || 0).toLocaleString() + '</span></div>';
+    });
+
+    h += '</div>';
+    el.innerHTML = h;
+  } catch (err) {
+    // Silently fail — bills widget is optional
+  }
 }

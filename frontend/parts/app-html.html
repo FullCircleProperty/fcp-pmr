@@ -24,6 +24,7 @@
     <button class="tab" data-view="intel" data-icon="radar" onclick="switchView('intel')">Intel</button>
     <button class="tab" data-view="pms" data-icon="link" onclick="switchView('pms')">Integrations</button>
     <button class="tab" data-view="finances" data-icon="wallet" onclick="switchView('finances')">Finances</button>
+    <button class="tab" data-view="bills" data-icon="receipt" onclick="switchView('bills')">Bills</button>
     <button class="tab" data-view="management" data-icon="handshake" id="managementTab" style="display:none;" onclick="switchView('management')">Management</button>
     <button class="tab" data-view="admin" data-icon="settings" id="adminTab" style="display:none;" onclick="switchView('admin')">Admin</button>
     <button class="tab" data-view="marketing" data-icon="star" id="marketingTab" style="display:none;" onclick="switchView('marketing')">Marketing</button>
@@ -695,6 +696,18 @@
 
   <!-- Analyze -->
   <div class="view" id="view-analyze">
+    <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:16px;">
+      <button class="tab active" onclick="switchAnalyzeTab('overview')" data-atab="overview" style="border-bottom:2px solid var(--accent);margin-bottom:-2px;">All Properties</button>
+      <button class="tab" onclick="switchAnalyzeTab('analyze')" data-atab="analyze" style="margin-bottom:-2px;">Run Analysis</button>
+    </div>
+
+    <!-- Subtab: All Properties Overview -->
+    <div id="analyzeTab-overview">
+      <div id="pricingOverviewContent"><p style="color:var(--text3);font-size:0.85rem;">Loading pricing overview...</p></div>
+    </div>
+
+    <!-- Subtab: Run Analysis (existing) -->
+    <div id="analyzeTab-analyze" style="display:none;">
     <div class="card">
       <h2 style="margin-bottom:16px;">Run Pricing Analysis</h2>
       <div class="form-group"><label>Select Property</label><select id="analyzePropertySelect" onchange="onAnalyzePropertyChange()"><option value="">-- Select --</option></select></div>
@@ -722,6 +735,7 @@
     </div>
     <div id="plCalendarSection" class="card" style="display:none;margin-top:14px;"></div>
     <div id="analysisResults"></div>
+    </div><!-- /analyzeTab-analyze -->
   </div>
 
   <!-- Market Data -->
@@ -1004,9 +1018,17 @@
       <div id="finPropertyTable"></div>
     </div>
     <div id="finServiceBreakdown"></div>
+    <div id="finBillTracker"></div>
     <div id="finCapitalExpenses"></div>
     <div class="card" style="margin-top:14px;">
       <div id="finApiCosts"></div>
+    </div>
+  </div>
+
+  <!-- Bills — recurring bill tracking and payment management -->
+  <div class="view" id="view-bills">
+    <div id="billsTabContent">
+      <div style="padding:20px;text-align:center;color:var(--text3);">Loading bills...</div>
     </div>
   </div>
 

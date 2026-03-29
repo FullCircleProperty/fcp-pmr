@@ -167,7 +167,7 @@ const cascadeTables = [
   'performance_snapshots', 'property_expenses', 'property_services', 'property_platforms',
   'monthly_actuals', 'property_shares', 'pricelabs_listings', 'guest_stays',
   'price_history', 'property_algo_overrides', 'property_images', 'guesty_calendar',
-  'channel_intelligence'
+  'channel_intelligence', 'bill_accounts', 'bill_payments'
 ];
 const deletePropertyFunc = WORKER.substring(
   WORKER.indexOf('async function deleteProperty('),

@@ -1,6 +1,6 @@
 # FCP-PMR Deployment & Architecture Guide
 **Living document — update with every major change.**
-**Last updated:** v2.33.0 (2026-03-14)
+**Last updated:** v2.37.1 (2026-03-29)
 
 ---
 
@@ -32,12 +32,12 @@ Domain:       pmr.fullcircle-property.com
 
 ### File Structure (current)
 ```
-src/worker.js              13,908 lines  ← ALL backend code (monolith)
+src/worker.js              15,293 lines  ← ALL backend code (monolith)
 frontend/parts/js/
   00-dashboard.js             700 lines  ← Dashboard KPIs, action items
   01-globals.js             1,634 lines  ← Auth, state, utilities, _ico()
   02-properties.js          5,384 lines  ← Property CRUD, detail view, listing health
-  03-analysis.js              428 lines  ← Global analysis tab
+  03-analysis.js              844 lines  ← Global analysis tab + Pricing Overview
   04-comparables.js           278 lines  ← Comps management
   05-lookup.js                354 lines  ← Address/property lookup
   06-csv.js                    56 lines  ← CSV export
@@ -188,8 +188,8 @@ Same incremental approach: only extract when modifying that section.
 | Trigger | What | Notes |
 |---------|------|-------|
 | `0 */6 * * *` | Guesty incremental reservation sync | Every 6 hours |
-| `0 6 * * *` | Full daily rebuild | PriceLabs + Guesty + actuals + intelligence + market crawl + profiles + stale cleanup |
-| `0 6 * * 1` | Weekly Monday listings refresh | Guesty listing data resync |
+| `0 6 * * *` | Full daily rebuild | PriceLabs + Guesty + actuals + intelligence + snapshots + pricing health check + auto-analyze + market crawl + stale cleanup |
+| `0 6 * * 1` | Weekly Monday listings refresh | Guesty listing data resync + PriceLabs listings |
 
 ---
 
@@ -197,6 +197,12 @@ Same incremental approach: only extract when modifying that section.
 
 | Version | Date | Key Changes |
 |---------|------|-------------|
+| v2.37.1 | 2026-03-29 | **Bulk Re-analyze All**: `bulkAnalyzePricing` now accepts `reanalyze_all: true` to re-run unified AI analysis on ALL active properties, not just unanalyzed. New "Re-analyze All" button on Pricing Overview toolbar with confirmation dialog, progress spinner, and results table. **Occupancy vs Market Badge**: Property cards now show occupancy comparison badge alongside existing ADR badge — green ↑ when beating market by 5+ pts, blue ≈ when within range, red ↓ when lagging. Reads PriceLabs forward 30d occupancy vs market. **Pipeline cleanup**: Confirmed items 1-3 (Property Research Tab, Market Demographics, Guest Origins) were already fully built and deployed — removed from pipeline. |
+| v2.37.0 | 2026-03-29 | **Unified Pricing Analysis**: Consolidated three separate AI analysis functions (`generateAIStrategy`, `generatePLStrategyRecommendation`, `generateRevenueOptimization`) into single `generateUnifiedAnalysis()` — one AI call produces pricing, PriceLabs setup, seasonal strategy, and revenue optimization. Eliminates contradictions between separate analyses and saves ~2/3 AI token cost. All three API routes (`/analyze`, `/pl-strategy`, `/revenue-optimize`) now call unified function with backward-compatible response shapes. New `buildUnifiedPrompt()` combines best context from all three original prompts. Robust `parseUnifiedResponse()` with 4-tier fallback parsing (direct JSON → control char cleanup → quote fixing → regex extraction). Saves to `unified_analysis` report type plus backward-compat writes to `pricing_analysis`, `pl_strategy`, `revenue_optimization`. Frontend: analyze results now show seasonal strategy (peak/low with dollar amounts), PriceLabs setup steps, action items, quick wins, and strategy summary inline. `renderStrategyCard()` peak/low badges now show dollar amounts (e.g., "+40% Peak → $231/nt"). Fixed pre-existing bug: `currentRev`, `listingAudit`, `cleaningFee`, `cleaningCost` were undefined in old `generateRevenueOptimization` prompt. `autoAnalyzeProperties()` and `bulkAnalyzePricing()` now call unified function. Old functions kept but deprecated. |
+| v2.35.0 | 2026-03-27 | **Daily pricing health check cron** (`dailyPricingHealthCheck`): lightweight daily comparison of actual ADR vs PriceLabs set rates vs AI recommendations — flags divergent properties (>20% gap), occupancy underperformance (>15pts below market), stale analysis, missing PriceLabs link. Stores divergent IDs in `market_intelligence` for auto-analyze prioritization. **Smarter `autoAnalyzeProperties`**: moved from weekly to daily, 3-tier priority (never-analyzed → divergent properties from health check → stale 14+ days), max 3/day (was 5/week), logs results via `syslog()`. New API endpoint `POST /api/pricing/health-check`. New Health Check UI button on Pricing Overview tab with severity-sorted results table. **Bill Tracker**: new `bill_accounts` + `bill_payments` tables for recurring utility/insurance/subscription tracking. Full CRUD API (`/api/bills`, `/api/bills/pay`, `/api/bills/dashboard`). Finance tab section with category-grouped payment table, mark-paid workflow, period navigation, add/manage accounts forms. Dashboard widget showing overdue/upcoming bills. Auto-generates monthly payment entries. Trailing 3-month actuals auto-update property `expense_*` fields for better P&L accuracy. Cascade delete coverage (19 tables). New icons: `heartPulse`, `xCircle`, `droplet`, `wifi`, `undo`. |
+| v2.34.0 | 2026-03-24 | **Analysis unification:** `gatherPropertyContext()` — single shared data collection function replaces 34 independent DB queries across 3 analysis functions (analyzePricing, generatePLStrategyRecommendation, generateRevenueOptimization). **Cross-referencing:** analyzePricing now injects previous PL Strategy + Revenue Optimization summaries into AI prompt so analyses stay consistent. Pricing Overview fixes: column headers renamed from "PL" to "Base/Min/Max Rate" with PriceLabs tooltips, min nights sourced from Guesty calendar (actual setting), pet fee source indicators, `p.pet_fee` / `p.sleeps` column bugs fixed. |
+| v2.33.8 | 2026-03-24 | Pricing Overview ("All Properties") subtab on Pricing view — portfolio-wide pricing cockpit with sortable columns, filter bar, PL vs AI discrepancy highlighting (Δ gap column), rate health badges, actual ADR + occ vs market occ comparison, 3mo revenue, cleaning/pet/extra-guest-fee columns, discounts display, stale analysis warnings, inline action buttons, portfolio totals row, recommendation cards. New `/api/pricing/overview` endpoint. Intelligence debug endpoint expanded with data verification toolkit. Guest rebuild batched. |
+| v2.33.7 | 2026-03-24 | LEFT JOIN duplication bug fix (277-stay "Jason Beisel ghost" — reservation rows multiplied by guest_stays JOIN), guest ID mismatch fix (reservation ID ≠ guest ID), Rate Context Intelligence (intel section 9 — cross-references ADR vs PriceLabs set rates, classifies pricing health), booking pace completed-stays fallback (handles CSV imports missing booking_date), DOW chart context + lead time sample sizes, SearchAPI cancellation reminder on dashboard, wrangler.toml database_id hardcoded. |
 | v2.33.0 | 2026-03-14 | audit.js: automated deep code audit (14 checks, 7 bug categories). Found & fixed: booking pace intel missing managed exclusion (4 queries), getDashboard demand segments missing managed exclusion (2 queries), 3 sequential-write loops → env.DB.batch() (demand segments, algo templates, watchlist). SearchAPI cancellation reminder on dashboard. Listing Health panel + Owner Statement PDF confirmed already complete. |
 | v2.32.1 | 2026-03-14 | Code audit: 5 managed-property leakage bugs in intel queries → fixed with property filter. Sequential D1 writes → env.DB.batch() in 6 sections. Smart Data Freshness panel on dashboard — shows per-source freshness (green/yellow/red), auto-selects stale free items, cost calculator for paid items, selective execution with live progress. 9 pre-deploy bugs caught and fixed (3 nonexistent function calls, wrong function for listings sync, 5 wrong return field names, missing sync_log writes). |
 | v2.32.0 | 2026-03-14 | Advanced Portfolio Intelligence: 8 new intel sections (guest origins, DOW patterns, booking pace/velocity, lead time trends, RevPAN, cancellation patterns, price elasticity, cross-platform pricing). New Insights tab in Intel hub. AI prompt context enriched with all new metrics. Zero new API calls — all derived from existing Guesty + PriceLabs data. |
@@ -244,6 +250,9 @@ Same incremental approach: only extract when modifying that section.
 | getDashboard demand segments unfiltered | v2.33.0 | topSeg and unclassified reservation counts included managed/research properties | audit.js check #3 scans all portfolio-level aggregations |
 | Sequential .run() in demand segment loop | v2.33.0 | rebuildIntelligence classified 100s of reservations one-by-one → D1 subrequest risk | audit.js check #4 detects await .run() inside for/forEach |
 | Calling nonexistent functions in refresh | v2.32.1 | `rebuildMonthlyActuals`, `rebuildPerformanceSnapshots`, `rebuildAllMarketProfiles` don't exist — the real names are `processGuestyData`, `capturePerformanceSnapshots`, and `buildMarketProfile` per city. Also `syncGuestyApi` ≠ `syncGuestyListingsApi`. | Always `grep -n 'async function NAME'` before calling any function. Verify return field names by reading the actual `return json({...})` line. |
+| LEFT JOIN duplication ("Jason Beisel ghost") | v2.33.7 | LEFT JOIN from `guesty_reservations` to `guest_stays` multiplied reservation rows when a guest had multiple stays — one guest appeared with 277 reservations. Row count inflated across dashboards and analytics. | Never LEFT JOIN to a table with 1:N cardinality without aggregation or deduplication. Use subqueries or ensure JOIN target has unique keys matching the join condition. |
+| Guest ID ≠ reservation ID mismatch | v2.33.7 | Code used `reservation.id` (the reservation's DB row ID) where it should have used `reservation.guest_id` to look up guest details — linked wrong guest to reservation. | Always verify which ID column is semantically correct: `id` is the row's own PK, `guest_id` is the FK to the guest table. |
+| `p.pet_fee` / `p.sleeps` / `p.max_guests` don't exist | v2.34.0 | New query referenced columns assumed to be on `properties` table — `pet_fee` lives on `pricing_strategies` + `guesty_reservations`, `sleeps` lives on `comparables`, guest capacity is `guesty_listings.listing_accommodates`. Three consecutive D1_ERROR deploys. | Never assume column existence — run `grep -n 'CREATE TABLE.*tablename\|ALTER TABLE tablename ADD' src/worker.js migrations/` before writing any new query. |
 
 ---
 
@@ -322,4 +331,6 @@ tar czf fcp-pmr-v{VERSION}.tar.gz \
 
 **System:** `users`, `sessions`, `images`, `app_settings`, `ai_usage`, `api_usage`, `rc_usage`, `cf_usage`, `service_catalog`, `sync_log`
 
-**All tables with `property_id`** must be included in cascade delete. Current coverage: 17 tables + child units via `parent_id`.
+**Bills:** `bill_accounts`, `bill_payments`
+
+**All tables with `property_id`** must be included in cascade delete. Current coverage: 19 tables + child units via `parent_id`.

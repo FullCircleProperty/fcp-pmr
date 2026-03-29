@@ -19,6 +19,7 @@ async function loadFinances() {
     renderFinActualVsExpected(d.portfolio);
     renderServiceBreakdown(d.portfolio);
     loadCapitalExpenses();
+    loadBillsSummaryCard();
     renderFinanceByCity(d.by_city || []);
     renderFinancePropertyTable(d.properties || []);
     renderApiCosts(d.api_costs || {});
@@ -1596,4 +1597,507 @@ function exportAllOwnerStatements() {
     setTimeout(function() { exportOwnerStatementPDF(owner); }, idx * 500);
   });
   toast('Generating ' + ownerList.length + ' PDF statement(s)...', 'info');
+}
+// ── BILL TRACKER ────────────────────────────────────────────────────────────
+var _billsData = null;
+
+// Compact summary card for Finance tab
+async function loadBillsSummaryCard() {
+  var el = document.getElementById('finBillTracker');
+  if (!el) return;
+  try {
+    var d = await api('/api/bills/dashboard');
+    if ((d.month_count || 0) === 0) { el.innerHTML = ''; return; }
+    var overdue = d.overdue || [];
+    var dueSoon = d.due_soon || [];
+    var paidPct = d.month_count > 0 ? Math.round(d.month_paid / d.month_count * 100) : 0;
+    var remaining = Math.round(d.month_total - (d.month_total * d.month_paid / d.month_count));
+    var borderColor = overdue.length > 0 ? '#dc2626' : d.month_paid === d.month_count ? '#16a34a' : '#3b82f6';
+
+    var h = '<div class="card" style="margin-top:14px;border-left:4px solid ' + borderColor + ';padding:12px 16px;">';
+    h += '<div style="display:flex;justify-content:space-between;align-items:center;">';
+    h += '<div>';
+    h += '<div style="font-size:0.82rem;font-weight:600;display:flex;align-items:center;gap:6px;">' + _ico('receipt', 15, borderColor) + ' Bills</div>';
+    h += '<div style="font-size:0.75rem;color:var(--text3);margin-top:2px;">';
+    h += d.month_paid + '/' + d.month_count + ' paid (' + paidPct + '%)';
+    if (overdue.length > 0) h += ' · <span style="color:#dc2626;font-weight:600;">' + overdue.length + ' overdue</span>';
+    else if (dueSoon.length > 0) h += ' · <span style="color:#f59e0b;">' + dueSoon.length + ' due soon</span>';
+    h += '</div></div>';
+    h += '<div style="display:flex;align-items:center;gap:12px;">';
+    if (d.month_paid < d.month_count) {
+      h += '<span style="font-family:DM Mono,monospace;font-size:0.88rem;font-weight:600;color:var(--text2);">$' + Math.round(d.month_total).toLocaleString() + '</span>';
+    }
+    h += '<button class="btn btn-xs" onclick="switchView(\'bills\')" style="font-size:0.7rem;">' + _ico('arrowRight', 11) + ' View All</button>';
+    h += '</div></div>';
+    // Progress bar
+    h += '<div style="height:4px;background:var(--surface2);border-radius:2px;margin-top:8px;overflow:hidden;">';
+    h += '<div style="height:100%;width:' + paidPct + '%;background:' + borderColor + ';border-radius:2px;transition:width 0.3s;"></div>';
+    h += '</div>';
+    h += '</div>';
+    el.innerHTML = h;
+  } catch { el.innerHTML = ''; }
+}
+
+// Full Bills tab
+async function loadBillsTab() {
+  var el = document.getElementById('billsTabContent');
+  if (!el) return;
+  el.innerHTML = '<div style="padding:20px;text-align:center;"><div class="spinner"></div></div>';
+  try {
+    var d = await api('/api/bills');
+    _billsData = d;
+    renderBillTracker(d, el);
+  } catch (err) {
+    el.innerHTML = '<p style="color:var(--danger);padding:12px;">Bill tracker error: ' + esc(err.message) + '</p>';
+  }
+}
+
+function renderBillTracker(d, el) {
+  var accts = d.accounts || [];
+  var byPeriod = d.payments_by_period || {};
+  var cp = d.current_period || '';
+  var sum = d.summary || {};
+  var currentBills = byPeriod[cp] || [];
+  var today = new Date().toISOString().split('T')[0];
+
+  var h = '<div class="card">';
+  h += '<div class="card-header"><h2>' + _ico('receipt', 20) + ' Bill Tracker</h2>';
+  h += '<div style="display:flex;gap:6px;">';
+  h += '<button class="btn btn-xs" onclick="_showAddBillForm()" title="Add a recurring bill">' + _ico('plus', 12) + ' Add Bill</button>';
+  h += '<button class="btn btn-xs" onclick="loadBillsTab()" title="Refresh">' + _ico('refresh', 12) + '</button>';
+  h += '</div></div>';
+
+  // Summary KPIs
+  var paidCount = currentBills.filter(function(b) { return b.status === 'paid'; }).length;
+  var overdueCount = currentBills.filter(function(b) { return b.status !== 'paid' && b.due_date && b.due_date < today; }).length;
+  h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:14px;">';
+  h += _billKpi('Total Due', '$' + Math.round(sum.total_due || 0).toLocaleString(), 'dollarSign', 'var(--text)');
+  h += _billKpi('Paid', '$' + Math.round(sum.total_paid || 0).toLocaleString(), 'check', '#16a34a');
+  h += _billKpi('Progress', paidCount + '/' + currentBills.length, 'target', '#06b6d4');
+  if (overdueCount > 0) h += _billKpi('Overdue', overdueCount, 'alertTriangle', '#dc2626');
+  var remaining = (sum.total_due || 0) - (sum.total_paid || 0);
+  if (remaining > 0) h += _billKpi('Remaining', '$' + Math.round(remaining).toLocaleString(), 'clock', '#f59e0b');
+  h += '</div>';
+
+  // Add Bill form placeholder
+  h += '<div id="addBillFormArea"></div>';
+
+  if (accts.length === 0) {
+    h += '<div style="text-align:center;padding:24px;color:var(--text3);">';
+    h += _ico('receipt', 32, 'var(--text3)');
+    h += '<p style="margin:8px 0 4px;">No bills set up yet</p>';
+    h += '<p style="font-size:0.75rem;">Add your recurring bills (electric, gas, internet, insurance) to track payments across all properties.</p>';
+    h += '<button class="btn btn-primary btn-sm" onclick="_showAddBillForm()" style="margin-top:8px;">' + _ico('plus', 14) + ' Add Your First Bill</button>';
+    h += '</div>';
+    h += '</div>';
+    el.innerHTML = h;
+    return;
+  }
+
+  // Period selector + filters
+  var periods = Object.keys(byPeriod).sort().reverse();
+  if (periods.indexOf(cp) < 0) periods.unshift(cp);
+  h += '<div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;align-items:center;">';
+  h += '<span style="font-size:0.72rem;color:var(--text3);">Month:</span>';
+  var showPeriods = periods.slice(0, 6);
+  showPeriods.forEach(function(p) {
+    var active = p === (window._billPeriod || cp);
+    var label = _periodLabel(p);
+    h += '<button class="btn btn-xs' + (active ? ' btn-primary' : '') + '" onclick="window._billPeriod=\'' + p + '\';renderBillTracker(_billsData,document.getElementById(\'billsTabContent\'));" style="font-size:0.7rem;">' + label + '</button>';
+  });
+  h += '</div>';
+
+  // Bills table for selected period
+  var selPeriod = window._billPeriod || cp;
+  var bills = byPeriod[selPeriod] || [];
+
+  // Collect filter options from all bills + generated entries
+  var allBillsForFilters = bills.slice();
+  var billAcctIds = new Set(bills.map(function(b) { return b.bill_account_id; }));
+  accts.forEach(function(a) {
+    if (a.is_active && !billAcctIds.has(a.id)) {
+      allBillsForFilters.push({ city: a.city || '', category: a.category, status: 'pending', due_date: null, due_day: a.due_day || 1 });
+    }
+  });
+
+  // Unique cities and categories for filters
+  var cities = {};
+  allBillsForFilters.forEach(function(b) { var c = b.city || 'Portfolio'; if (c) cities[c] = (cities[c] || 0) + 1; });
+  var cityList = Object.keys(cities).sort();
+
+  // Filter bar
+  var bf = window._billFilter || 'all';
+  var bt = window._billTown || 'all';
+  h += '<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center;">';
+  h += '<span style="font-size:0.72rem;color:var(--text3);">Status:</span>';
+  var statusFilters = [['all','All'],['unpaid','Unpaid'],['overdue','Overdue'],['due_soon','Due Soon'],['paid','Paid']];
+  statusFilters.forEach(function(f) {
+    var active = bf === f[0];
+    h += '<button class="btn btn-xs' + (active ? ' btn-primary' : '') + '" onclick="window._billFilter=\'' + f[0] + '\';renderBillTracker(_billsData,document.getElementById(\'billsTabContent\'));" style="font-size:0.7rem;">' + f[1] + '</button>';
+  });
+  if (cityList.length > 1) {
+    h += '<span style="font-size:0.72rem;color:var(--text3);margin-left:6px;">Town:</span>';
+    h += '<select onchange="window._billTown=this.value;renderBillTracker(_billsData,document.getElementById(\'billsTabContent\'));" style="font-size:0.7rem;padding:2px 6px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:4px;">';
+    h += '<option value="all"' + (bt === 'all' ? ' selected' : '') + '>All Towns</option>';
+    cityList.forEach(function(c) {
+      h += '<option value="' + esc(c) + '"' + (bt === c ? ' selected' : '') + '>' + esc(c) + ' (' + cities[c] + ')</option>';
+    });
+    h += '</select>';
+  }
+  h += '</div>';
+
+  // Apply status + town filters
+  var filteredBills = bills.slice();
+
+  // Add generated entries for accounts missing payment records
+  var existingAcctIds = new Set(filteredBills.map(function(b) { return b.bill_account_id; }));
+  accts.forEach(function(a) {
+    if (a.is_active && !existingAcctIds.has(a.id)) {
+      filteredBills.push({
+        bill_account_id: a.id, period: selPeriod, amount_due: a.estimated_amount || 0,
+        status: 'pending', bill_name: a.name, category: a.category, provider: a.provider,
+        is_autopay: a.is_autopay, prop_name: a.prop_name || '', unit_number: a.unit_number || '',
+        account_number: a.account_number || '', due_day: a.due_day || 1, city: a.city || '',
+        _generated: true
+      });
+    }
+  });
+
+  // Town filter
+  if (bt && bt !== 'all') {
+    filteredBills = filteredBills.filter(function(b) {
+      var bCity = b.city || 'Portfolio';
+      return bCity === bt;
+    });
+  }
+
+  // Status filter
+  if (bf && bf !== 'all') {
+    filteredBills = filteredBills.filter(function(b) {
+      var isPd = b.status === 'paid';
+      if (bf === 'paid') return isPd;
+      if (bf === 'unpaid') return !isPd;
+      if (bf === 'overdue') {
+        if (isPd) return false;
+        var dd = b.due_date || (selPeriod + '-' + String(b.due_day || 1).padStart(2, '0'));
+        return dd < today;
+      }
+      if (bf === 'due_soon') {
+        if (isPd) return false;
+        var dd2 = b.due_date || (selPeriod + '-' + String(b.due_day || 1).padStart(2, '0'));
+        if (dd2 < today) return false;
+        var daysLeft = Math.round((new Date(dd2 + 'T12:00:00') - new Date(today + 'T12:00:00')) / 86400000);
+        return daysLeft <= 7;
+      }
+      return true;
+    });
+  }
+
+  // Group by category
+  var cats = {};
+  filteredBills.forEach(function(b) {
+    var cat = b.category || 'other';
+    if (!cats[cat]) cats[cat] = [];
+    cats[cat].push(b);
+  });
+
+  var catIcons = {electric:'zap',gas:'flame',water:'droplet',internet:'wifi',trash:'trash',insurance:'shield',mortgage:'home',hoa:'building',sewer:'droplet',other:'receipt'};
+  var catColors = {electric:'#f59e0b',gas:'#ef4444',water:'#3b82f6',internet:'#8b5cf6',trash:'#6b7280',insurance:'#06b6d4',mortgage:'#10b981',hoa:'#f97316',sewer:'#3b82f6',other:'#9ca3af'};
+  var catOrder = ['electric','gas','water','sewer','internet','trash','insurance','mortgage','hoa','other'];
+
+  h += '<table style="width:100%;border-collapse:collapse;font-size:0.78rem;">';
+  h += '<thead><tr style="background:var(--bg2);border-bottom:2px solid var(--border);">';
+  h += '<th style="padding:7px 8px;text-align:left;">Bill</th>';
+  h += '<th style="padding:7px 8px;text-align:left;">Property</th>';
+  h += '<th style="padding:7px 8px;text-align:right;">Amount</th>';
+  h += '<th style="padding:7px 8px;text-align:right;">Paid</th>';
+  h += '<th style="padding:7px 8px;text-align:center;">Status</th>';
+  h += '<th style="padding:7px 8px;text-align:center;width:80px;">Action</th>';
+  h += '</tr></thead><tbody>';
+
+  var totalDue = 0, totalPaid = 0;
+  catOrder.forEach(function(cat) {
+    var items = cats[cat];
+    if (!items || items.length === 0) return;
+    var icon = catIcons[cat] || 'receipt';
+    var color = catColors[cat] || '#9ca3af';
+    h += '<tr style="background:var(--surface2);"><td colspan="6" style="padding:10px 8px 6px;font-weight:600;font-size:0.74rem;color:' + color + ';border-top:2px solid var(--border);">' + _ico(icon, 14, color) + ' ' + cat.charAt(0).toUpperCase() + cat.slice(1) + ' <span style="font-weight:400;color:var(--text3);">(' + items.length + ')</span></td></tr>';
+    items.forEach(function(b) {
+      var isPaid = b.status === 'paid';
+      var isOverdue = !isPaid && b.due_date && b.due_date < today;
+      var rowBg = isPaid ? 'rgba(16,185,129,0.04)' : isOverdue ? 'rgba(239,68,68,0.06)' : '';
+      var propLabel = b.unit_number ? b.unit_number + ' — ' : '';
+      propLabel += b.prop_name || '—';
+
+      totalDue += (b.amount_due || 0);
+      if (isPaid) totalPaid += (b.amount_paid || 0);
+      var autopayBadge = b.is_autopay ? ' <span style="font-size:0.6rem;background:rgba(139,92,246,0.1);color:#7c3aed;padding:1px 5px;border-radius:3px;">AUTO</span>' : '';
+
+      h += '<tr style="border-bottom:1px solid var(--border);background:' + rowBg + ';">';
+      h += '<td style="padding:6px 8px;">' + _ico(icon, 13, color) + ' ' + esc(b.bill_name || '') + autopayBadge;
+      if (b.provider) h += '<div style="font-size:0.66rem;color:var(--text3);">' + esc(b.provider) + (b.account_number ? ' · Acct: ' + esc(b.account_number) : '') + '</div>';
+      else if (b.account_number) h += '<div style="font-size:0.66rem;color:var(--text3);">Acct: ' + esc(b.account_number) + '</div>';
+      h += '</td>';
+      h += '<td style="padding:6px 8px;font-size:0.74rem;color:var(--text2);">' + esc(propLabel) + '</td>';
+      h += '<td style="padding:6px 8px;text-align:right;font-family:DM Mono,monospace;">$' + (b.amount_due || 0).toLocaleString() + '</td>';
+      h += '<td style="padding:6px 8px;text-align:right;font-family:DM Mono,monospace;">' + (isPaid ? '$' + (b.amount_paid || 0).toLocaleString() : '—') + '</td>';
+      // Smart status column
+      h += '<td style="padding:6px 8px;text-align:center;">';
+      if (isPaid) {
+        var paidDate = b.paid_at ? b.paid_at.substring(5, 10).replace('-', '/') : '';
+        h += '<span style="color:#16a34a;font-size:0.7rem;font-weight:600;">' + _ico('check',12,'#16a34a') + ' Paid' + (paidDate ? ' ' + paidDate : '') + '</span>';
+      } else {
+        var dueStr = b.due_date || (selPeriod + '-' + String(b.due_day || 1).padStart(2, '0'));
+        var dueDate = new Date(dueStr + 'T12:00:00');
+        var todayDate = new Date(today + 'T12:00:00');
+        var daysUntil = Math.round((dueDate - todayDate) / 86400000);
+        var dueMM = dueStr.substring(5, 10).replace('-', '/');
+        if (daysUntil < 0) {
+          h += '<span style="color:#dc2626;font-size:0.7rem;font-weight:600;">' + _ico('alertTriangle',12,'#dc2626') + ' Overdue ' + Math.abs(daysUntil) + 'd</span>';
+        } else if (daysUntil === 0) {
+          h += '<span style="color:#dc2626;font-size:0.7rem;font-weight:600;">' + _ico('alertTriangle',12,'#dc2626') + ' Due Today</span>';
+        } else if (daysUntil <= 3) {
+          h += '<span style="color:#ea580c;font-size:0.7rem;font-weight:600;">' + _ico('clock',12,'#ea580c') + ' Due in ' + daysUntil + 'd</span>';
+        } else if (daysUntil <= 7) {
+          h += '<span style="color:#f59e0b;font-size:0.7rem;font-weight:600;">' + _ico('clock',12,'#f59e0b') + ' Due in ' + daysUntil + 'd</span>';
+        } else {
+          h += '<span style="color:var(--text3);font-size:0.7rem;">' + _ico('calendar',12) + ' Due ' + dueMM + '</span>';
+        }
+      }
+      h += '</td>';
+      h += '<td style="padding:6px 8px;text-align:center;">';
+      if (isPaid) {
+        h += '<button class="btn btn-xs" onclick="_undoBillPayment(' + b.id + ')" style="font-size:0.65rem;" title="Undo payment">' + _ico('undo', 11) + '</button>';
+      } else {
+        h += '<button class="btn btn-xs btn-primary" onclick="_markBillPaid(' + (b.bill_account_id || 0) + ',\'' + esc(selPeriod) + '\',' + (b.amount_due || 0) + ')" style="font-size:0.65rem;">' + _ico('check', 11) + ' Pay</button>';
+      }
+      h += '</td></tr>';
+    });
+  });
+
+  // Totals row
+  h += '<tr style="border-top:2px solid var(--border);font-weight:600;">';
+  h += '<td colspan="2" style="padding:7px 8px;">Total</td>';
+  h += '<td style="padding:7px 8px;text-align:right;font-family:DM Mono,monospace;">$' + Math.round(totalDue).toLocaleString() + '</td>';
+  h += '<td style="padding:7px 8px;text-align:right;font-family:DM Mono,monospace;color:#16a34a;">$' + Math.round(totalPaid).toLocaleString() + '</td>';
+  h += '<td colspan="2"></td></tr>';
+  h += '</tbody></table>';
+
+  // Manage accounts link
+  h += '<div style="margin-top:10px;display:flex;gap:8px;justify-content:flex-end;">';
+  h += '<button class="btn btn-xs" onclick="_showManageBills()" style="font-size:0.68rem;">' + _ico('settings', 11) + ' Manage Bill Accounts</button>';
+  h += '</div>';
+
+  h += '</div>';
+  el.innerHTML = h;
+}
+
+function _billKpi(label, value, icon, color) {
+  return '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;text-align:center;">' +
+    '<div style="font-size:0.68rem;color:var(--text3);margin-bottom:3px;">' + _ico(icon, 12, color) + ' ' + label + '</div>' +
+    '<div style="font-size:1.1rem;font-weight:700;color:' + color + ';font-family:DM Mono,monospace;">' + value + '</div></div>';
+}
+
+function _periodLabel(p) {
+  if (!p) return '';
+  var parts = p.split('-');
+  var months = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return months[parseInt(parts[1])] + ' ' + parts[0];
+}
+
+async function _markBillPaid(billAccountId, period, amountDue) {
+  var amountStr = prompt('Amount paid:', amountDue || '');
+  if (amountStr === null) return;
+  var amount = parseFloat(amountStr);
+  if (isNaN(amount)) { toast('Invalid amount', 'danger'); return; }
+  try {
+    await api('/api/bills/pay', 'POST', {
+      bill_account_id: billAccountId, period: period,
+      amount_paid: amount, amount_due: amountDue
+    });
+    toast('Payment recorded', 'success');
+    loadBillsTab();
+  } catch (err) { toast('Error: ' + err.message, 'danger'); }
+}
+
+async function _undoBillPayment(paymentId) {
+  if (!confirm('Undo this payment?')) return;
+  try {
+    await api('/api/bills/' + paymentId + '/unpay', 'POST', {});
+    toast('Payment undone', 'success');
+    loadBillsTab();
+  } catch (err) { toast('Error: ' + err.message, 'danger'); }
+}
+
+async function _showAddBillForm() {
+  var area = document.getElementById('addBillFormArea');
+  if (!area) return;
+  if (area.innerHTML.length > 10) { area.innerHTML = ''; return; } // toggle
+
+  // Ensure properties are loaded (may not be if user hasn't visited Properties tab)
+  if (!properties || properties.length === 0) {
+    try { var pd = await api('/api/properties'); properties = pd.properties || []; } catch {}
+  }
+
+  var propOpts = '<option value="">— Portfolio-wide —</option>';
+  properties.forEach(function(p) {
+    var label = (p.unit_number ? p.unit_number + ' — ' : '') + (p.platform_listing_name || p.name || p.address);
+    propOpts += '<option value="' + p.id + '">' + esc(label) + '</option>';
+  });
+
+  var cats = ['electric','gas','water','sewer','internet','trash','insurance','mortgage','hoa','other'];
+  var catOpts = cats.map(function(c) { return '<option value="' + c + '">' + c.charAt(0).toUpperCase() + c.slice(1) + '</option>'; }).join('');
+
+  var h = '<div class="card" style="padding:14px;margin-bottom:12px;border:1px dashed var(--accent);background:var(--surface2);">';
+  h += '<div style="font-size:0.82rem;font-weight:600;margin-bottom:10px;">' + _ico('plus', 14) + ' Add Recurring Bill</div>';
+  h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">';
+  h += '<div><label style="font-size:0.72rem;color:var(--text3);">Bill Name *</label><input id="billName" class="form-control form-control-sm" placeholder="e.g. Eversource Electric"></div>';
+  h += '<div><label style="font-size:0.72rem;color:var(--text3);">Provider</label><input id="billProvider" class="form-control form-control-sm" placeholder="e.g. Eversource"></div>';
+  h += '<div><label style="font-size:0.72rem;color:var(--text3);">Category *</label><select id="billCategory" class="form-control form-control-sm">' + catOpts + '</select></div>';
+  h += '<div><label style="font-size:0.72rem;color:var(--text3);">Property</label><select id="billProperty" class="form-control form-control-sm">' + propOpts + '</select></div>';
+  h += '<div><label style="font-size:0.72rem;color:var(--text3);">Est. Monthly Amount</label><input id="billAmount" class="form-control form-control-sm" type="number" step="0.01" placeholder="85.00"></div>';
+  h += '<div><label style="font-size:0.72rem;color:var(--text3);">Due Day of Month</label><input id="billDueDay" class="form-control form-control-sm" type="number" min="1" max="28" value="1"></div>';
+  h += '<div><label style="font-size:0.72rem;color:var(--text3);">Account #</label><input id="billAcct" class="form-control form-control-sm" placeholder="Optional"></div>';
+  h += '<div style="display:flex;align-items:flex-end;gap:12px;">';
+  h += '<label style="font-size:0.72rem;color:var(--text3);display:flex;align-items:center;gap:4px;cursor:pointer;"><input type="checkbox" id="billAutopay"> Autopay</label>';
+  h += '</div>';
+  h += '</div>';
+  h += '<div style="display:flex;gap:6px;margin-top:10px;">';
+  h += '<button class="btn btn-sm btn-primary" onclick="_saveBillAccount()">Save Bill</button>';
+  h += '<button class="btn btn-sm" onclick="document.getElementById(\'addBillFormArea\').innerHTML=\'\';">Cancel</button>';
+  h += '</div></div>';
+  area.innerHTML = h;
+}
+
+async function _saveBillAccount() {
+  var name = document.getElementById('billName')?.value?.trim();
+  var category = document.getElementById('billCategory')?.value;
+  if (!name) { toast('Bill name is required', 'danger'); return; }
+  try {
+    await api('/api/bills', 'POST', {
+      name: name,
+      provider: document.getElementById('billProvider')?.value?.trim() || null,
+      category: category,
+      property_id: document.getElementById('billProperty')?.value || null,
+      estimated_amount: parseFloat(document.getElementById('billAmount')?.value) || 0,
+      due_day: parseInt(document.getElementById('billDueDay')?.value) || 1,
+      is_autopay: document.getElementById('billAutopay')?.checked || false,
+      account_number: document.getElementById('billAcct')?.value?.trim() || null,
+    });
+    toast('Bill account created', 'success');
+    document.getElementById('addBillFormArea').innerHTML = '';
+    loadBillsTab();
+  } catch (err) { toast('Error: ' + err.message, 'danger'); }
+}
+
+function _showManageBills() {
+  var area = document.getElementById('addBillFormArea');
+  if (!area || !_billsData) return;
+  var accts = _billsData.accounts || [];
+  if (accts.length === 0) { toast('No bill accounts to manage', 'info'); return; }
+
+  var h = '<div class="card" style="padding:14px;margin-bottom:12px;border:1px solid var(--border);background:var(--surface2);">';
+  h += '<div style="font-size:0.82rem;font-weight:600;margin-bottom:10px;">' + _ico('settings', 14) + ' Manage Bill Accounts</div>';
+  h += '<div style="display:grid;gap:8px;">';
+  accts.forEach(function(a) {
+    var propLabel = a.unit_number ? a.unit_number + ' — ' + (a.prop_name || '') : (a.prop_name || 'Portfolio-wide');
+    var catIcons = {electric:'zap',gas:'flame',water:'droplet',internet:'wifi',trash:'trash',insurance:'shield',mortgage:'home',hoa:'building',sewer:'droplet',other:'receipt'};
+    var catColors = {electric:'#f59e0b',gas:'#ef4444',water:'#3b82f6',internet:'#8b5cf6',trash:'#6b7280',insurance:'#06b6d4',mortgage:'#10b981',hoa:'#f97316',sewer:'#3b82f6',other:'#9ca3af'};
+    var icon = catIcons[a.category] || 'receipt';
+    var color = catColors[a.category] || '#9ca3af';
+    h += '<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;border-left:3px solid ' + color + ';">';
+    h += '<div style="flex:1;min-width:0;">';
+    h += '<div style="font-size:0.78rem;font-weight:600;">' + _ico(icon, 13, color) + ' ' + esc(a.name) + '</div>';
+    h += '<div style="font-size:0.66rem;color:var(--text3);">';
+    h += esc(a.category) + ' · ' + esc(propLabel);
+    if (a.provider) h += ' · ' + esc(a.provider);
+    h += ' · Due day ' + (a.due_day || 1);
+    if (a.is_autopay) h += ' · Autopay';
+    if (!a.is_active) h += ' · <span style="color:#dc2626;">Inactive</span>';
+    h += '</div></div>';
+    h += '<div style="font-family:DM Mono,monospace;font-size:0.82rem;font-weight:600;color:var(--text2);white-space:nowrap;">$' + (a.estimated_amount || 0) + '/mo</div>';
+    h += '<div style="display:flex;gap:4px;">';
+    h += '<button class="btn btn-xs" onclick="_editBillAccount(' + a.id + ')" style="font-size:0.65rem;">' + _ico('edit', 11) + ' Edit</button>';
+    h += '<button class="btn btn-xs" onclick="_deleteBillAccount(' + a.id + ',\'' + esc(a.name).replace(/'/g, "\\'") + '\')" style="font-size:0.65rem;color:var(--danger);">' + _ico('trash', 11) + ' Delete</button>';
+    h += '</div></div>';
+  });
+  h += '</div>';
+  h += '<div style="margin-top:10px;display:flex;gap:6px;">';
+  h += '<button class="btn btn-xs" onclick="document.getElementById(\'addBillFormArea\').innerHTML=\'\';">Close</button>';
+  h += '<button class="btn btn-xs" onclick="_showAddBillForm()">' + _ico('plus', 11) + ' Add New</button>';
+  h += '</div></div>';
+  area.innerHTML = h;
+}
+
+async function _editBillAccount(billId) {
+  var acct = (_billsData.accounts || []).find(function(a) { return a.id === billId; });
+  if (!acct) return;
+  var area = document.getElementById('addBillFormArea');
+  if (!area) return;
+
+  if (!properties || properties.length === 0) {
+    try { var pd = await api('/api/properties'); properties = pd.properties || []; } catch {}
+  }
+
+  var propOpts = '<option value="">— Portfolio-wide —</option>';
+  properties.forEach(function(p) {
+    var label = (p.unit_number ? p.unit_number + ' — ' : '') + (p.platform_listing_name || p.name || p.address);
+    var sel = acct.property_id && String(acct.property_id) === String(p.id) ? ' selected' : '';
+    propOpts += '<option value="' + p.id + '"' + sel + '>' + esc(label) + '</option>';
+  });
+
+  var cats = ['electric','gas','water','sewer','internet','trash','insurance','mortgage','hoa','other'];
+  var catOpts = cats.map(function(c) {
+    var sel = acct.category === c ? ' selected' : '';
+    return '<option value="' + c + '"' + sel + '>' + c.charAt(0).toUpperCase() + c.slice(1) + '</option>';
+  }).join('');
+
+  var h = '<div class="card" style="padding:14px;margin-bottom:12px;border:1px dashed #f59e0b;background:var(--surface2);">';
+  h += '<div style="font-size:0.82rem;font-weight:600;margin-bottom:10px;">' + _ico('edit', 14) + ' Edit: ' + esc(acct.name) + '</div>';
+  h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">';
+  h += '<div><label style="font-size:0.72rem;color:var(--text3);">Bill Name *</label><input id="editBillName" class="form-control form-control-sm" value="' + esc(acct.name) + '"></div>';
+  h += '<div><label style="font-size:0.72rem;color:var(--text3);">Provider</label><input id="editBillProvider" class="form-control form-control-sm" value="' + esc(acct.provider || '') + '"></div>';
+  h += '<div><label style="font-size:0.72rem;color:var(--text3);">Category</label><select id="editBillCategory" class="form-control form-control-sm">' + catOpts + '</select></div>';
+  h += '<div><label style="font-size:0.72rem;color:var(--text3);">Property</label><select id="editBillProperty" class="form-control form-control-sm">' + propOpts + '</select></div>';
+  h += '<div><label style="font-size:0.72rem;color:var(--text3);">Est. Monthly Amount</label><input id="editBillAmount" class="form-control form-control-sm" type="number" step="0.01" value="' + (acct.estimated_amount || 0) + '"></div>';
+  h += '<div><label style="font-size:0.72rem;color:var(--text3);">Due Day of Month</label><input id="editBillDueDay" class="form-control form-control-sm" type="number" min="1" max="28" value="' + (acct.due_day || 1) + '"></div>';
+  h += '<div><label style="font-size:0.72rem;color:var(--text3);">Account #</label><input id="editBillAcct" class="form-control form-control-sm" value="' + esc(acct.account_number || '') + '"></div>';
+  h += '<div style="display:flex;align-items:flex-end;gap:12px;">';
+  h += '<label style="font-size:0.72rem;color:var(--text3);display:flex;align-items:center;gap:4px;cursor:pointer;"><input type="checkbox" id="editBillAutopay"' + (acct.is_autopay ? ' checked' : '') + '> Autopay</label>';
+  h += '<label style="font-size:0.72rem;color:var(--text3);display:flex;align-items:center;gap:4px;cursor:pointer;"><input type="checkbox" id="editBillActive"' + (acct.is_active ? ' checked' : '') + '> Active</label>';
+  h += '</div></div>';
+  h += '<div style="display:flex;gap:6px;margin-top:10px;">';
+  h += '<button class="btn btn-sm btn-primary" onclick="_updateBillAccount(' + billId + ')">Save Changes</button>';
+  h += '<button class="btn btn-sm" onclick="_showManageBills()">Cancel</button>';
+  h += '</div></div>';
+  area.innerHTML = h;
+}
+
+async function _updateBillAccount(billId) {
+  var name = document.getElementById('editBillName')?.value?.trim();
+  if (!name) { toast('Bill name is required', 'danger'); return; }
+  try {
+    await api('/api/bills/' + billId, 'PUT', {
+      name: name,
+      provider: document.getElementById('editBillProvider')?.value?.trim() || null,
+      category: document.getElementById('editBillCategory')?.value,
+      property_id: document.getElementById('editBillProperty')?.value || null,
+      estimated_amount: parseFloat(document.getElementById('editBillAmount')?.value) || 0,
+      due_day: parseInt(document.getElementById('editBillDueDay')?.value) || 1,
+      is_autopay: document.getElementById('editBillAutopay')?.checked || false,
+      is_active: document.getElementById('editBillActive')?.checked ?? true,
+      account_number: document.getElementById('editBillAcct')?.value?.trim() || null,
+    });
+    toast('Bill account updated', 'success');
+    loadBillsTab();
+  } catch (err) { toast('Error: ' + err.message, 'danger'); }
+}
+
+async function _deleteBillAccount(id, name) {
+  if (!confirm('Delete bill account "' + name + '" and all its payment records?')) return;
+  try {
+    await api('/api/bills/' + id, 'DELETE');
+    toast('Bill account deleted', 'success');
+    loadBillsTab();
+  } catch (err) { toast('Error: ' + err.message, 'danger'); }
 }

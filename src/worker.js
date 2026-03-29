@@ -438,6 +438,10 @@ async function ensureSchema(env) {
     await env.DB.prepare(`CREATE TABLE IF NOT EXISTS guesty_listings (id INTEGER PRIMARY KEY AUTOINCREMENT, guesty_listing_id TEXT UNIQUE, listing_name TEXT, listing_address TEXT, property_id INTEGER, auto_matched INTEGER DEFAULT 0, match_score REAL, created_at TEXT DEFAULT (datetime('now')))`).run();
     // Capital / one-time expenses
     await env.DB.prepare(`CREATE TABLE IF NOT EXISTS property_expenses (id INTEGER PRIMARY KEY AUTOINCREMENT, property_id INTEGER NOT NULL, name TEXT NOT NULL, amount REAL NOT NULL, category TEXT DEFAULT 'other', date_incurred TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now')))`).run();
+    // Recurring bills — utility/insurance/subscription accounts linked to properties or buildings
+    await env.DB.prepare(`CREATE TABLE IF NOT EXISTS bill_accounts (id INTEGER PRIMARY KEY AUTOINCREMENT, property_id INTEGER, name TEXT NOT NULL, provider TEXT, category TEXT NOT NULL DEFAULT 'other', estimated_amount REAL DEFAULT 0, due_day INTEGER DEFAULT 1, is_autopay INTEGER DEFAULT 0, account_number TEXT, notes TEXT, is_active INTEGER DEFAULT 1, created_at TEXT DEFAULT (datetime('now')))`).run();
+    // Bill payment records — one per bill per month
+    await env.DB.prepare(`CREATE TABLE IF NOT EXISTS bill_payments (id INTEGER PRIMARY KEY AUTOINCREMENT, bill_account_id INTEGER NOT NULL, property_id INTEGER, period TEXT NOT NULL, amount_due REAL, amount_paid REAL, status TEXT DEFAULT 'pending', paid_at TEXT, due_date TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now')), UNIQUE(bill_account_id, period))`).run();
     await env.DB.prepare(`CREATE TABLE IF NOT EXISTS property_images (id INTEGER PRIMARY KEY AUTOINCREMENT, property_id INTEGER NOT NULL, image_url TEXT NOT NULL, caption TEXT, sort_order INTEGER DEFAULT 0, source TEXT DEFAULT 'upload', created_at TEXT DEFAULT (datetime('now')))`).run();
     // Guesty calendar — daily pricing/availability per listing (ACTUAL live prices)
     await env.DB.prepare(`CREATE TABLE IF NOT EXISTS guesty_calendar (id INTEGER PRIMARY KEY AUTOINCREMENT, guesty_listing_id TEXT NOT NULL, property_id INTEGER, date TEXT NOT NULL, price REAL, min_nights INTEGER DEFAULT 1, status TEXT DEFAULT 'available', is_base_price INTEGER DEFAULT 1, currency TEXT DEFAULT 'USD', pl_recommended_price REAL, price_discrepancy REAL, updated_at TEXT DEFAULT (datetime('now')), UNIQUE(guesty_listing_id, date))`).run();
@@ -496,6 +500,20 @@ async function ensureSchema(env) {
       if (!glExisting.has('listing_pictures_json')) await env.DB.prepare(`ALTER TABLE guesty_listings ADD COLUMN listing_pictures_json TEXT`).run();
       if (!glExisting.has('listing_description')) await env.DB.prepare(`ALTER TABLE guesty_listings ADD COLUMN listing_description TEXT`).run();
       if (!glExisting.has('listing_amenities_json')) await env.DB.prepare(`ALTER TABLE guesty_listings ADD COLUMN listing_amenities_json TEXT`).run();
+      // Guesty pricing & terms fields (synced from listing API)
+      if (!glExisting.has('guesty_base_price')) await env.DB.prepare(`ALTER TABLE guesty_listings ADD COLUMN guesty_base_price REAL`).run();
+      if (!glExisting.has('guesty_cleaning_fee')) await env.DB.prepare(`ALTER TABLE guesty_listings ADD COLUMN guesty_cleaning_fee REAL`).run();
+      if (!glExisting.has('guesty_extra_person_fee')) await env.DB.prepare(`ALTER TABLE guesty_listings ADD COLUMN guesty_extra_person_fee REAL`).run();
+      if (!glExisting.has('guesty_pets_allowed')) await env.DB.prepare(`ALTER TABLE guesty_listings ADD COLUMN guesty_pets_allowed INTEGER`).run();
+      if (!glExisting.has('guesty_pet_fee')) await env.DB.prepare(`ALTER TABLE guesty_listings ADD COLUMN guesty_pet_fee REAL`).run();
+      if (!glExisting.has('guesty_min_nights')) await env.DB.prepare(`ALTER TABLE guesty_listings ADD COLUMN guesty_min_nights INTEGER`).run();
+      if (!glExisting.has('guesty_max_nights')) await env.DB.prepare(`ALTER TABLE guesty_listings ADD COLUMN guesty_max_nights INTEGER`).run();
+      if (!glExisting.has('guesty_weekly_factor')) await env.DB.prepare(`ALTER TABLE guesty_listings ADD COLUMN guesty_weekly_factor REAL`).run();
+      if (!glExisting.has('guesty_monthly_factor')) await env.DB.prepare(`ALTER TABLE guesty_listings ADD COLUMN guesty_monthly_factor REAL`).run();
+      if (!glExisting.has('guesty_check_in_time')) await env.DB.prepare(`ALTER TABLE guesty_listings ADD COLUMN guesty_check_in_time TEXT`).run();
+      if (!glExisting.has('guesty_check_out_time')) await env.DB.prepare(`ALTER TABLE guesty_listings ADD COLUMN guesty_check_out_time TEXT`).run();
+      if (!glExisting.has('guesty_prices_updated')) await env.DB.prepare(`ALTER TABLE guesty_listings ADD COLUMN guesty_prices_updated TEXT`).run();
+      if (!glExisting.has('guesty_guests_included')) await env.DB.prepare(`ALTER TABLE guesty_listings ADD COLUMN guesty_guests_included INTEGER`).run();
     } catch {}
     // Migrate guesty_reservations: add API-sourced columns
     try {
@@ -1006,11 +1024,13 @@ export default {
         return await getMarketInsights(city, state, env);
       }
       if (path === '/api/taxes' && method === 'GET') return await getTaxRates(url.searchParams.get('state'), url.searchParams.get('county'), env);
-      if (path.match(/^\/api\/properties\/\d+\/analyze$/) && method === 'POST') return await analyzePricing(path.split('/')[3], request, env);
+      if (path.match(/^\/api\/properties\/\d+\/analyze$/) && method === 'POST') return await generateUnifiedAnalysis(path.split('/')[3], request, env);
       if (path === '/api/analyze/bulk' && method === 'POST') return await bulkAnalyzePricing(request, env);
+      if (path === '/api/pricing/overview' && method === 'GET') return await getPricingOverview(env);
+      if (path === '/api/pricing/health-check' && method === 'POST') return json(await dailyPricingHealthCheck(env));
       if (path === '/api/properties/bulk-tax-rate' && method === 'POST') return await bulkUpdateTaxRate(request, env, uid);
-      if (path.match(/^\/api\/properties\/\d+\/pl-strategy$/) && method === 'POST') return await generatePLStrategyRecommendation(path.split('/')[3], env);
-      if (path.match(/^\/api\/properties\/\d+\/revenue-optimize$/) && method === 'POST') return await generateRevenueOptimization(path.split('/')[3], env);
+      if (path.match(/^\/api\/properties\/\d+\/pl-strategy$/) && method === 'POST') { const _uRes = await generateUnifiedAnalysis(path.split('/')[3], { json: async () => ({ use_ai: true, quality: 'best', analysis_type: 'str' }) }, env); const _uData = await _uRes.json(); const _u = _uData.unified; if (!_u) return json({ error: _uData.ai_error || 'Analysis failed' }, 400); return json({ strategy: { base_price: (_u.pricelabs||{}).base_price || (_u.pricing||{}).base_nightly_rate, min_price: (_u.pricelabs||{}).min_price || (_u.pricing||{}).min_price, max_price: (_u.pricelabs||{}).max_price || (_u.pricing||{}).max_price, cleaning_fee: (_u.pricing||{}).cleaning_fee, cleaning_fee_reasoning: (_u.pricing||{}).cleaning_fee_reasoning, weekend_adjustment: (_u.pricing||{}).weekend_adjustment_pct, pet_fee: (_u.pricing||{}).pet_fee, extra_guest_fee: (_u.pricing||{}).extra_guest_fee, min_nights_weekday: (_u.pricing||{}).min_nights_weekday, min_nights_weekend: (_u.pricing||{}).min_nights_weekend, weekly_discount_pct: (_u.pricing||{}).weekly_discount_pct, monthly_discount_pct: (_u.pricing||{}).monthly_discount_pct, last_minute_discount_pct: ((_u.seasonal||{}).last_minute_discount_pct), early_bird_discount_pct: ((_u.seasonal||{}).early_bird_discount_pct), orphan_day_discount_pct: ((_u.seasonal||{}).orphan_day_discount_pct), peak_season_months: ((_u.seasonal||{}).peak_months), peak_season_markup_pct: ((_u.seasonal||{}).peak_markup_pct), low_season_months: ((_u.seasonal||{}).low_months), low_season_discount_pct: ((_u.seasonal||{}).low_discount_pct), projected_occupancy: (_u.pricing||{}).projected_occupancy, projected_monthly_revenue: (_u.pricing||{}).projected_monthly_revenue, projected_annual_revenue: (_u.pricing||{}).projected_annual_revenue, breakeven_occupancy: (_u.pricing||{}).breakeven_occupancy, pricelabs_setup_steps: (_u.pricelabs||{}).setup_steps, pricelabs_action_items: (_u.pricelabs||{}).action_items, strategy_summary: _u.strategy_summary, key_recommendations: (_u.pricing||{}).recommendations, risks: ((_u.optimization||{}).risks||[]) }, property: _uData.property ? { id: _uData.property.id, address: _uData.property.address, city: _uData.property.city, state: _uData.property.state, bedrooms: _uData.property.bedrooms, bathrooms: _uData.property.bathrooms } : {}, context: { monthly_expenses: _uData.monthly_expenses || 0, amenities_count: (_uData.amenities||[]).length, comps_count: _uData.comparables_count||0, platforms_count: (_uData.platforms||[]).length, has_pricelabs: !!_uData.pricelabs, pricelabs: _uData.pricelabs, provider: _u._provider } }); }
+      if (path.match(/^\/api\/properties\/\d+\/revenue-optimize$/) && method === 'POST') { const _uRes = await generateUnifiedAnalysis(path.split('/')[3], { json: async () => ({ use_ai: true, quality: 'best', analysis_type: 'str' }) }, env); const _uData = await _uRes.json(); const _u = _uData.unified; if (!_u || !_u.optimization) return json({ error: _uData.ai_error || 'Analysis failed' }, 400); return json({ optimization: _u.optimization, property: _uData.property ? { id: _uData.property.id, address: _uData.property.address, city: _uData.property.city } : {}, monthly_expenses: _uData.monthly_cost || 0, provider: _u._provider }); }
       if (path.match(/^\/api\/properties\/\d+\/listing-health$/) && method === 'GET') return await getListingHealth(path.split('/')[3], env);
       if (path.match(/^\/api\/properties\/\d+\/acquisition-analysis$/) && method === 'POST') return await generateAcquisitionAnalysis(path.split('/')[3], request, env);
       if (path.match(/^\/api\/properties\/\d+\/strategies$/) && method === 'GET') return await getStrategies(path.split("/")[3], env, uid);
@@ -1127,6 +1147,17 @@ export default {
       if (path === '/api/service-catalog' && method === 'GET') { const { results } = await env.DB.prepare(`SELECT * FROM service_catalog ORDER BY name`).all(); return json({ catalog: results }); }
       if (path.match(/^\/api\/properties\/\d+\/copy-from\/\d+$/) && method === 'POST') return await copyPropertyData(path.split('/')[3], path.split('/')[5], request, env);
       if (path.match(/^\/api\/properties\/\d+\/copy-preview\/\d+$/) && method === 'GET') return await copyPreview(path.split('/')[3], path.split('/')[5], env);
+
+      // ── Bill Tracker routes ──────────────────────────────────────────────
+      if (path === '/api/bills' && method === 'GET') return await getBillsSummary(env);
+      if (path === '/api/bills' && method === 'POST') return await createBillAccount(request, env);
+      if (path.match(/^\/api\/bills\/\d+$/) && method === 'PUT') return await updateBillAccount(path.split('/')[3], request, env);
+      if (path.match(/^\/api\/bills\/\d+$/) && method === 'DELETE') { await env.DB.prepare(`DELETE FROM bill_payments WHERE bill_account_id = ?`).bind(path.split('/')[3]).run(); await env.DB.prepare(`DELETE FROM bill_accounts WHERE id = ?`).bind(path.split('/')[3]).run(); return json({ok:true}); }
+      if (path === '/api/bills/pay' && method === 'POST') return await recordBillPayment(request, env);
+      if (path.match(/^\/api\/bills\/\d+\/unpay$/) && method === 'POST') { await env.DB.prepare(`UPDATE bill_payments SET status = 'pending', paid_at = NULL, amount_paid = NULL WHERE id = ?`).bind(path.split('/')[3]).run(); return json({ok:true}); }
+      if (path === '/api/bills/generate-month' && method === 'POST') return await generateMonthlyBills(request, env);
+      if (path === '/api/bills/dashboard' && method === 'GET') return await getBillsDashboard(env);
+
       return json({ error: 'Not found' }, 404);
     } catch (err) { console.error(err); await syslog(env, 'error', 'global', url?.pathname || 'unknown route', err.message); return json({ error: err.message || 'Internal server error' }, 500); }
   },
@@ -1194,6 +1225,24 @@ export default {
             console.log('[CRON] Performance snapshots captured');
           } catch (snapErr) { console.log('[CRON] Snapshot error: ' + snapErr.message); }
         }
+
+        // Daily pricing health check — lightweight, no AI calls
+        // Compares actual ADR vs PriceLabs rates vs AI recommendations, flags divergent properties
+        try {
+          const healthResult = await dailyPricingHealthCheck(env);
+          console.log('[CRON] Pricing health: ' + healthResult.checked + ' checked, ' + healthResult.divergent + ' divergent');
+        } catch (healthErr) { console.log('[CRON] Health check error: ' + healthErr.message); }
+
+        // Daily auto-analyze: prioritizes divergent properties from health check,
+        // then never-analyzed, then stale (14+ days). Max 3/day to control AI costs.
+        try {
+          const hasAI = env.ANTHROPIC_API_KEY || env.OPENAI_API_KEY;
+          if (hasAI) {
+            await logSync(env, 'auto_analysis', 'cron', async () => {
+              return await autoAnalyzeProperties(env);
+            });
+          }
+        } catch {}
       }
 
       if (trigger === '0 7 * * 1') {
@@ -1210,17 +1259,6 @@ export default {
             return await syncPriceLabsListings(env, null, false);
           });
         }
-
-        // Auto-analyze: re-run pricing analysis on stale or unanalyzed properties
-        // Max 5 per week to control API costs. Skips research, managed, buildings.
-        try {
-          const hasAI = env.ANTHROPIC_API_KEY || env.OPENAI_API_KEY;
-          if (hasAI) {
-            await logSync(env, 'auto_analysis', 'cron', async () => {
-              return await autoAnalyzeProperties(env);
-            });
-          }
-        } catch {}
       }
 
       // Clean up old sync logs (keep 90 days)
@@ -1779,6 +1817,8 @@ async function deleteProperty(id, env, uid) {
       env.DB.prepare(`DELETE FROM performance_snapshots WHERE property_id = ?`).bind(pid),
       env.DB.prepare(`DELETE FROM property_expenses WHERE property_id = ?`).bind(pid),
       env.DB.prepare(`DELETE FROM property_services WHERE property_id = ?`).bind(pid),
+      env.DB.prepare(`DELETE FROM bill_accounts WHERE property_id = ?`).bind(pid),
+      env.DB.prepare(`DELETE FROM bill_payments WHERE property_id = ?`).bind(pid),
       env.DB.prepare(`DELETE FROM property_platforms WHERE property_id = ?`).bind(pid),
       env.DB.prepare(`DELETE FROM monthly_actuals WHERE property_id = ?`).bind(pid),
       env.DB.prepare(`DELETE FROM property_shares WHERE property_id = ?`).bind(pid),
@@ -3098,22 +3138,49 @@ async function getMarketInsights(city, state, env) {
   const { results } = await env.DB.prepare(`SELECT * FROM market_insights WHERE LOWER(city) = LOWER(?) AND LOWER(state) = LOWER(?) ORDER BY created_at DESC LIMIT 20`).bind(city, state).all();
   return json({ insights: results });
 }
-async function analyzePricing(propertyId, request, env) {
-  const body = await request.json();
-  const analysisType = body.analysis_type || 'str';
+
+// ── UNIFIED PROPERTY CONTEXT (shared by all analysis functions) ───────────
+// Single data collection pass — avoids 3 functions each doing 10-14 independent queries
+async function gatherPropertyContext(propertyId, env) {
   const property = await env.DB.prepare(`SELECT * FROM properties WHERE id = ?`).bind(propertyId).first();
-  if (!property) return json({ error: 'Property not found' }, 404);
+  if (!property) return null;
+
+  // Amenities
   const { results: amenities } = await env.DB.prepare(`SELECT a.* FROM amenities a JOIN property_amenities pa ON pa.amenity_id = a.id WHERE pa.property_id = ?`).bind(propertyId).all();
+
+  // Market snapshot
   const { results: marketData } = await env.DB.prepare(`SELECT * FROM market_snapshots WHERE LOWER(city) = LOWER(?) AND LOWER(state) = LOWER(?) ORDER BY snapshot_date DESC LIMIT 1`).bind(property.city, property.state).all();
-  let { results: comparables } = await env.DB.prepare(`SELECT * FROM comparables WHERE property_id = ? ORDER BY scraped_at DESC`).bind(propertyId).all();
-  // Tax rate: per-property override > state-level table > null
+  const market = (marketData || [])[0] || null;
+
+  // Comparables
+  const { results: comparables } = await env.DB.prepare(`SELECT * FROM comparables WHERE property_id = ? ORDER BY scraped_at DESC LIMIT 15`).bind(propertyId).all();
+
+  // Tax rate
   let taxRate = await env.DB.prepare(`SELECT * FROM tax_rates WHERE LOWER(state) = LOWER(?) LIMIT 1`).bind(property.state).first();
   if (property.tax_rate_pct > 0) {
     taxRate = taxRate || {};
     taxRate.total_rate = property.tax_rate_pct;
     taxRate.source = 'property_override';
   }
+
+  // Platforms
   const { results: platforms } = await env.DB.prepare(`SELECT * FROM property_platforms WHERE property_id = ?`).bind(propertyId).all();
+
+  // Previous strategies
+  const { results: strategies } = await env.DB.prepare(`SELECT * FROM pricing_strategies WHERE property_id = ? ORDER BY created_at DESC LIMIT 5`).bind(propertyId).all();
+
+  // Property services
+  let servicesMonthly = 0;
+  let servicesList = '';
+  try {
+    const { results: services } = await env.DB.prepare(
+      `SELECT name, monthly_cost FROM property_services WHERE property_id = ? ORDER BY monthly_cost DESC`
+    ).bind(propertyId).all();
+    if (services && services.length > 0) {
+      servicesMonthly = services.reduce((a, s) => a + (s.monthly_cost || 0), 0);
+      servicesList = services.map(s => `${s.name} $${s.monthly_cost}/mo`).join(', ');
+    }
+  } catch {}
 
   // PriceLabs data
   let plData = null;
@@ -3121,40 +3188,807 @@ async function analyzePricing(propertyId, request, env) {
   if (plLink) {
     let channels = [];
     try { channels = plLink.channel_details ? JSON.parse(plLink.channel_details) : []; } catch {}
+    const today = new Date().toISOString().split('T')[0];
+    const next30 = new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0];
+    const next90 = new Date(Date.now() + 90 * 86400000).toISOString().split('T')[0];
+    const avg30 = await env.DB.prepare(`SELECT AVG(price) as avg, MIN(price) as min, MAX(price) as max, COUNT(*) as cnt FROM pricelabs_rates WHERE pl_listing_id = ? AND rate_date >= ? AND rate_date <= ? AND is_available = 1`).bind(plLink.pl_listing_id, today, next30).first();
+    const avg90 = await env.DB.prepare(`SELECT AVG(price) as avg FROM pricelabs_rates WHERE pl_listing_id = ? AND rate_date >= ? AND rate_date <= ?`).bind(plLink.pl_listing_id, today, next90).first();
     plData = {
       base_price: plLink.base_price, min_price: plLink.min_price, max_price: plLink.max_price,
       recommended_base: plLink.recommended_base_price, cleaning_fees: plLink.cleaning_fees,
-      group: plLink.group_name, pms: plLink.pl_pms,
+      group: plLink.group_name, pms: plLink.pl_pms, platform: plLink.pl_platform,
       occ_7d: plLink.occupancy_next_7, mkt_occ_7d: plLink.market_occupancy_next_7,
       occ_30d: plLink.occupancy_next_30, mkt_occ_30d: plLink.market_occupancy_next_30,
       occ_60d: plLink.occupancy_next_60, mkt_occ_60d: plLink.market_occupancy_next_60,
       push_enabled: plLink.push_enabled, last_pushed: plLink.last_date_pushed,
+      avg_30d: avg30?.avg ? Math.round(avg30.avg) : null,
+      min_30d: avg30?.min, max_30d: avg30?.max,
+      avg_90d: avg90?.avg ? Math.round(avg90.avg) : null,
+      rates_count: avg30?.cnt || 0,
       channels,
     };
   }
 
-  // Actual avg stay length from Guesty (for cleaning turnover calc)
-  let guestyAvgStay = 0;
-  try {
-    const stayAvg = await env.DB.prepare(
-      `SELECT AVG(avg_stay_length) as avg FROM monthly_actuals WHERE property_id = ? AND avg_stay_length > 0`
-    ).bind(propertyId).first();
-    guestyAvgStay = stayAvg?.avg || 0;
-  } catch {}
-
-  // Seasonality data for this market
+  // Seasonality
   let seasonData = [];
   try {
-    const { results: s } = await env.DB.prepare(`SELECT month_number, multiplier, avg_occupancy, avg_adr FROM market_seasonality WHERE LOWER(city) = LOWER(?) AND LOWER(state) = LOWER(?) ORDER BY month_number`).bind(property.city, property.state).all();
+    const { results: s } = await env.DB.prepare(`SELECT month_number, multiplier, avg_occupancy, avg_adr, avg_daily_rate FROM market_seasonality WHERE LOWER(city) = LOWER(?) AND LOWER(state) = LOWER(?) ORDER BY month_number`).bind(property.city, property.state).all();
     seasonData = s || [];
   } catch {}
 
-  // Actual revenue history
+  // Guesty actuals
   let actualsData = [];
   try {
-    const { results: a } = await env.DB.prepare(`SELECT month, total_revenue, occupancy_pct, avg_nightly_rate FROM monthly_actuals WHERE property_id = ? ORDER BY month`).bind(propertyId).all();
+    const { results: a } = await env.DB.prepare(`SELECT month, total_revenue, occupancy_pct, avg_nightly_rate, booked_nights, available_nights, host_payout, cleaning_revenue FROM monthly_actuals WHERE property_id = ? ORDER BY month`).bind(propertyId).all();
     actualsData = a || [];
   } catch {}
+
+  // Avg stay length
+  let avgStayLength = 0;
+  try {
+    const stayAvg = await env.DB.prepare(`SELECT AVG(avg_stay_length) as avg FROM monthly_actuals WHERE property_id = ? AND avg_stay_length > 0`).bind(propertyId).first();
+    avgStayLength = stayAvg?.avg || 0;
+  } catch {}
+
+  // Rate matrix from market profile
+  let rateMatrixContext = '';
+  try {
+    const marketProfile = await env.DB.prepare(`SELECT rate_matrix_json FROM market_profiles WHERE LOWER(city) = LOWER(?) AND LOWER(state) = LOWER(?)`).bind(property.city, property.state).first();
+    if (marketProfile && marketProfile.rate_matrix_json) {
+      const rm = JSON.parse(marketProfile.rate_matrix_json);
+      if (rm.entries && rm.entries.length > 0) {
+        rateMatrixContext = '\nMARKET RATE MATRIX (actual listings in this market):\n';
+        for (const e of rm.entries.slice(0, 10)) {
+          rateMatrixContext += `  ${e.bedrooms}BR: $${e.avg_rate}/nt avg (${e.count} listings, range $${e.min_rate}-$${e.max_rate})\n`;
+        }
+      }
+    }
+  } catch {}
+
+  // Building/portfolio context
+  let buildingContext = '';
+  try {
+    buildingContext = await getPortfolioContextForPrompt(property, env);
+  } catch {}
+
+  // Expense totals
+  const monthlyCost = property.ownership_type === 'rental'
+    ? (property.monthly_rent_cost || 0)
+    : (property.monthly_mortgage || 0) + (property.monthly_insurance || 0) + Math.round((property.annual_taxes || 0) / 12) + (property.hoa_monthly || 0);
+  const utilities = (property.expense_electric || 0) + (property.expense_gas || 0) + (property.expense_water || 0) + (property.expense_internet || 0) + (property.expense_trash || 0) + (property.expense_other || 0);
+  const totalMonthly = monthlyCost + utilities + servicesMonthly;
+
+  // Previous analysis reports — for cross-referencing across analysis types
+  let prevReports = { pricing: null, plStrategy: null, revOpt: null };
+  try {
+    const prevPricing = await env.DB.prepare(`SELECT report_data, provider, created_at FROM analysis_reports WHERE property_id = ? AND report_type = 'pricing_analysis' ORDER BY created_at DESC LIMIT 1`).bind(propertyId).first();
+    if (prevPricing) prevReports.pricing = { data: prevPricing.report_data, provider: prevPricing.provider, date: prevPricing.created_at };
+    const prevPL = await env.DB.prepare(`SELECT report_data, provider, created_at FROM analysis_reports WHERE property_id = ? AND report_type = 'pl_strategy' ORDER BY created_at DESC LIMIT 1`).bind(propertyId).first();
+    if (prevPL) prevReports.plStrategy = { data: prevPL.report_data, provider: prevPL.provider, date: prevPL.created_at };
+    const prevOpt = await env.DB.prepare(`SELECT report_data, provider, created_at FROM analysis_reports WHERE property_id = ? AND report_type = 'revenue_optimization' ORDER BY created_at DESC LIMIT 1`).bind(propertyId).first();
+    if (prevOpt) prevReports.revOpt = { data: prevOpt.report_data, provider: prevOpt.provider, date: prevOpt.created_at };
+  } catch {}
+
+  // Guest intelligence context
+  let guestIntelContext = '';
+  try {
+    guestIntelContext = await getGuestIntelForPrompt(propertyId, property.city, property.state, env);
+  } catch {}
+
+  // Guesty actuals context for AI prompts
+  let guestyActualsContext = '';
+  try {
+    guestyActualsContext = await getGuestyActualsForPrompt(propertyId, property.city, property.state, env);
+  } catch {}
+
+  return {
+    property, amenities, market, comparables: comparables || [], taxRate,
+    platforms: platforms || [], strategies: strategies || [],
+    plData, seasonData, actualsData, avgStayLength,
+    rateMatrixContext, buildingContext,
+    servicesMonthly, servicesList, totalMonthly, monthlyCost, utilities,
+    prevReports, guestIntelContext, guestyActualsContext
+  };
+}
+
+// ── PRICING OVERVIEW (All Properties at a Glance) ─────────────────────────
+async function getPricingOverview(env) {
+  try {
+    // Active properties (not managed, not research, not buildings)
+    const { results: props } = await env.DB.prepare(`
+      SELECT p.id, p.name, p.address, p.unit_number, p.city, p.state, p.bedrooms, p.bathrooms,
+             p.platform_listing_name, p.cleaning_fee as prop_cleaning, p.parent_id,
+             gl_data.listing_accommodates as max_guests,
+             gl_data.guesty_cleaning_fee, gl_data.guesty_extra_person_fee,
+             gl_data.guesty_pet_fee, gl_data.guesty_pets_allowed,
+             gl_data.guesty_min_nights, gl_data.guesty_max_nights,
+             gl_data.guesty_weekly_factor, gl_data.guesty_monthly_factor,
+             gl_data.guesty_base_price, gl_data.guesty_prices_updated,
+             gl_data.guesty_guests_included,
+             pl.base_price as pl_base, pl.min_price as pl_min, pl.max_price as pl_max,
+             pl.recommended_base_price as pl_rec_base, pl.cleaning_fees as pl_cleaning,
+             pl.occupancy_next_30 as pl_occ_30, pl.market_occupancy_next_30 as pl_mkt_occ_30,
+             pl.occupancy_next_60 as pl_occ_60, pl.last_synced as pl_last_synced,
+             ps.strategy_name, ps.base_nightly_rate as ai_base, ps.weekend_rate as ai_weekend,
+             ps.cleaning_fee as ai_cleaning, ps.pet_fee as ai_pet_fee,
+             ps.weekly_discount as ai_weekly_disc, ps.monthly_discount as ai_monthly_disc,
+             ps.peak_season_markup as ai_peak_markup, ps.low_season_discount as ai_low_disc,
+             ps.min_nights as ai_min_nights, ps.projected_occupancy as ai_proj_occ,
+             ps.projected_monthly_avg as ai_proj_monthly, ps.projected_annual_revenue as ai_proj_annual,
+             ps.reasoning as ai_reasoning, ps.ai_provider, ps.created_at as analysis_date
+      FROM properties p
+      LEFT JOIN guesty_listings gl_data ON gl_data.property_id = p.id
+      LEFT JOIN pricelabs_listings pl ON pl.property_id = p.id
+      LEFT JOIN (
+        SELECT property_id, MAX(id) as max_id FROM pricing_strategies WHERE rental_type = 'str' GROUP BY property_id
+      ) ps_max ON ps_max.property_id = p.id
+      LEFT JOIN pricing_strategies ps ON ps.id = ps_max.max_id
+      WHERE (p.is_managed = 0 OR p.is_managed IS NULL)
+        AND (p.is_research != 1 OR p.is_research IS NULL)
+        AND p.id NOT IN (SELECT DISTINCT parent_id FROM properties WHERE parent_id IS NOT NULL)
+      ORDER BY p.unit_number ASC NULLS LAST, p.name ASC
+    `).all();
+
+    // Get rate context classifications from market_intelligence
+    const { results: rateContextRows } = await env.DB.prepare(`
+      SELECT metric_key, metric_value as gap_pct, sample_size as months_analyzed, period as classification
+      FROM market_intelligence
+      WHERE city = '_portfolio' AND metric_key LIKE 'rate_context_prop_%'
+    `).all();
+    const rateContext = {};
+    for (const r of (rateContextRows || [])) {
+      const pid = r.metric_key.replace('rate_context_prop_', '');
+      rateContext[pid] = { gap_pct: r.gap_pct, months: r.months_analyzed, classification: r.classification };
+    }
+
+    // Get latest analysis report summaries (PL strategy + pricing analysis) per property
+    const { results: reportRows } = await env.DB.prepare(`
+      SELECT ar.property_id, ar.report_type, ar.report_data, ar.provider, ar.created_at
+      FROM analysis_reports ar
+      INNER JOIN (
+        SELECT property_id, report_type, MAX(id) as max_id
+        FROM analysis_reports
+        WHERE report_type IN ('pricing_analysis', 'pl_strategy', 'revenue_optimization')
+        GROUP BY property_id, report_type
+      ) latest ON ar.id = latest.max_id
+      ORDER BY ar.property_id
+    `).all();
+
+    // Parse report summaries — extract key recommendations
+    const reportsByProp = {};
+    for (const r of (reportRows || [])) {
+      if (!reportsByProp[r.property_id]) reportsByProp[r.property_id] = [];
+      try {
+        const data = JSON.parse(r.report_data);
+        let summary = null;
+        if (r.report_type === 'pl_strategy' && data.strategy_summary) {
+          summary = { type: 'PriceLabs Strategy', summary: data.strategy_summary, base: data.base_price, min: data.min_price, max: data.max_price, cleaning: data.cleaning_fee, pet: data.pet_fee, extra_guest: data.extra_guest_fee || 0, provider: r.provider, date: r.created_at };
+        } else if (r.report_type === 'pricing_analysis' && data.strategies) {
+          const topStrat = data.strategies[0];
+          summary = { type: 'Pricing Analysis', summary: topStrat?.reasoning?.substring(0, 200) || '', base: topStrat?.base_nightly_rate, cleaning: topStrat?.cleaning_fee, pet: topStrat?.pet_fee, provider: r.provider, date: r.created_at, strategy_name: topStrat?.strategy_name };
+        } else if (r.report_type === 'revenue_optimization' && data.analysis) {
+          const text = typeof data.analysis === 'string' ? data.analysis.substring(0, 200) : '';
+          summary = { type: 'Revenue Optimization', summary: text, provider: r.provider, date: r.created_at };
+        }
+        if (summary) reportsByProp[r.property_id].push(summary);
+      } catch {}
+    }
+
+    // Get actual ADR, occ, revenue from monthly_actuals (last 3 months) — derived from Guesty reservations
+    const { results: actuals } = await env.DB.prepare(`
+      SELECT property_id,
+        ROUND(AVG(CASE WHEN booked_nights > 0 THEN total_revenue / booked_nights ELSE NULL END), 2) as actual_adr,
+        ROUND(AVG(CASE WHEN booked_nights > 0 THEN booked_nights * 1.0 / available_nights ELSE NULL END) * 100, 1) as actual_occ,
+        SUM(total_revenue) as total_rev_3mo, SUM(booked_nights) as total_nights_3mo, COUNT(*) as months_counted,
+        SUM(host_payout) as total_payout_3mo, SUM(cleaning_revenue) as total_cleaning_3mo,
+        SUM(num_reservations) as total_bookings_3mo
+      FROM monthly_actuals
+      WHERE month >= date('now', '-3 months') AND booked_nights > 0
+      GROUP BY property_id
+    `).all();
+    const actualsByProp = {};
+    for (const a of (actuals || [])) actualsByProp[a.property_id] = a;
+
+    // Get Guesty avg cleaning fee per property (from actual reservations, not PriceLabs)
+    const { results: guestyCleaning } = await env.DB.prepare(`
+      SELECT property_id,
+        ROUND(AVG(CASE WHEN cleaning_fee > 0 THEN cleaning_fee ELSE NULL END), 2) as avg_cleaning,
+        ROUND(AVG(CASE WHEN pet_fee > 0 THEN pet_fee ELSE NULL END), 2) as avg_pet_fee,
+        COUNT(CASE WHEN cleaning_fee > 0 THEN 1 END) as cleaning_count
+      FROM guesty_reservations
+      WHERE property_id IS NOT NULL AND ${LIVE_STATUS_SQL}
+        AND check_in >= date('now', '-6 months')
+      GROUP BY property_id
+    `).all();
+    const guestyFeesByProp = {};
+    for (const g of (guestyCleaning || [])) guestyFeesByProp[g.property_id] = g;
+
+    // Get current min nights from Guesty calendar (actual setting, not AI recommendation)
+    const { results: calMinNights } = await env.DB.prepare(`
+      SELECT property_id,
+        MIN(min_nights) as min_stay,
+        MAX(min_nights) as max_stay,
+        ROUND(AVG(min_nights), 1) as avg_stay
+      FROM guesty_calendar
+      WHERE property_id IS NOT NULL
+        AND date >= date('now') AND date <= date('now', '+30 days')
+        AND status = 'available'
+      GROUP BY property_id
+    `).all();
+    const calMinByProp = {};
+    for (const c of (calMinNights || [])) calMinByProp[c.property_id] = c;
+
+    // Assemble response
+    const overview = (props || []).map(p => {
+      const label = (p.unit_number ? p.unit_number + ' — ' : '') + (p.platform_listing_name || p.name || p.address || 'Property');
+      const rc = rateContext[p.id] || null;
+      const reports = reportsByProp[p.id] || [];
+      const act = actualsByProp[p.id] || null;
+      const cal = calMinByProp[p.id] || null;
+      const gf = guestyFeesByProp[p.id] || null;
+
+      // Cleaning fee priority: Guesty listing setting > property setting > Guesty reservation avg > PriceLabs > AI rec
+      const cleaningFee = p.guesty_cleaning_fee || p.prop_cleaning || (gf ? gf.avg_cleaning : null) || p.pl_cleaning || p.ai_cleaning || 0;
+      // Pet fee: Guesty listing setting > Guesty reservation avg > AI analysis
+      const petFee = p.guesty_pet_fee || (gf ? gf.avg_pet_fee : null) || p.ai_pet_fee || 0;
+      // Extra guest fee: Guesty listing setting (only authoritative source)
+      const extraGuestFee = p.guesty_extra_person_fee || 0;
+      // Min nights: Guesty listing default (PL may override per-date via calendar)
+      const guestyMinNights = p.guesty_min_nights || null;
+
+      return {
+        id: p.id, label, city: p.city, state: p.state, bedrooms: p.bedrooms, bathrooms: p.bathrooms, max_guests: p.max_guests,
+        guesty_settings: {
+          cleaning_fee: p.guesty_cleaning_fee, extra_person_fee: p.guesty_extra_person_fee,
+          guests_included: p.guesty_guests_included,
+          pet_fee: p.guesty_pet_fee, pets_allowed: p.guesty_pets_allowed,
+          min_nights: p.guesty_min_nights, max_nights: p.guesty_max_nights,
+          weekly_factor: p.guesty_weekly_factor, monthly_factor: p.guesty_monthly_factor,
+          base_price: p.guesty_base_price, prices_updated: p.guesty_prices_updated
+        },
+        pricelabs: p.pl_base ? {
+          base: p.pl_base, min: p.pl_min, max: p.pl_max, rec_base: p.pl_rec_base,
+          cleaning: p.pl_cleaning, occ_30d: p.pl_occ_30, mkt_occ_30d: p.pl_mkt_occ_30,
+          occ_60d: p.pl_occ_60, last_synced: p.pl_last_synced
+        } : null,
+        latest_analysis: p.ai_base ? {
+          strategy: p.strategy_name, base: p.ai_base, weekend: p.ai_weekend,
+          cleaning: p.ai_cleaning, pet_fee: p.ai_pet_fee, weekly_disc: p.ai_weekly_disc,
+          monthly_disc: p.ai_monthly_disc, peak_markup: p.ai_peak_markup, low_disc: p.ai_low_disc,
+          min_nights: p.ai_min_nights, proj_occ: p.ai_proj_occ, proj_monthly: p.ai_proj_monthly,
+          proj_annual: p.ai_proj_annual, provider: p.ai_provider, date: p.analysis_date,
+          reasoning: (p.ai_reasoning || '').substring(0, 200)
+        } : null,
+        cleaning_fee: cleaningFee,
+        cleaning_source: p.guesty_cleaning_fee ? 'guesty' : p.prop_cleaning ? 'property' : (gf && gf.avg_cleaning) ? 'guesty_avg' : p.pl_cleaning ? 'pricelabs' : p.ai_cleaning ? 'ai_rec' : 'none',
+        pet_fee: petFee,
+        pet_fee_source: p.guesty_pet_fee ? 'guesty' : (gf && gf.avg_pet_fee) ? 'guesty_avg' : p.ai_pet_fee ? 'ai_analysis' : 'none',
+        extra_guest_fee: extraGuestFee,
+        guesty_fees: gf ? { avg_cleaning: gf.avg_cleaning, avg_pet: gf.avg_pet_fee, cleaning_count: gf.cleaning_count } : null,
+        actuals: act ? {
+          adr: act.actual_adr, occ: act.actual_occ, rev_3mo: act.total_rev_3mo,
+          nights: act.total_nights_3mo, months: act.months_counted,
+          payout_3mo: act.total_payout_3mo, cleaning_3mo: act.total_cleaning_3mo,
+          bookings_3mo: act.total_bookings_3mo
+        } : null,
+        rate_context: rc,
+        calendar_min_nights: cal ? { min: cal.min_stay, max: cal.max_stay, avg: cal.avg_stay } : null,
+        recommendations: reports
+      };
+    });
+
+    return json({ properties: overview, count: overview.length });
+  } catch (err) {
+    return json({ error: err.message }, 500);
+  }
+}
+
+
+// ── UNIFIED PRICING ANALYSIS ────────────────────────────────────────────────
+// Single AI call replacing three separate functions (generateAIStrategy,
+// generatePLStrategyRecommendation, generateRevenueOptimization).
+// Produces one coherent result covering pricing, PriceLabs setup, seasonal
+// adjustments, and revenue optimization — no contradictions.
+async function generateUnifiedAnalysis(propertyId, request, env) {
+  const body = request && request.json ? await request.json().catch(() => ({})) : (request || {});
+  const analysisType = body.analysis_type || 'str';
+
+  const ctx = await gatherPropertyContext(propertyId, env);
+  if (!ctx) return json({ error: 'Property not found' }, 404);
+  const { property, amenities, market, comparables, taxRate, platforms, strategies, plData,
+          seasonData, actualsData, avgStayLength, rateMatrixContext, buildingContext,
+          servicesMonthly, servicesList, totalMonthly, monthlyCost, utilities,
+          prevReports, guestIntelContext, guestyActualsContext } = ctx;
+  const marketData = market ? [market] : [];
+
+  // Source tracking
+  const sources = [];
+  sources.push({ name: 'Market Data', status: marketData.length > 0 ? 'ok' : 'none' });
+  sources.push({ name: 'Comparables', status: comparables.length > 0 ? comparables.length + ' found' : 'none' });
+  sources.push({ name: 'PriceLabs', status: plData ? 'linked' : 'not linked' });
+  sources.push({ name: 'Amenities', status: amenities.length > 0 ? amenities.length + ' tracked' : 'none' });
+  sources.push({ name: 'Seasonality', status: seasonData.length > 0 ? seasonData.length + ' months' : 'none' });
+  sources.push({ name: 'Guesty Actuals', status: actualsData.length > 0 ? actualsData.length + ' months' : 'none' });
+  if (prevReports.plStrategy) sources.push({ name: 'Prev PL Strategy', status: prevReports.plStrategy.date ? prevReports.plStrategy.date.substring(0,10) : 'yes' });
+  if (prevReports.revOpt) sources.push({ name: 'Prev Optimization', status: prevReports.revOpt.date ? prevReports.revOpt.date.substring(0,10) : 'yes' });
+
+  let autoFetchMsg = null;
+  if (comparables.length === 0) autoFetchMsg = 'No comps found. Run an Intel Crawl for this property to pull comparables.';
+
+  // Generate algorithmic strategies (unchanged)
+  const all = [];
+  if (analysisType === 'str' || analysisType === 'both') {
+    if (avgStayLength > 0 && seasonData.length > 0) { seasonData[0].avg_stay_length = avgStayLength; }
+    else if (avgStayLength > 0) { seasonData.push({ avg_stay_length: avgStayLength }); }
+    const strStrategies = generateAlgorithmicStrategies(property, amenities, marketData[0] || null, comparables, taxRate, plData, seasonData, null);
+    all.push(...strStrategies);
+  }
+  if (analysisType === 'ltr' || analysisType === 'both') {
+    const ltrStrategies = generateLTRStrategies(property, amenities, marketData[0] || null, taxRate, comparables);
+    all.push(...ltrStrategies);
+  }
+
+  // Unified AI call
+  let aiError = null;
+  let unifiedResult = null;
+  const useAI = body.use_ai !== false;
+
+  if (useAI) {
+    const qualityPref = body.quality || 'best';
+    const aiProv = await pickAIProvider(env, 'unified_analysis', qualityPref);
+    if (!aiProv) {
+      aiError = 'No AI provider available. Add an API key in Admin \u2192 API Keys or enable Workers AI.';
+    } else {
+      const prompt = await buildUnifiedPrompt(property, amenities, market, comparables, taxRate, plData, platforms, seasonData, actualsData, avgStayLength, rateMatrixContext, buildingContext, servicesMonthly, servicesList, totalMonthly, monthlyCost, utilities, prevReports, guestIntelContext, guestyActualsContext, strategies, env, propertyId, analysisType);
+
+      const aiResult = await callAIWithFallback(env, 'unified_analysis', prompt, 4000, 4000);
+      if (!aiResult) {
+        aiError = 'AI call failed \u2014 all providers returned errors. Check Admin \u2192 System Log.';
+      } else {
+        unifiedResult = parseUnifiedResponse(aiResult.text);
+        if (unifiedResult) {
+          unifiedResult._provider = aiResult.provider;
+        } else {
+          aiError = 'AI returned unparseable response (' + aiResult.provider + '). Try again.';
+          await syslog(env, 'error', 'generateUnifiedAnalysis', 'JSON parse failed', aiResult.text.substring(0, 500), propertyId);
+        }
+      }
+    }
+  }
+
+  // Build AI strategy row from unified result
+  if (unifiedResult && unifiedResult.pricing) {
+    const p = unifiedResult.pricing;
+    const ss = unifiedResult.seasonal || {};
+    let occ = p.projected_occupancy || (analysisType === 'ltr' ? 0.92 : 0.45);
+    if (occ > 1) occ = occ / 100;
+    occ = Math.min(Math.max(occ, 0.05), 0.98);
+
+    let aiStrategy;
+    if (analysisType === 'ltr' && p.monthly_rent) {
+      // LTR: monthly_rent is the primary field, stored in base_nightly_rate column
+      const monthlyRent = p.monthly_rent;
+      const annRev = p.projected_annual_revenue || monthlyRent * 12;
+      aiStrategy = {
+        strategy_name: 'AI \u2014 LTR Strategy',
+        base_nightly_rate: monthlyRent, weekend_rate: 0, cleaning_fee: 0, pet_fee: 0,
+        weekly_discount: 0, monthly_discount: 0, peak_season_markup: 0, low_season_discount: 0,
+        min_nights: 365, projected_occupancy: occ,
+        projected_annual_revenue: annRev, projected_monthly_avg: monthlyRent,
+        reasoning: p.analysis || p.reasoning || unifiedResult.strategy_summary || '',
+        ai_generated: true, ai_provider: unifiedResult._provider,
+        analysis: p.analysis, recommendations: p.recommendations,
+        breakeven_rate: p.breakeven_rate, rental_type: 'ltr',
+      };
+    } else {
+      // STR: standard nightly rate strategy
+      const baseRate = p.base_nightly_rate || 150;
+      const annRev = p.projected_annual_revenue || Math.round(baseRate * occ * 365);
+      const monAvg = p.projected_monthly_revenue || Math.round(annRev / 12);
+      aiStrategy = {
+        strategy_name: 'AI \u2014 STR Strategy',
+        base_nightly_rate: baseRate,
+        weekend_rate: p.weekend_rate || Math.round(baseRate * 1.2),
+        cleaning_fee: p.cleaning_fee || 50, pet_fee: p.pet_fee || 0,
+        weekly_discount: p.weekly_discount_pct || 10, monthly_discount: p.monthly_discount_pct || 20,
+        peak_season_markup: ss.peak_markup_pct || p.peak_season_markup || 15,
+        low_season_discount: ss.low_discount_pct || p.low_season_discount || 10,
+        min_nights: p.min_nights_weekday || p.min_nights || 2,
+        projected_occupancy: occ, projected_annual_revenue: annRev, projected_monthly_avg: monAvg,
+        reasoning: p.analysis || p.reasoning || unifiedResult.strategy_summary || '',
+        ai_generated: true, ai_provider: unifiedResult._provider,
+        analysis: p.analysis, recommendations: p.recommendations,
+        breakeven_rate: p.breakeven_rate, cleaning_fee_reasoning: p.cleaning_fee_reasoning,
+        rental_type: 'str',
+      };
+    }
+    all.push(aiStrategy);
+  }
+
+  // Tag rental_type
+  for (const s of all) {
+    if (!s.rental_type) {
+      s.rental_type = (s.min_nights >= 365 || (s.strategy_name || '').toUpperCase().includes('LTR')) ? 'ltr' : 'str';
+    }
+  }
+
+  // Save to pricing_strategies
+  try { await env.DB.prepare('ALTER TABLE pricing_strategies ADD COLUMN ai_provider TEXT').run(); } catch {}
+  if (all.length > 0) {
+    const stmt = env.DB.prepare('INSERT INTO pricing_strategies (property_id, strategy_name, base_nightly_rate, weekend_rate, cleaning_fee, pet_fee, weekly_discount, monthly_discount, peak_season_markup, low_season_discount, min_nights, projected_occupancy, projected_annual_revenue, projected_monthly_avg, reasoning, ai_generated, rental_type, ai_provider) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+    await env.DB.batch(all.map(s => stmt.bind(propertyId, s.strategy_name, s.base_nightly_rate, s.weekend_rate || 0, s.cleaning_fee || 0, s.pet_fee || 0, s.weekly_discount || 0, s.monthly_discount || 0, s.peak_season_markup || 0, s.low_season_discount || 0, s.min_nights || 1, s.projected_occupancy, s.projected_annual_revenue, s.projected_monthly_avg, (s.reasoning || '').substring(0, 2000), s.ai_generated ? 1 : 0, s.rental_type || 'str', s.ai_provider || null)));
+    try {
+      const { results: oldStrats } = await env.DB.prepare('SELECT id FROM pricing_strategies WHERE property_id = ? ORDER BY created_at DESC').bind(propertyId).all();
+      if (oldStrats && oldStrats.length > 20) {
+        const keepIds = oldStrats.slice(0, 20).map(s => s.id);
+        await env.DB.prepare('DELETE FROM pricing_strategies WHERE property_id = ? AND id NOT IN (' + keepIds.map(() => '?').join(',') + ')').bind(propertyId, ...keepIds).run();
+      }
+    } catch {}
+  }
+
+  // Save to analysis_reports (backward-compatible — all report types)
+  const provider = unifiedResult?._provider || (all.find(s => s.ai_provider) || {}).ai_provider || 'system';
+  try {
+    const unifiedPayload = JSON.stringify({ unified: unifiedResult, market: marketData[0] || null, sources, seasonality: seasonData, strategies: all, analysis_type: analysisType, comparables_count: comparables.length });
+    await env.DB.prepare("INSERT INTO analysis_reports (property_id, report_type, report_data, provider) VALUES (?, 'unified_analysis', ?, ?)").bind(propertyId, unifiedPayload, provider).run();
+
+    const pricingPayload = JSON.stringify({ market: marketData[0] || null, sources, seasonality: seasonData, strategies: all, analysis_type: analysisType, comparables_count: comparables.length });
+    await env.DB.prepare("INSERT INTO analysis_reports (property_id, report_type, report_data, provider) VALUES (?, 'pricing_analysis', ?, ?)").bind(propertyId, pricingPayload, provider).run();
+
+    if (unifiedResult && unifiedResult.pricelabs) {
+      const pr = unifiedResult.pricing || {};
+      const se = unifiedResult.seasonal || {};
+      const plStratPayload = JSON.stringify({
+        strategy: {
+          base_price: unifiedResult.pricelabs.base_price || pr.base_nightly_rate,
+          min_price: unifiedResult.pricelabs.min_price || pr.min_price,
+          max_price: unifiedResult.pricelabs.max_price || pr.max_price,
+          cleaning_fee: pr.cleaning_fee, cleaning_fee_reasoning: pr.cleaning_fee_reasoning,
+          weekend_adjustment: pr.weekend_adjustment_pct,
+          pet_fee: pr.pet_fee, extra_guest_fee: pr.extra_guest_fee,
+          min_nights_weekday: pr.min_nights_weekday, min_nights_weekend: pr.min_nights_weekend,
+          weekly_discount_pct: pr.weekly_discount_pct, monthly_discount_pct: pr.monthly_discount_pct,
+          last_minute_discount_pct: se.last_minute_discount_pct,
+          early_bird_discount_pct: se.early_bird_discount_pct,
+          orphan_day_discount_pct: se.orphan_day_discount_pct,
+          peak_season_months: se.peak_months, peak_season_markup_pct: se.peak_markup_pct,
+          low_season_months: se.low_months, low_season_discount_pct: se.low_discount_pct,
+          projected_occupancy: pr.projected_occupancy,
+          projected_monthly_revenue: pr.projected_monthly_revenue,
+          projected_annual_revenue: pr.projected_annual_revenue,
+          breakeven_occupancy: pr.breakeven_occupancy,
+          pricelabs_setup_steps: unifiedResult.pricelabs.setup_steps,
+          pricelabs_action_items: unifiedResult.pricelabs.action_items,
+          strategy_summary: unifiedResult.strategy_summary,
+          key_recommendations: pr.recommendations,
+          risks: (unifiedResult.optimization || {}).risks || [],
+        },
+        property: { id: property.id, address: property.address, city: property.city, state: property.state, bedrooms: property.bedrooms, bathrooms: property.bathrooms },
+        context: { monthly_expenses: totalMonthly, amenities_count: amenities.length, comps_count: comparables.length, platforms_count: platforms.length, has_pricelabs: !!plData, pricelabs: plData, provider },
+      });
+      await env.DB.prepare("INSERT INTO analysis_reports (property_id, report_type, report_data, provider) VALUES (?, 'pl_strategy', ?, ?)").bind(propertyId, plStratPayload, provider).run();
+    }
+
+    if (unifiedResult && unifiedResult.optimization) {
+      const opt = unifiedResult.optimization;
+      const revOptPayload = JSON.stringify({
+        optimization: {
+          current_monthly_revenue: opt.current_monthly_revenue || 0,
+          current_occupancy_pct: opt.current_occupancy_pct || 0,
+          target_occupancy_pct: opt.target_occupancy_pct || 0,
+          target_monthly_revenue: opt.target_monthly_revenue || 0,
+          revenue_increase_pct: opt.revenue_increase_pct || 0,
+          quick_wins: opt.quick_wins || [], ninety_day_plan: opt.ninety_day_plan || '',
+          occupancy_improvements: opt.occupancy_improvements || [],
+          revenue_improvements: opt.revenue_improvements || [],
+          pricing_adjustments: opt.pricing_adjustments || [],
+          listing_improvements: opt.listing_improvements || [],
+          listing_health: opt.listing_health || null,
+          guest_experience_improvements: opt.guest_experience_improvements || [],
+        },
+        property: { id: property.id, address: property.address, city: property.city },
+        monthly_expenses: monthlyCost, provider,
+      });
+      await env.DB.prepare("INSERT INTO analysis_reports (property_id, report_type, report_data, provider) VALUES (?, 'revenue_optimization', ?, ?)").bind(propertyId, revOptPayload, provider).run();
+      if (opt.listing_health) {
+        try { await env.DB.prepare("INSERT INTO analysis_reports (property_id, report_type, report_data, provider) VALUES (?, 'listing_health', ?, ?)").bind(propertyId, JSON.stringify(opt.listing_health), provider).run(); } catch {}
+      }
+    }
+
+    // Cleanup: keep last 3 per report type (batched to avoid sequential writes)
+    const cleanupBatch = [];
+    for (const rt of ['unified_analysis', 'pricing_analysis', 'pl_strategy', 'revenue_optimization']) {
+      try {
+        const { results: old } = await env.DB.prepare('SELECT id FROM analysis_reports WHERE property_id = ? AND report_type = ? ORDER BY created_at DESC').bind(propertyId, rt).all();
+        if (old && old.length > 3) {
+          const keepIds = old.slice(0, 3).map(r => r.id);
+          cleanupBatch.push(env.DB.prepare('DELETE FROM analysis_reports WHERE property_id = ? AND report_type = ? AND id NOT IN (' + keepIds.map(() => '?').join(',') + ')').bind(propertyId, rt, ...keepIds));
+        }
+      } catch {}
+    }
+    if (cleanupBatch.length > 0) { try { await env.DB.batch(cleanupBatch); } catch {} }
+  } catch (e) { await syslog(env, 'error', 'generateUnifiedAnalysis', 'report_save', e.message, propertyId); }
+
+  // Return full response (analyze endpoint shape)
+  return json({
+    property, amenities, market: marketData[0] || null, comparables_count: comparables.length,
+    auto_fetch: autoFetchMsg, tax_rate: taxRate, strategies: all, analysis_type: analysisType,
+    pricelabs: plData, platforms, sources, seasonality: seasonData, actuals: actualsData,
+    ai_error: aiError || null, unified: unifiedResult,
+    monthly_expenses: totalMonthly, monthly_cost: monthlyCost,
+  });
+}
+
+
+async function buildUnifiedPrompt(property, amenities, market, comparables, taxRate, plData, platforms, seasonData, actualsData, avgStayLength, rateMatrixContext, buildingContext, servicesMonthly, servicesList, totalMonthly, monthlyCost, utilities, prevReports, guestIntelContext, guestyActualsContext, strategies, env, propertyId, analysisType) {
+  const isManaged = property.is_managed === 1 || property.ownership_type === 'managed';
+  const modeLabel = analysisType === 'ltr' ? 'long-term rental (LTR)' : 'short-term vacation rental (STR)';
+
+  const expenseInfo = isManaged
+    ? 'COSTS: ' + (property.ownership_type === 'rental' ? 'Rent $' + (property.monthly_rent_cost || 0) + '/mo' : 'Mortgage $' + (property.monthly_mortgage || 0) + '/mo | Insurance $' + (property.monthly_insurance || 0) + '/mo | Taxes $' + (property.annual_taxes || '?') + '/yr | HOA $' + (property.hoa_monthly || 0) + '/mo') + '\nMANAGEMENT: You manage this for ' + (property.owner_name || 'Owner') + ' \u2014 you take ' + (property.management_fee_pct || 0) + '% of ' + ((property.fee_basis || 'gross') === 'net_profit' ? 'net profit' : 'gross revenue') + '.'
+    : property.ownership_type === 'rental'
+    ? 'COSTS: Rent $' + (property.monthly_rent_cost || 0) + '/mo'
+    : 'COSTS: Mortgage $' + (property.monthly_mortgage || 0) + '/mo | Insurance $' + (property.monthly_insurance || 0) + '/mo | Taxes $' + (property.annual_taxes || '?') + '/yr | HOA $' + (property.hoa_monthly || 0) + '/mo';
+
+  let plContext = '';
+  if (plData) {
+    plContext = '\n\nPRICELABS DYNAMIC PRICING DATA (LIVE):'
+      + '\n  Current Base Price: $' + (plData.base_price || '?') + '/nt | PL Recommended: $' + (plData.recommended_base || plData.recommended_base_price || '?') + '/nt'
+      + '\n  Price Range: Min $' + (plData.min_price || '?') + ' \u2014 Max $' + (plData.max_price || '?')
+      + '\n  Cleaning Fee (current): $' + (plData.cleaning_fees || '?')
+      + '\n  Strategy Group: ' + (plData.group || plData.group_name || 'Default')
+      + '\n  YOUR Occupancy: 7d ' + (plData.occ_7d || '?') + ' | 30d ' + (plData.occ_30d || '?') + ' | 60d ' + (plData.occ_60d || '?')
+      + '\n  MARKET Occupancy: 7d ' + (plData.mkt_occ_7d || '?') + ' | 30d ' + (plData.mkt_occ_30d || '?') + ' | 60d ' + (plData.mkt_occ_60d || '?')
+      + (plData.avg_30d ? '\n  30-day avg rate (calendar): $' + plData.avg_30d + '/nt | 90-day avg: $' + (plData.avg_90d || '?') + '/nt' : '')
+      + '\n  Sync Active: ' + (plData.push_enabled ? 'YES' : 'NO') + ' | PMS: ' + (plData.pms || '?')
+      + '\n  Channels: ' + ((plData.channels || []).map(c => c.channel_name + (c.avg_nightly_rate ? ' $' + Math.round(c.avg_nightly_rate) + '/nt' : '')).join(', ') || 'None')
+      + '\n  NOTE: Forward 30d occupancy is booking PACE. 10-30% forward is normal.'
+      + '\n  CRITICAL: BASE PRICE \u2260 AVERAGE RATE. Base is the PriceLabs anchor \u2014 dynamic demand pushes final rates 15-40% above.';
+  }
+
+  let platContext = '';
+  if (platforms && platforms.length > 0) {
+    platContext = '\n\nPLATFORM LISTINGS: ' + platforms.map(p => p.platform + (p.nightly_rate ? ' $' + p.nightly_rate + '/nt' : ' (no rate)') + (p.rating ? ' ' + p.rating + '\u2605' : '') + (p.review_count ? ' (' + p.review_count + ' reviews)' : '')).join(' | ');
+  }
+
+  let seasonContext = '';
+  if (seasonData && seasonData.length >= 6) {
+    const mNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const peakMonths = seasonData.filter(s => (s.multiplier || 1) >= 1.1).map(s => mNames[(s.month_number || 1) - 1]);
+    const lowMonths = seasonData.filter(s => (s.multiplier || 1) <= 0.85).map(s => mNames[(s.month_number || 1) - 1]);
+    const avgOcc = seasonData.reduce((a, s) => a + (s.avg_occupancy || 0), 0) / seasonData.length;
+    seasonContext = '\nSEASONALITY (' + property.city + '): Peak: ' + (peakMonths.join(', ') || 'none') + ' | Low: ' + (lowMonths.join(', ') || 'none') + ' | Market avg occ: ' + Math.round(avgOcc * 100) + '%';
+    seasonContext += '\nMonthly: ' + seasonData.map(s => mNames[(s.month_number||1)-1] + ' ' + (s.multiplier||1).toFixed(2) + 'x' + (s.avg_occupancy ? ' ' + Math.round(s.avg_occupancy*100) + '%' : '')).join(' | ');
+    if (seasonData[0] && seasonData[0].avg_stay_length > 0) seasonContext += ' | Avg stay: ' + seasonData[0].avg_stay_length.toFixed(1) + ' nights';
+  }
+
+  let restrictionsContext = '';
+  if (property.hoa_name) restrictionsContext += '\nHOA/COMMUNITY: ' + property.hoa_name;
+  if (property.rental_restrictions) restrictionsContext += '\nRENTAL RESTRICTIONS: ' + property.rental_restrictions + '\n*** These are HARD CONSTRAINTS \u2014 strategy MUST comply. ***';
+  if (property.ai_notes) restrictionsContext += '\nOPERATOR NOTES: ' + property.ai_notes;
+
+  let prevContext = '';
+  if (prevReports.plStrategy) {
+    try {
+      const ps = JSON.parse(prevReports.plStrategy.data);
+      const s = ps.strategy || ps;
+      if (s.base_price || s.projected_monthly_revenue) {
+        prevContext += '\nPREVIOUS STRATEGY (' + (prevReports.plStrategy.date ? prevReports.plStrategy.date.substring(0,10) : 'prior') + '): Base $' + (s.base_price || '?') + '/nt | Proj $' + (s.projected_monthly_revenue || '?') + '/mo | Occ ' + Math.round((s.projected_occupancy || 0) * 100) + '%';
+        if (s.strategy_summary) prevContext += '\n  Summary: ' + s.strategy_summary.substring(0, 200);
+      }
+    } catch {}
+  }
+  if (prevReports.revOpt) {
+    try {
+      const opt = JSON.parse(prevReports.revOpt.data);
+      const o = opt.optimization || opt;
+      if (o.quick_wins || o.target_monthly_revenue) {
+        prevContext += '\nPREVIOUS OPTIMIZATION (' + (prevReports.revOpt.date ? prevReports.revOpt.date.substring(0,10) : 'prior') + '):';
+        if (o.quick_wins && o.quick_wins.length > 0) prevContext += ' Quick wins: ' + o.quick_wins.slice(0,3).join(' | ');
+        if (o.target_monthly_revenue) prevContext += ' Target: $' + o.target_monthly_revenue + '/mo';
+      }
+    } catch {}
+  }
+  if (prevContext) prevContext += '\nIf your recommendations differ significantly, explain why (new data, market shift, seasonal change).\n';
+
+  const compsStr = (() => {
+    const propBeds = property.bedrooms || 1;
+    const scored = comparables.map(c => {
+      const cBeds = c.bedrooms || 0;
+      const match = cBeds === propBeds ? '\u2605MATCH' : Math.abs(cBeds - propBeds) === 1 ? '~near' : '';
+      return { c, match, dist: Math.abs(cBeds - propBeds) };
+    }).sort((a, b) => a.dist - b.dist);
+    return scored.slice(0, 14).map(({ c, match }) => (match ? '[' + match + '] ' : '') + (c.source || '') + ' ' + (c.bedrooms || '?') + 'BR/' + (c.bathrooms || '?') + 'BA $' + (c.nightly_rate || 0) + (c.comp_type === 'ltr' ? '/mo' : '/nt') + (c.rating ? ' ' + c.rating + '\u2605' : '') + (c.occupancy_pct ? ' ' + Math.round(c.occupancy_pct * 100) + '%occ' : '')).join(' | ') || 'None';
+  })();
+
+  const latestStrat = strategies && strategies.length > 0 ? strategies[0] : null;
+  const currentRev = latestStrat ? Math.round(latestStrat.projected_monthly_avg || 0) : (actualsData.length > 0 ? Math.round(actualsData.reduce((a, r) => a + (r.total_revenue || 0), 0) / actualsData.length) : 0);
+  const cleaningFee = plData && plData.cleaning_fees ? Math.round(plData.cleaning_fees) : (property.cleaning_fee || 0);
+  const cleaningCost = property.cleaning_cost || 0;
+  const listingAudit = platforms.map(p => p.platform + (p.nightly_rate ? ' $' + p.nightly_rate + '/nt' : '') + (p.rating ? ' ' + p.rating + '\u2605' : '') + (p.review_count ? ' (' + p.review_count + ' reviews)' : ''));
+
+  let occAnalysis = '';
+  if (plData && plData.occ_30d && plData.mkt_occ_30d) {
+    const propOcc = parseInt(plData.occ_30d) || 0;
+    const mktOcc = parseInt(plData.mkt_occ_30d) || 0;
+    if (propOcc > mktOcc) occAnalysis = 'OUTPERFORMING market by ' + (propOcc - mktOcc) + ' pts \u2014 consider raising prices.';
+    else if (mktOcc > propOcc) occAnalysis = 'UNDERPERFORMING market by ' + (mktOcc - propOcc) + ' pts \u2014 consider adjusting pricing or listing.';
+    else occAnalysis = 'Tracking at market level.';
+  }
+
+  const monthlyTargets = await getMonthlyTargetsForPrompt(propertyId, property, env);
+  const marketTrend = await getMarketAndTrendContextForPrompt(propertyId, property, env);
+  const plCustom = getPriceLabsCustomizationsForPrompt(property);
+
+  return 'You are an expert ' + modeLabel + ' revenue manager and optimization consultant. Produce ONE comprehensive analysis covering pricing, PriceLabs setup, seasonal strategy, and revenue optimization.\n'
+    + '\nPROPERTY: ' + property.address + ', ' + property.city + ', ' + property.state + ' ' + (property.zip || '')
+    + '\nType: ' + property.property_type + ' | ' + property.bedrooms + 'BR/' + property.bathrooms + 'BA | ' + (property.sqft || '?') + 'sqft'
+    + '\nOwnership: ' + (isManaged ? 'MANAGED for ' + (property.owner_name || 'Owner') + ' (' + (property.management_fee_pct || 0) + '% of ' + ((property.fee_basis || 'gross') === 'net_profit' ? 'net profit' : 'gross') + ')' : property.ownership_type === 'rental' ? 'RENTED (arbitrage/sublet)' : 'OWNED')
+    + (property.listing_url ? '\nListing: ' + property.listing_url : '') + restrictionsContext
+    + '\n\n' + expenseInfo
+    + '\nUTILITIES: $' + utilities + '/mo' + (servicesMonthly > 0 ? ' | SERVICES: $' + servicesMonthly + '/mo (' + servicesList + ')' : '')
+    + '\nTOTAL MONTHLY EXPENSES: $' + totalMonthly + '/mo'
+    + '\nCLEANING: Guest pays $' + cleaningFee + ' | Cleaner costs $' + (cleaningCost || '? (not set)') + '/turnover'
+    + (cleaningFee > 0 && cleaningCost > 0 ? '\nCleaning margin: ' + (cleaningFee > cleaningCost ? '+$' + (cleaningFee - cleaningCost) + '/turnover' : '-$' + (cleaningCost - cleaningFee) + '/turnover LOSS') : '')
+    + '\n\nAMENITIES (' + amenities.length + '): ' + (amenities.map(a => a.name + ' (+' + (a.impact_score || 0) + '%)').join(', ') || 'None')
+    + '\n\nMARKET: ' + (market ? 'Avg $' + (market.avg_daily_rate || '?') + '/nt | Median $' + (market.median_daily_rate || '?') + '/nt | Avg occ ' + (market.avg_occupancy ? Math.round(market.avg_occupancy * 100) + '%' : '?') + ' | ' + (market.active_listings || '?') + ' active listings' : 'No market data')
+    + '\n\nCOMPS (' + comparables.length + '): ' + compsStr
+    + '\nWeight \u2605MATCH comps most heavily. ~near (\u00b11 bed) are secondary.'
+    + '\n' + (rateMatrixContext || '') + plContext + platContext + (seasonContext ? '\n' + seasonContext : '')
+    + '\n' + plCustom
+    + '\n' + guestyActualsContext
+    + '\n' + buildingContext
+    + '\n' + guestIntelContext
+    + '\n' + monthlyTargets
+    + '\n' + marketTrend
+    + '\n' + prevContext
+    + '\nCURRENT PERFORMANCE: Est. $' + currentRev + '/mo | ' + (currentRev > monthlyCost ? 'Profitable (+$' + (currentRev - monthlyCost) + '/mo net)' : 'LOSING $' + (monthlyCost - currentRev) + '/mo')
+    + (occAnalysis ? '\nOCCUPANCY: ' + occAnalysis : '')
+    + '\nPLATFORMS: ' + (listingAudit.length > 0 ? listingAudit.join(' | ') : 'None linked')
+    + (platforms.length === 0 ? '\nWARNING: No platforms linked \u2014 listing on Airbnb and VRBO minimum recommended.' : '')
+    + '\n\nPRIOR ALGORITHMIC ANALYSIS: ' + (strategies.length > 0 ? strategies.slice(0, 3).map(s => s.strategy_name + ': $' + s.base_nightly_rate + '/nt, ' + Math.round((s.projected_occupancy || 0) * 100) + '% occ, $' + Math.round(s.projected_monthly_avg || 0) + '/mo').join(' | ') : 'None yet')
+    + '\n\nPRICING GUIDANCE:'
+    + '\n- base_nightly_rate is the PriceLabs anchor \u2014 dynamic adjustments push rates 15-40% above'
+    + '\n- Revenue = (base \u00d7 dynamic_multiplier \u00d7 occupancy \u00d7 365) + (cleaning \u00d7 turnovers)'
+    + '\n- Use actual Guesty data for occupancy if available'
+    + '\n- Breakeven: monthly revenue must cover $' + totalMonthly + '/mo'
+    + '\n- If occupancy ABOVE market avg, focus on RAISING rates not lowering'
+    + '\n\nDATA INTEGRITY: Monthly actuals exclude current in-progress month. Use completed months only.'
+    + '\n\nRespond ONLY with JSON (no markdown, no backticks):'
+    + '\n{'
+    + '\n  "pricing": {'
+    + (analysisType === 'ltr'
+      ? '\n    "monthly_rent": N, "projected_occupancy": 0.XX, "projected_monthly_revenue": N, "projected_annual_revenue": N,'
+      + '\n    "breakeven_occupancy": 0.XX, "breakeven_rate": N,'
+      : '\n    "base_nightly_rate": N, "weekend_rate": N, "weekend_adjustment_pct": N,'
+      + '\n    "cleaning_fee": N, "cleaning_fee_reasoning": "why",'
+      + '\n    "pet_fee": N, "extra_guest_fee": N,'
+      + '\n    "min_nights_weekday": N, "min_nights_weekend": N,'
+      + '\n    "min_price": N, "max_price": N,'
+      + '\n    "weekly_discount_pct": N, "monthly_discount_pct": N,'
+      + '\n    "projected_occupancy": 0.XX, "projected_monthly_revenue": N, "projected_annual_revenue": N,'
+      + '\n    "breakeven_occupancy": 0.XX, "breakeven_rate": N,'
+      + '\n    "peak_season_markup": N, "low_season_discount": N,'
+    )
+    + '\n    "analysis": "3-5 paragraph analysis: (1) Market positioning, (2) Revenue projections, (3) Expense coverage, (4) ' + (plData ? 'PriceLabs alignment' : 'Platform strategy') + ', (5) Risks",'
+    + '\n    "reasoning": "one-line summary",'
+    + '\n    "recommendations": ["rec1", "rec2", "rec3"]'
+    + '\n  },'
+    + '\n  "seasonal": {'
+    + '\n    "peak_months": ["month names"], "peak_markup_pct": N, "peak_rate": N,'
+    + '\n    "low_months": ["month names"], "low_discount_pct": N, "low_rate": N,'
+    + '\n    "orphan_day_discount_pct": N, "last_minute_discount_pct": N, "early_bird_discount_pct": N'
+    + '\n  },'
+    + '\n  "pricelabs": {'
+    + '\n    "base_price": N, "min_price": N, "max_price": N,'
+    + '\n    "setup_steps": ["step 1", "step 2", "step 3"],'
+    + '\n    "action_items": [{"setting": "name", "current": "val", "recommended": "val", "reason": "why", "priority": 1}],'
+    + '\n    "group_strategy_note": "note"'
+    + '\n  },'
+    + '\n  "optimization": {'
+    + '\n    "current_monthly_revenue": ' + currentRev + ', "current_occupancy_pct": ' + (plData && plData.occ_30d ? parseInt(plData.occ_30d) : 40) + ','
+    + '\n    "target_occupancy_pct": N, "target_monthly_revenue": N, "revenue_increase_pct": N,'
+    + '\n    "quick_wins": ["win1", "win2"],'
+    + '\n    "ninety_day_plan": "3-4 sentence plan",'
+    + '\n    "occupancy_improvements": [{"action": "text", "expected_impact": "+X% occ", "priority": 1, "timeframe": "1-2 weeks"}],'
+    + '\n    "revenue_improvements": [{"action": "text", "impact": "$ impact", "effort": "low/medium/high", "priority": 1}],'
+    + '\n    "pricing_adjustments": [{"setting": "name", "current": "val", "recommended": "val", "reason": "why"}],'
+    + '\n    "listing_improvements": ["improvement1", "improvement2"],'
+    + '\n    "listing_health": {"photos": {"assessment": "good/needs_work/critical", "recommendation": "advice"}, "description": {"assessment": "good/needs_work/critical", "suggested_opener": "opener", "issues": []}, "amenities": {"assessment": "good/needs_work/critical", "missing_high_impact": [], "recommendation": "advice"}, "reviews": {"strategy": "advice", "target": "count"}, "pricing_position": {"assessment": "good/needs_work/critical", "recommendation": "advice"}},'
+    + '\n    "guest_experience_improvements": ["improvement1"],'
+    + '\n    "risks": ["risk1", "risk2"]'
+    + '\n  },'
+    + '\n  "strategy_summary": "2-3 sentence overall summary"'
+    + '\n}';
+}
+
+
+function parseUnifiedResponse(raw) {
+  if (!raw) return null;
+  function tryParse(str) { try { return JSON.parse(str); } catch { return null; } }
+
+  // Clean the raw response
+  let s = raw.replace(/`{1,3}json\s*/gi, '').replace(/`{1,3}\s*/g, '');
+  const fb = s.indexOf('{'), lb = s.lastIndexOf('}');
+  if (fb >= 0 && lb > fb) s = s.substring(fb, lb + 1);
+  s = s.replace(/,\s*}/g, '}').replace(/,\s*\]/g, ']');
+
+  // Attempt 1: direct parse
+  let result = tryParse(s);
+  if (result && (result.pricing || result.optimization)) return result;
+
+  // Attempt 2: strip control chars
+  let s2 = s.replace(/[\x00-\x1f\x7f]/g, ' ').replace(/,\s*([}\]])/g, '$1');
+  result = tryParse(s2);
+  if (result && (result.pricing || result.optimization)) return result;
+
+  // Attempt 3: try fixing unescaped quotes in string values
+  try {
+    let s3 = s2.replace(/\t/g, ' ');
+    // Remove BOM and other problematic chars
+    s3 = s3.replace(/\uFEFF/g, '');
+    result = tryParse(s3);
+    if (result && (result.pricing || result.optimization)) return result;
+  } catch {}
+
+  // Attempt 4: regex extraction of key numeric fields
+  try {
+    const extract = (key) => { const m = raw.match(new RegExp('"' + key + '"\\s*:\\s*([\\d.]+)')); return m ? parseFloat(m[1]) : null; };
+    const extractStr = (key) => { const m = raw.match(new RegExp('"' + key + '"\\s*:\\s*"((?:[^"\\\\]|\\\\.){0,500})"')); return m ? m[1].replace(/\\n/g, '\n').replace(/\\"/g, '"') : null; };
+    const extractArr = (key) => { const m = raw.match(new RegExp('"' + key + '"\\s*:\\s*\\[([^\\]]{0,2000})\\]')); if (!m) return []; return m[1].split(',').map(v => v.trim().replace(/^"|"$/g, '')).filter(v => v.length > 0); };
+
+    const bp = extract('base_nightly_rate') || extract('base_price') || extract('monthly_rent');
+    if (!bp || bp <= 0) return null;
+
+    return {
+      pricing: {
+        base_nightly_rate: bp, monthly_rent: extract('monthly_rent'),
+        weekend_rate: extract('weekend_rate'),
+        cleaning_fee: extract('cleaning_fee'), pet_fee: extract('pet_fee'),
+        projected_occupancy: extract('projected_occupancy'),
+        projected_monthly_revenue: extract('projected_monthly_revenue'),
+        projected_annual_revenue: extract('projected_annual_revenue'),
+        breakeven_rate: extract('breakeven_rate'), breakeven_occupancy: extract('breakeven_occupancy'),
+        peak_season_markup: extract('peak_season_markup'), low_season_discount: extract('low_season_discount'),
+        min_price: extract('min_price'), max_price: extract('max_price'),
+        analysis: extractStr('analysis') || extractStr('reasoning') || '',
+        reasoning: extractStr('reasoning') || '',
+        recommendations: extractArr('recommendations'),
+      },
+      seasonal: {
+        peak_months: extractArr('peak_months') || extractArr('peak_season_months'),
+        peak_markup_pct: extract('peak_markup_pct') || extract('peak_season_markup_pct'),
+        low_months: extractArr('low_months') || extractArr('low_season_months'),
+        low_discount_pct: extract('low_discount_pct') || extract('low_season_discount_pct'),
+      },
+      pricelabs: {
+        base_price: extract('base_price') || bp,
+        min_price: extract('min_price'), max_price: extract('max_price'),
+        setup_steps: extractArr('setup_steps') || extractArr('pricelabs_setup_steps'),
+        action_items: [],
+      },
+      optimization: {
+        quick_wins: extractArr('quick_wins'),
+        target_monthly_revenue: extract('target_monthly_revenue'),
+        revenue_increase_pct: extract('revenue_increase_pct'),
+        ninety_day_plan: extractStr('ninety_day_plan'),
+      },
+      strategy_summary: extractStr('strategy_summary') || 'Partial parse \\u2014 some fields extracted via regex.',
+      _partial_parse: true,
+    };
+  } catch { return null; }
+}
+
+// ── DEPRECATED: Original analyzePricing (kept for reference, now calls generateUnifiedAnalysis) ──
+async function analyzePricing(propertyId, request, env) {
+  const body = await request.json();
+  const analysisType = body.analysis_type || 'str';
+
+  // Unified data collection — shared with PL strategy + revenue optimization
+  const ctx = await gatherPropertyContext(propertyId, env);
+  if (!ctx) return json({ error: 'Property not found' }, 404);
+  const { property, amenities, market, comparables, taxRate, platforms, plData, seasonData, actualsData, avgStayLength, rateMatrixContext, prevReports } = ctx;
+  const marketData = market ? [market] : [];
 
   let autoFetchMsg = null;
   if (comparables.length === 0) autoFetchMsg = 'No comps found. Run an Intel Crawl for this property to pull comparables.';
@@ -3166,49 +4000,60 @@ async function analyzePricing(propertyId, request, env) {
   sources.push({ name: 'Amenities', status: amenities.length > 0 ? amenities.length + ' tracked' : 'none' });
   sources.push({ name: 'Seasonality', status: seasonData.length > 0 ? seasonData.length + ' months' : 'none' });
   sources.push({ name: 'Guesty Actuals', status: actualsData.length > 0 ? actualsData.length + ' months' : 'none' });
+  if (prevReports.plStrategy) sources.push({ name: 'Prev PL Strategy', status: prevReports.plStrategy.date ? prevReports.plStrategy.date.substring(0,10) : 'yes' });
+  if (prevReports.revOpt) sources.push({ name: 'Prev Optimization', status: prevReports.revOpt.date ? prevReports.revOpt.date.substring(0,10) : 'yes' });
 
   const all = [];
-
-  // Load market profile (has rate matrix)
-  let marketProfile = null;
-  try {
-    marketProfile = await env.DB.prepare(`SELECT rate_matrix_json FROM market_profiles WHERE LOWER(city) = LOWER(?) AND LOWER(state) = LOWER(?)`).bind(property.city, property.state).first();
-  } catch {}
 
   // STR strategies
   let aiError = null;
   if (analysisType === 'str' || analysisType === 'both') {
     // Inject actual avg stay into seasonData so algorithmic strategies can use it
-  if (guestyAvgStay > 0 && seasonData.length > 0) { seasonData[0].avg_stay_length = guestyAvgStay; }
-  else if (guestyAvgStay > 0) { seasonData = [{ avg_stay_length: guestyAvgStay }]; }
-  const strStrategies = generateAlgorithmicStrategies(property, amenities, marketData[0] || null, comparables, taxRate, plData, seasonData, marketProfile);
+    if (avgStayLength > 0 && seasonData.length > 0) { seasonData[0].avg_stay_length = avgStayLength; }
+    else if (avgStayLength > 0) { seasonData.push({ avg_stay_length: avgStayLength }); }
+    const strStrategies = generateAlgorithmicStrategies(property, amenities, marketData[0] || null, comparables, taxRate, plData, seasonData, null);
     all.push(...strStrategies);
     if (body.use_ai) {
-      const qualityPref = body.quality || 'best'; // 'best' or 'economy'
+      const qualityPref = body.quality || 'best';
       const aiProv = await pickAIProvider(env, 'pricing_analysis', qualityPref);
-      // Build rate matrix context for AI prompt
-      let rateMatrixCtx = '';
-      try {
-        if (marketProfile && marketProfile.rate_matrix_json) {
-          const rm = JSON.parse(marketProfile.rate_matrix_json);
-          if (rm.entries && rm.entries.length > 0) {
-            const lines = rm.entries.map(e => e.beds + 'BR/' + e.baths + 'BA: median $' + e.median + '/nt (p25-p75: $' + e.p25 + '-$' + e.p75 + ', ' + e.count + ' listings)').join('\n  ');
-            let inc = '';
-            if (rm.increments) { if (rm.increments.per_bedroom) inc += ' +$' + rm.increments.per_bedroom + '/bedroom'; if (rm.increments.per_bathroom) inc += ' +$' + rm.increments.per_bathroom + '/bathroom'; }
-            rateMatrixCtx = '\nRATE MATRIX (from ' + rm.total_listings + ' crawled listings in this market):\n  ' + lines + (inc ? '\n  Incremental value:' + inc : '') + '\n  USE THIS as your primary rate reference — it is derived from real market data.';
+
+      // Cross-reference context from previous analyses (avoids contradictions)
+      let crossRefContext = '';
+      if (prevReports.plStrategy) {
+        try {
+          const ps = JSON.parse(prevReports.plStrategy.data);
+          const s = ps.strategy || ps;
+          if (s.base_price || s.projected_monthly_revenue) {
+            crossRefContext += `\nPREVIOUS PRICELABS STRATEGY (${prevReports.plStrategy.date ? prevReports.plStrategy.date.substring(0,10) : 'prior'}, by ${prevReports.plStrategy.provider || 'AI'}):\n`;
+            crossRefContext += `  Base $${s.base_price || '?'}/nt | Min $${s.min_price || '?'} | Max $${s.max_price || '?'} | Proj $${s.projected_monthly_revenue || '?'}/mo | Occ ${Math.round((s.projected_occupancy || 0) * 100)}%\n`;
+            if (s.strategy_summary) crossRefContext += `  Summary: ${s.strategy_summary.substring(0, 200)}\n`;
           }
-        }
-      } catch {}
+        } catch {}
+      }
+      if (prevReports.revOpt) {
+        try {
+          const opt = JSON.parse(prevReports.revOpt.data);
+          const o = opt.optimization || opt;
+          if (o.quick_wins || o.target_monthly_revenue) {
+            crossRefContext += `\nPREVIOUS REVENUE OPTIMIZATION (${prevReports.revOpt.date ? prevReports.revOpt.date.substring(0,10) : 'prior'}):\n`;
+            if (o.quick_wins && o.quick_wins.length > 0) crossRefContext += `  Quick wins: ${o.quick_wins.slice(0,3).join(' | ')}\n`;
+            if (o.target_monthly_revenue) crossRefContext += `  Target: $${o.target_monthly_revenue}/mo\n`;
+          }
+        } catch {}
+      }
+      if (crossRefContext) crossRefContext += `  If your recommendations differ significantly from the above, explicitly explain why (new data, market shift, seasonal change).\n`;
+
+      const fullContext = rateMatrixContext + crossRefContext;
+
       if (!aiProv) {
-        aiError = 'No AI provider available. Add an API key in Admin → API Keys or enable Workers AI.';
+        aiError = 'No AI provider available. Add an API key in Admin \u2192 API Keys or enable Workers AI.';
       } else {
-        const aiS = await generateAIStrategy(property, amenities, marketData[0], comparables, taxRate, aiProv, 'str', env, plData, platforms, seasonData, rateMatrixCtx);
+        const aiS = await generateAIStrategy(property, amenities, marketData[0], comparables, taxRate, aiProv, 'str', env, plData, platforms, seasonData, fullContext);
         if (aiS && !aiS.__ai_error) { aiS.ai_provider = aiProv; all.push(aiS); }
         else {
           aiError = 'AI call failed (' + aiProv + '): ' + (aiS?.__ai_error || 'empty response');
-          // Auto-fallback to Workers AI if paid provider failed
           if (aiProv !== 'workers_ai' && env.AI) {
-            const aiSFb = await generateAIStrategy(property, amenities, marketData[0], comparables, taxRate, 'workers_ai', 'str', env, plData, platforms, seasonData, rateMatrixCtx);
+            const aiSFb = await generateAIStrategy(property, amenities, marketData[0], comparables, taxRate, 'workers_ai', 'str', env, plData, platforms, seasonData, fullContext);
             if (aiSFb && !aiSFb.__ai_error) { aiSFb.ai_provider = 'workers_ai'; all.push(aiSFb); aiError = aiError + ' — fell back to Workers AI (Llama).'; }
           }
         }
@@ -3564,23 +4409,26 @@ async function bulkAnalyzePricing(request, env) {
   const analysisType = body.analysis_type || 'str';
   const quality = body.quality || 'standard';
   const maxProperties = body.max || 10;
+  const reanalyzeAll = body.reanalyze_all === true;
 
-  // Find properties without any pricing strategy, excluding buildings and research
-  const { results: unanalyzed } = await env.DB.prepare(
-    `SELECT p.id, CASE WHEN p.unit_number IS NOT NULL AND p.unit_number != '' THEN p.unit_number || ' — ' || COALESCE(p.platform_listing_name, p.name, p.address) ELSE COALESCE(p.platform_listing_name, p.name, p.address, 'Property #' || p.id) END as label FROM properties p WHERE p.is_research != 1 AND p.id NOT IN (SELECT DISTINCT parent_id FROM properties WHERE parent_id IS NOT NULL) AND (p.is_managed = 0 OR p.is_managed IS NULL) AND (p.listing_status IS NULL OR p.listing_status = '' OR p.listing_status = 'active') AND (SELECT COUNT(*) FROM pricing_strategies WHERE property_id = p.id) = 0 LIMIT ?`
-  ).bind(maxProperties).all();
+  // Find target properties — either unanalyzed only, or all active
+  const baseWhere = `p.is_research != 1 AND p.id NOT IN (SELECT DISTINCT parent_id FROM properties WHERE parent_id IS NOT NULL) AND (p.is_managed = 0 OR p.is_managed IS NULL) AND (p.listing_status IS NULL OR p.listing_status = '' OR p.listing_status = 'active')`;
+  const query = reanalyzeAll
+    ? `SELECT p.id, CASE WHEN p.unit_number IS NOT NULL AND p.unit_number != '' THEN p.unit_number || ' — ' || COALESCE(p.platform_listing_name, p.name, p.address) ELSE COALESCE(p.platform_listing_name, p.name, p.address, 'Property #' || p.id) END as label FROM properties p WHERE ${baseWhere} LIMIT ?`
+    : `SELECT p.id, CASE WHEN p.unit_number IS NOT NULL AND p.unit_number != '' THEN p.unit_number || ' — ' || COALESCE(p.platform_listing_name, p.name, p.address) ELSE COALESCE(p.platform_listing_name, p.name, p.address, 'Property #' || p.id) END as label FROM properties p WHERE ${baseWhere} AND (SELECT COUNT(*) FROM pricing_strategies WHERE property_id = p.id) = 0 LIMIT ?`;
+  const { results: targets } = await env.DB.prepare(query).bind(maxProperties).all();
 
-  if (!unanalyzed || unanalyzed.length === 0) {
-    return json({ ok: true, analyzed: 0, message: 'All properties already have pricing analysis' });
+  if (!targets || targets.length === 0) {
+    return json({ ok: true, analyzed: 0, message: reanalyzeAll ? 'No active properties found' : 'All properties already have pricing analysis' });
   }
 
   const results = [];
   let succeeded = 0, failed = 0;
 
-  for (const prop of unanalyzed) {
+  for (const prop of targets) {
     try {
       const fakeReq = { json: async () => ({ use_ai: true, quality, analysis_type: analysisType }) };
-      const response = await analyzePricing(prop.id, fakeReq, env);
+      const response = await generateUnifiedAnalysis(prop.id, fakeReq, env);
       const data = await response.json();
       if (data.strategies && data.strategies.length > 0) {
         succeeded++;
@@ -3595,7 +4443,7 @@ async function bulkAnalyzePricing(request, env) {
     }
   }
 
-  return json({ ok: true, analyzed: succeeded, failed, total: unanalyzed.length, results, message: succeeded + ' of ' + unanalyzed.length + ' properties analyzed successfully' });
+  return json({ ok: true, analyzed: succeeded, failed, total: targets.length, results, message: succeeded + ' of ' + targets.length + ' properties analyzed successfully' });
 }
 
 // Bulk update tax rate on multiple properties
@@ -3636,42 +4484,233 @@ async function bulkUpdateTaxRate(request, env, uid) {
 
 // Auto-analyze: weekly cron runs pricing analysis on stale/unanalyzed properties
 // Priority: never-analyzed first, then oldest analysis. Max 5 per run.
-async function autoAnalyzeProperties(env) {
-  const MAX_PER_RUN = 5;
+// ── DAILY PRICING HEALTH CHECK ──────────────────────────────────────────────
+// Lightweight cron job (no AI calls) that compares each property's:
+//   - Actual ADR (from monthly_actuals) vs PriceLabs set rates (from pricelabs_rates)
+//   - PriceLabs base rate vs AI-recommended base rate (from pricing_strategies)
+//   - Forward occupancy vs market occupancy (over/under-performing)
+// Flags divergent properties so autoAnalyzeProperties can prioritize them.
+// Results stored in system_log for visibility + market_intelligence for query.
+async function dailyPricingHealthCheck(env) {
+  const today = new Date().toISOString().split('T')[0];
+  const next30 = new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0];
 
-  // 1. Properties never analyzed (highest priority)
-  const { results: neverAnalyzed } = await env.DB.prepare(
-    `SELECT p.id, COALESCE(p.platform_listing_name, p.name, p.address) as label, p.rental_type
+  // Get active properties (not research, not managed, not buildings)
+  const { results: props } = await env.DB.prepare(
+    `SELECT p.id, COALESCE(p.platform_listing_name, p.name, p.address) as label, p.unit_number,
+            p.city, p.state, p.rental_type
      FROM properties p
      WHERE (p.is_research != 1 OR p.is_research IS NULL)
        AND (p.is_managed = 0 OR p.is_managed IS NULL)
-       AND p.id NOT IN (SELECT DISTINCT parent_id FROM properties WHERE parent_id IS NOT NULL)
-       AND (SELECT COUNT(*) FROM pricing_strategies WHERE property_id = p.id) = 0
-     LIMIT ?`
-  ).bind(MAX_PER_RUN).all();
+       AND p.id NOT IN (SELECT DISTINCT parent_id FROM properties WHERE parent_id IS NOT NULL)`
+  ).all();
 
-  // 2. Properties with stale analysis (30+ days old)
-  const remaining = MAX_PER_RUN - (neverAnalyzed?.results?.length || neverAnalyzed?.length || 0);
-  let staleProps = [];
-  if (remaining > 0) {
-    const staleResult = await env.DB.prepare(
-      `SELECT p.id, COALESCE(p.platform_listing_name, p.name, p.address) as label, p.rental_type,
-              (SELECT MAX(created_at) FROM pricing_strategies WHERE property_id = p.id) as last_analyzed
+  if (!props || props.length === 0) return { checked: 0, divergent: 0, message: 'No active properties' };
+
+  const flags = []; // properties flagged as divergent
+  const healthy = [];
+  const checks = [];
+
+  for (const p of props) {
+    const propLabel = (p.unit_number ? p.unit_number + ' — ' : '') + p.label;
+    const check = { id: p.id, label: propLabel, issues: [], severity: 'healthy' };
+
+    try {
+      // 1. Get latest AI strategy recommendation
+      const aiStrat = await env.DB.prepare(
+        `SELECT base_nightly_rate, cleaning_fee, projected_occupancy, created_at
+         FROM pricing_strategies WHERE property_id = ? AND ai_generated = 1
+         ORDER BY created_at DESC LIMIT 1`
+      ).bind(p.id).first();
+
+      // 2. Get PriceLabs current rates (avg of next 30 days)
+      const plLink = await env.DB.prepare(
+        `SELECT pl.pl_listing_id, pl.base_price, pl.recommended_base_price, pl.min_price, pl.max_price,
+                pl.occupancy_next_30, pl.market_occupancy_next_30
+         FROM pricelabs_listings pl WHERE pl.property_id = ?`
+      ).bind(p.id).first();
+
+      let plAvg30 = null;
+      if (plLink && plLink.pl_listing_id) {
+        const avg = await env.DB.prepare(
+          `SELECT AVG(price) as avg_rate, COUNT(*) as days
+           FROM pricelabs_rates WHERE pl_listing_id = ? AND rate_date >= ? AND rate_date <= ? AND is_available = 1`
+        ).bind(plLink.pl_listing_id, today, next30).first();
+        if (avg && avg.days > 0) plAvg30 = Math.round(avg.avg_rate);
+      }
+
+      // 3. Get actual ADR from most recent month with bookings
+      const recentActuals = await env.DB.prepare(
+        `SELECT month, avg_nightly_rate, occupancy_pct, booked_nights
+         FROM monthly_actuals WHERE property_id = ? AND booked_nights > 0
+         ORDER BY month DESC LIMIT 1`
+      ).bind(p.id).first();
+
+      // 4. Analysis staleness check
+      if (aiStrat) {
+        const daysSinceAnalysis = Math.round((Date.now() - new Date(aiStrat.created_at).getTime()) / 86400000);
+        if (daysSinceAnalysis > 30) {
+          check.issues.push({ type: 'stale_analysis', detail: daysSinceAnalysis + ' days since last AI analysis', days: daysSinceAnalysis });
+        }
+      } else {
+        check.issues.push({ type: 'no_analysis', detail: 'Never analyzed by AI' });
+      }
+
+      // 5. PriceLabs vs AI divergence
+      if (aiStrat && plAvg30) {
+        const aiRate = aiStrat.base_nightly_rate;
+        const gapPct = Math.round((plAvg30 - aiRate) / aiRate * 100);
+        if (Math.abs(gapPct) > 20) {
+          check.issues.push({ type: 'pl_ai_divergence', detail: 'PL avg $' + plAvg30 + ' vs AI rec $' + aiRate + ' (' + (gapPct > 0 ? '+' : '') + gapPct + '%)', gap_pct: gapPct });
+        }
+      }
+
+      // 6. Actual ADR vs PriceLabs set rate (are guests paying less than list price?)
+      if (recentActuals && plAvg30 && recentActuals.avg_nightly_rate > 0) {
+        const adrGap = Math.round((recentActuals.avg_nightly_rate - plAvg30) / plAvg30 * 100);
+        if (adrGap < -20) {
+          check.issues.push({ type: 'adr_below_set', detail: 'Actual ADR $' + Math.round(recentActuals.avg_nightly_rate) + ' vs PL set $' + plAvg30 + ' (' + adrGap + '%) in ' + recentActuals.month, gap_pct: adrGap });
+        }
+      }
+
+      // 7. Occupancy vs market (underperforming?)
+      if (plLink && plLink.occupancy_next_30 && plLink.market_occupancy_next_30) {
+        const propOcc = parseInt(plLink.occupancy_next_30) || 0;
+        const mktOcc = parseInt(plLink.market_occupancy_next_30) || 0;
+        if (mktOcc > 0 && propOcc < mktOcc - 15) {
+          check.issues.push({ type: 'occ_below_market', detail: 'Occ ' + propOcc + '% vs market ' + mktOcc + '% (−' + (mktOcc - propOcc) + ' pts)', gap_pts: mktOcc - propOcc });
+        }
+      }
+
+      // 8. No PriceLabs link at all
+      if (!plLink) {
+        check.issues.push({ type: 'no_pricelabs', detail: 'Not connected to PriceLabs' });
+      }
+
+      // Classify severity
+      if (check.issues.length === 0) {
+        check.severity = 'healthy';
+        healthy.push(check);
+      } else {
+        const hasCritical = check.issues.some(i => ['pl_ai_divergence', 'adr_below_set', 'no_analysis'].includes(i.type));
+        check.severity = hasCritical ? 'divergent' : 'warning';
+        if (hasCritical) flags.push(check);
+        else healthy.push(check);
+      }
+    } catch (e) {
+      check.issues.push({ type: 'error', detail: e.message });
+      check.severity = 'error';
+    }
+
+    checks.push(check);
+  }
+
+  // Store divergent property IDs in market_intelligence for autoAnalyzeProperties to read
+  const divergentIds = flags.map(f => f.id);
+  try {
+    const miStmt = env.DB.prepare(
+      `INSERT INTO market_intelligence (city, state, property_type, bedrooms, metric_key, metric_value, sample_size, period, updated_at)
+       VALUES ('_portfolio','_all','all',0,?,?,?,?,datetime('now'))
+       ON CONFLICT(city, state, property_type, bedrooms, metric_key, period)
+       DO UPDATE SET metric_value=excluded.metric_value, sample_size=excluded.sample_size, updated_at=datetime('now')`
+    );
+    await env.DB.batch([
+      miStmt.bind('pricing_health_divergent_ids', divergentIds.join(','), divergentIds.length, today),
+      miStmt.bind('pricing_health_checked', props.length, flags.length, today),
+    ]);
+  } catch (e) { await syslog(env, 'error', 'dailyPricingHealthCheck', 'Failed to store health results', e.message); }
+
+  // Log summary
+  const summary = 'Pricing health: ' + props.length + ' checked, ' + flags.length + ' divergent, ' + healthy.length + ' healthy';
+  const detail = flags.length > 0
+    ? 'Divergent: ' + flags.map(f => f.label + ' [' + f.issues.map(i => i.type).join(', ') + ']').join('; ')
+    : 'All properties within acceptable ranges';
+  await syslog(env, flags.length > 0 ? 'warn' : 'info', 'dailyPricingHealthCheck', summary, detail);
+
+  return { checked: props.length, divergent: flags.length, healthy: healthy.length, flags, checks, message: summary };
+}
+
+// ── SMARTER AUTO-ANALYZE ────────────────────────────────────────────────────
+// Runs daily (moved from weekly). Prioritizes:
+//   1. Never-analyzed properties (highest)
+//   2. Divergent properties flagged by dailyPricingHealthCheck
+//   3. Properties with stale analysis (14+ days old)
+// Max 3 per daily run to control AI costs (was 5/week → now 3/day, ~21/week budget).
+async function autoAnalyzeProperties(env) {
+  const MAX_PER_RUN = 3;
+  const candidates = [];
+
+  // 1. Properties never analyzed (highest priority)
+  try {
+    const { results: neverAnalyzed } = await env.DB.prepare(
+      `SELECT p.id, COALESCE(p.platform_listing_name, p.name, p.address) as label, p.rental_type, 'never_analyzed' as priority
        FROM properties p
        WHERE (p.is_research != 1 OR p.is_research IS NULL)
          AND (p.is_managed = 0 OR p.is_managed IS NULL)
          AND p.id NOT IN (SELECT DISTINCT parent_id FROM properties WHERE parent_id IS NOT NULL)
-         AND (SELECT COUNT(*) FROM pricing_strategies WHERE property_id = p.id) > 0
-         AND (SELECT MAX(created_at) FROM pricing_strategies WHERE property_id = p.id) < datetime('now', '-30 days')
-       ORDER BY last_analyzed ASC
+         AND (SELECT COUNT(*) FROM pricing_strategies WHERE property_id = p.id) = 0
        LIMIT ?`
-    ).bind(remaining).all();
-    staleProps = staleResult?.results || [];
+    ).bind(MAX_PER_RUN).all();
+    if (neverAnalyzed) candidates.push(...neverAnalyzed);
+  } catch {}
+
+  // 2. Divergent properties from daily health check (flagged today or yesterday)
+  if (candidates.length < MAX_PER_RUN) {
+    try {
+      const healthRow = await env.DB.prepare(
+        `SELECT metric_value FROM market_intelligence
+         WHERE city = '_portfolio' AND metric_key = 'pricing_health_divergent_ids'
+           AND updated_at >= datetime('now', '-2 days')`
+      ).first();
+      if (healthRow && healthRow.metric_value) {
+        const divergentIds = healthRow.metric_value.split(',').map(id => parseInt(id)).filter(id => id > 0);
+        // Filter out already-in-candidates and recently analyzed (last 7 days)
+        const existingIds = new Set(candidates.map(c => c.id));
+        for (const did of divergentIds) {
+          if (candidates.length >= MAX_PER_RUN) break;
+          if (existingIds.has(did)) continue;
+          try {
+            const prop = await env.DB.prepare(
+              `SELECT p.id, COALESCE(p.platform_listing_name, p.name, p.address) as label, p.rental_type,
+                      (SELECT MAX(created_at) FROM pricing_strategies WHERE property_id = p.id AND ai_generated = 1) as last_ai
+               FROM properties p WHERE p.id = ?`
+            ).bind(did).first();
+            if (prop && (!prop.last_ai || new Date(prop.last_ai) < new Date(Date.now() - 7 * 86400000))) {
+              candidates.push({ ...prop, priority: 'divergent' });
+              existingIds.add(did);
+            }
+          } catch {}
+        }
+      }
+    } catch {}
   }
 
-  const candidates = [...(neverAnalyzed?.results || neverAnalyzed || []), ...staleProps];
+  // 3. Properties with stale analysis (14+ days old — tighter than the old 30-day threshold)
+  if (candidates.length < MAX_PER_RUN) {
+    const remaining = MAX_PER_RUN - candidates.length;
+    const existingIds = candidates.map(c => parseInt(c.id)).filter(id => id > 0);
+    const excludeClause = existingIds.length > 0 ? ` AND p.id NOT IN (${existingIds.join(',')})` : '';
+    try {
+      const { results: staleProps } = await env.DB.prepare(
+        `SELECT p.id, COALESCE(p.platform_listing_name, p.name, p.address) as label, p.rental_type,
+                (SELECT MAX(created_at) FROM pricing_strategies WHERE property_id = p.id) as last_analyzed,
+                'stale' as priority
+         FROM properties p
+         WHERE (p.is_research != 1 OR p.is_research IS NULL)
+           AND (p.is_managed = 0 OR p.is_managed IS NULL)
+           AND p.id NOT IN (SELECT DISTINCT parent_id FROM properties WHERE parent_id IS NOT NULL)
+           AND (SELECT COUNT(*) FROM pricing_strategies WHERE property_id = p.id) > 0
+           AND (SELECT MAX(created_at) FROM pricing_strategies WHERE property_id = p.id) < datetime('now', '-14 days')
+           ${excludeClause}
+         ORDER BY last_analyzed ASC
+         LIMIT ?`
+      ).bind(remaining).all();
+      if (staleProps) candidates.push(...staleProps);
+    } catch {}
+  }
+
   if (candidates.length === 0) {
-    return { auto_analyzed: 0, message: 'All properties have recent analysis' };
+    return { auto_analyzed: 0, message: 'All properties have recent analysis and no pricing divergence detected' };
   }
 
   let succeeded = 0, failed = 0;
@@ -3681,23 +4720,25 @@ async function autoAnalyzeProperties(env) {
     try {
       const analysisType = prop.rental_type === 'ltr' ? 'ltr' : 'str';
       const fakeReq = { json: async () => ({ use_ai: true, quality: 'standard', analysis_type: analysisType }) };
-      const response = await analyzePricing(prop.id, fakeReq, env);
+      const response = await generateUnifiedAnalysis(prop.id, fakeReq, env);
       const data = await response.json();
       if (data.strategies && data.strategies.length > 0) {
         succeeded++;
-        results.push({ id: prop.id, label: prop.label, status: 'ok' });
+        results.push({ id: prop.id, label: prop.label, status: 'ok', priority: prop.priority });
       } else {
         failed++;
-        results.push({ id: prop.id, label: prop.label, status: 'no_strategies' });
+        results.push({ id: prop.id, label: prop.label, status: 'no_strategies', priority: prop.priority });
       }
     } catch (e) {
       failed++;
-      results.push({ id: prop.id, label: prop.label, status: 'error', error: e.message });
+      results.push({ id: prop.id, label: prop.label, status: 'error', error: e.message, priority: prop.priority });
     }
   }
 
-  return { auto_analyzed: succeeded, failed, total: candidates.length, results,
-    message: succeeded + ' of ' + candidates.length + ' properties auto-analyzed' };
+  const msg = succeeded + ' of ' + candidates.length + ' properties auto-analyzed (priorities: ' + candidates.map(c => c.priority).join(', ') + ')';
+  await syslog(env, succeeded > 0 ? 'info' : 'warn', 'autoAnalyzeProperties', msg, JSON.stringify(results).substring(0, 500));
+
+  return { auto_analyzed: succeeded, failed, total: candidates.length, results, message: msg };
 }
 
 async function generateAIStrategy(property, amenities, market, comparables, taxRate, provider, mode, env, plData, platforms, seasonData, rateMatrixContext) {
@@ -3896,132 +4937,65 @@ Respond ONLY with JSON (no markdown, no backticks):
     };
   } catch (parseErr) {
     const extract = (key) => { const m = aiResponse.match(new RegExp('"' + key + '"\\s*:\\s*([\\d.]+)')); return m ? parseFloat(m[1]) : null; };
+    const extractStr = (key) => { const m = aiResponse.match(new RegExp('"' + key + '"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"')); return m ? m[1].replace(/\\n/g, '\n').replace(/\\"/g, '"') : null; };
     const rate = extract('base_nightly_rate') || 150;
     const occ = extract('projected_occupancy') || 0.45;
     const annRev = extract('projected_annual_revenue') || Math.round(rate * occ * 365);
-    return { strategy_name: stratName, base_nightly_rate: rate, weekend_rate: extract('weekend_rate') || Math.round(rate * 1.2), cleaning_fee: extract('cleaning_fee') || 50, pet_fee: 0, weekly_discount: 10, monthly_discount: 20, peak_season_markup: 15, low_season_discount: 10, min_nights: 2, projected_occupancy: occ, projected_annual_revenue: annRev, projected_monthly_avg: Math.round(annRev / 12), reasoning: aiResponse.substring(0, 500), ai_generated: true };
+    const analysisText = extractStr('analysis') || extractStr('strategy_summary') || extractStr('reasoning') || '';
+    const cleanReasoning = extractStr('cleaning_fee_reasoning') || '';
+    let recs = null;
+    try { const rm = aiResponse.match(/"recommendations"\s*:\s*\[(.*?)\]/s); if (rm) recs = JSON.parse('[' + rm[1] + ']'); } catch {}
+    return { strategy_name: stratName, base_nightly_rate: rate, weekend_rate: extract('weekend_rate') || Math.round(rate * 1.2), cleaning_fee: extract('cleaning_fee') || 50, pet_fee: extract('pet_fee') || 0, weekly_discount: extract('weekly_discount') || 10, monthly_discount: extract('monthly_discount') || 20, peak_season_markup: extract('peak_season_markup') || 15, low_season_discount: extract('low_season_discount') || 10, min_nights: extract('min_nights') || 2, projected_occupancy: occ, projected_annual_revenue: annRev, projected_monthly_avg: Math.round(annRev / 12), reasoning: analysisText || aiResponse.substring(0, 500), analysis: analysisText, ai_generated: true, cleaning_fee_reasoning: cleanReasoning, recommendations: recs };
   }
 }
 
 async function generatePLStrategyRecommendation(propertyId, env) {
-  const property = await env.DB.prepare(`SELECT * FROM properties WHERE id = ?`).bind(propertyId).first();
-  if (!property) return json({ error: 'Property not found' }, 404);
+  // Unified data collection — shared with analyzePricing + revenue optimization
+  const ctx = await gatherPropertyContext(propertyId, env);
+  if (!ctx) return json({ error: 'Property not found' }, 404);
+  const { property, amenities, market, comparables, taxRate, platforms, strategies, plData, seasonData, actualsData, avgStayLength, rateMatrixContext, buildingContext, servicesMonthly, servicesList, totalMonthly, monthlyCost, utilities, prevReports, guestIntelContext, guestyActualsContext } = ctx;
 
-  // Gather ALL available data
-  const { results: amenities } = await env.DB.prepare(`SELECT a.* FROM amenities a JOIN property_amenities pa ON pa.amenity_id = a.id WHERE pa.property_id = ?`).bind(propertyId).all();
-  const { results: comparables } = await env.DB.prepare(`SELECT * FROM comparables WHERE property_id = ? ORDER BY scraped_at DESC LIMIT 15`).bind(propertyId).all();
-  const market = await env.DB.prepare(`SELECT * FROM market_snapshots WHERE LOWER(city) = LOWER(?) AND LOWER(state) = LOWER(?) ORDER BY snapshot_date DESC LIMIT 1`).bind(property.city, property.state).first();
-  const { results: platforms } = await env.DB.prepare(`SELECT * FROM property_platforms WHERE property_id = ?`).bind(propertyId).all();
-  const { results: strategies } = await env.DB.prepare(`SELECT * FROM pricing_strategies WHERE property_id = ? ORDER BY created_at DESC LIMIT 5`).bind(propertyId).all();
-
-  // Property services (cleaning service, PM, etc.) — read-only, additive to expense picture
-  let servicesMonthly = 0;
-  let servicesList = '';
-  try {
-    const { results: services } = await env.DB.prepare(
-      `SELECT name, monthly_cost FROM property_services WHERE property_id = ? ORDER BY monthly_cost DESC`
-    ).bind(propertyId).all();
-    if (services && services.length > 0) {
-      servicesMonthly = services.reduce((a, s) => a + (s.monthly_cost || 0), 0);
-      servicesList = services.map(s => `${s.name} $${s.monthly_cost}/mo`).join(', ');
-    }
-  } catch {}
-
-  // Previous Generate Strategy report — read-only, gives AI context on prior recommendations
-  // so it can improve on them rather than repeat or contradict without reason
+  // PriceLabs extended data (30d/90d rate averages) — already in ctx.plData
+  // Previous report contexts — already gathered by gatherPropertyContext
   let prevStrategyContext = '';
-  try {
-    const prevReport = await env.DB.prepare(
-      `SELECT report_data, provider, created_at FROM analysis_reports
-       WHERE property_id = ? AND report_type = 'pl_strategy' ORDER BY created_at DESC LIMIT 1`
-    ).bind(propertyId).first();
-    if (prevReport && prevReport.report_data) {
-      const prev = JSON.parse(prevReport.report_data);
-      const s = prev.strategy || {};
+  if (prevReports.plStrategy) {
+    try {
+      const prev = JSON.parse(prevReports.plStrategy.data);
+      const s = prev.strategy || prev;
       if (s.base_price || s.projected_monthly_revenue) {
-        prevStrategyContext = `\nPREVIOUS STRATEGY (${prevReport.created_at ? prevReport.created_at.substring(0,10) : 'prior'}, by ${prevReport.provider || 'AI'}): `;
+        prevStrategyContext = `\nPREVIOUS STRATEGY (${prevReports.plStrategy.date ? prevReports.plStrategy.date.substring(0,10) : 'prior'}, by ${prevReports.plStrategy.provider || 'AI'}): `;
         prevStrategyContext += `Base $${s.base_price || '?'}/nt | Min $${s.min_price || '?'} | Max $${s.max_price || '?'} | `;
         prevStrategyContext += `Proj $${s.projected_monthly_revenue || '?'}/mo | Occ ${Math.round((s.projected_occupancy || 0) * 100)}%`;
         if (s.strategy_summary) prevStrategyContext += `\nPrev summary: ${s.strategy_summary.substring(0, 200)}`;
         prevStrategyContext += `\nIf recommending different numbers from the above, explicitly explain why (e.g. new Guesty data, market shift, seasonal change).\n`;
       }
-    }
-  } catch {}
+    } catch {}
+  }
 
-  // Previous revenue optimization report — surfaces what was already recommended
   let prevOptContext = '';
-  try {
-    const prevOpt = await env.DB.prepare(
-      `SELECT report_data, created_at FROM analysis_reports
-       WHERE property_id = ? AND report_type = 'revenue_optimization' ORDER BY created_at DESC LIMIT 1`
-    ).bind(propertyId).first();
-    if (prevOpt && prevOpt.report_data) {
-      const opt = JSON.parse(prevOpt.report_data);
-      const o = opt.optimization || {};
+  if (prevReports.revOpt) {
+    try {
+      const opt = JSON.parse(prevReports.revOpt.data);
+      const o = opt.optimization || opt;
       if (o.quick_wins && o.quick_wins.length > 0) {
-        prevOptContext = `\nPREVIOUS OPTIMIZATION RECOMMENDATIONS (${prevOpt.created_at ? prevOpt.created_at.substring(0,10) : 'prior'}): `;
+        prevOptContext = `\nPREVIOUS OPTIMIZATION RECOMMENDATIONS (${prevReports.revOpt.date ? prevReports.revOpt.date.substring(0,10) : 'prior'}): `;
         prevOptContext += `Quick wins: ${o.quick_wins.slice(0, 3).join(' | ')}. `;
         prevOptContext += `Where relevant, reference whether those actions appear to have been taken based on current data.\n`;
       }
-    }
-  } catch {}
-
-  // PriceLabs data
-  let plData = null;
-  const plLink = await env.DB.prepare(`SELECT * FROM pricelabs_listings WHERE property_id = ?`).bind(propertyId).first();
-  if (plLink) {
-    const today = new Date().toISOString().split('T')[0];
-    const next30 = new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0];
-    const next90 = new Date(Date.now() + 90 * 86400000).toISOString().split('T')[0];
-    const avg30 = await env.DB.prepare(`SELECT AVG(price) as avg, MIN(price) as min, MAX(price) as max, COUNT(*) as cnt FROM pricelabs_rates WHERE pl_listing_id = ? AND rate_date >= ? AND rate_date <= ? AND is_available = 1`).bind(plLink.pl_listing_id, today, next30).first();
-    const avg90 = await env.DB.prepare(`SELECT AVG(price) as avg FROM pricelabs_rates WHERE pl_listing_id = ? AND rate_date >= ? AND rate_date <= ?`).bind(plLink.pl_listing_id, today, next90).first();
-    plData = {
-      base_price: plLink.base_price, min_price: plLink.min_price, max_price: plLink.max_price,
-      recommended_base: plLink.recommended_base_price,
-      platform: plLink.pl_platform, pms: plLink.pl_pms,
-      avg_30d: avg30?.avg ? Math.round(avg30.avg) : null,
-      min_30d: avg30?.min, max_30d: avg30?.max,
-      avg_90d: avg90?.avg ? Math.round(avg90.avg) : null,
-      rates_count: avg30?.cnt || 0,
-      occ_30d: plLink.occupancy_next_30, mkt_occ_30d: plLink.market_occupancy_next_30,
-      occ_7d: plLink.occupancy_next_7,
-    };
+    } catch {}
   }
 
-  // Seasonality — same data the algorithmic strategies use, gives AI context on seasonal patterns
-  let seasonDataPL = [];
-  try {
-    const { results: sRows } = await env.DB.prepare(
-      `SELECT month_number, avg_occupancy, multiplier, avg_daily_rate FROM market_seasonality WHERE LOWER(city) = LOWER(?) AND LOWER(state) = LOWER(?) ORDER BY month_number`
-    ).bind(property.city, property.state).all();
-    if (sRows && sRows.length > 0) {
-      seasonDataPL = sRows;
-    } else {
-      // Derive from monthly_actuals if market seasonality not available
-      const { results: aRows } = await env.DB.prepare(
-        `SELECT month, total_revenue, occupancy_pct, avg_nightly_rate FROM monthly_actuals WHERE property_id = ? ORDER BY month`
-      ).bind(propertyId).all();
-      if (aRows && aRows.length >= 3) {
-        const avgRev = aRows.reduce((a, r) => a + (r.total_revenue || 0), 0) / aRows.length;
-        seasonDataPL = aRows.map(r => ({
-          month_number: parseInt((r.month || '').split('-')[1]) || 1,
-          avg_occupancy: r.occupancy_pct || 0,
-          multiplier: avgRev > 0 ? (r.total_revenue || 0) / avgRev : 1,
-          avg_daily_rate: r.avg_nightly_rate || 0,
-        }));
-      }
-    }
-  } catch {}
-
-  // Portfolio context — sibling units + nearby managed properties (read-only intelligence)
-  const buildingContext = await getPortfolioContextForPrompt(property, env);
-
-  // Expenses — include property_services in total
-  const monthlyCost = property.ownership_type === 'rental'
-    ? (property.monthly_rent_cost || 0)
-    : (property.monthly_mortgage || 0) + (property.monthly_insurance || 0) + Math.round((property.annual_taxes || 0) / 12) + (property.hoa_monthly || 0);
-  const utilities = (property.expense_electric || 0) + (property.expense_gas || 0) + (property.expense_water || 0) + (property.expense_internet || 0) + (property.expense_trash || 0) + (property.expense_other || 0);
-  const totalMonthly = monthlyCost + utilities + servicesMonthly;
+  // Seasonality — use from context, derive from actuals if needed
+  let seasonDataPL = seasonData || [];
+  if (seasonDataPL.length === 0 && actualsData.length >= 3) {
+    const avgRev = actualsData.reduce((a, r) => a + (r.total_revenue || 0), 0) / actualsData.length;
+    seasonDataPL = actualsData.map(r => ({
+      month_number: parseInt((r.month || '').split('-')[1]) || 1,
+      avg_occupancy: r.occupancy_pct || 0,
+      multiplier: avgRev > 0 ? (r.total_revenue || 0) / avgRev : 1,
+      avg_daily_rate: r.avg_nightly_rate || 0,
+    }));
+  }
 
   // Build comprehensive prompt
   const plRestrictions = [property.hoa_name ? 'HOA: ' + property.hoa_name : '', property.rental_restrictions ? 'RESTRICTIONS: ' + property.rental_restrictions + ' — strategy MUST comply' : '', property.ai_notes ? 'OPERATOR NOTES: ' + property.ai_notes : ''].filter(Boolean).join('\n');
@@ -4054,8 +5028,8 @@ COMP DATA (${comparables.length} comps): ${comparables.slice(0, 10).map(c => (c.
 PRIOR ALGORITHMIC ANALYSIS: ${strategies.length > 0 ? strategies.slice(0, 3).map(s => s.strategy_name + ': base $' + s.base_nightly_rate + '/nt, occ ' + Math.round((s.projected_occupancy || 0) * 100) + '%, proj $' + Math.round(s.projected_monthly_avg || 0) + '/mo').join(' | ') : 'None yet — run Price Analysis for more data'}
 ${servicesList ? 'PROPERTY SERVICES: ' + servicesList + ' ($' + Math.round(servicesMonthly) + '/mo — included in total expenses)\n' : ''}${buildingContext}
 ${seasonDataPL.length >= 3 ? 'SEASONALITY (' + property.city + '): ' + (() => { const mn = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; return seasonDataPL.map(s => mn[(s.month_number||1)-1] + ' ' + (s.multiplier||1).toFixed(2) + 'x' + (s.avg_occupancy ? ' ' + Math.round(s.avg_occupancy*100) + '%occ' : '')).join(' | '); })() + '\n' : ''}
-${await getGuestyActualsForPrompt(propertyId, property.city, property.state, env)}
-${await getGuestIntelForPrompt(propertyId, property.city, property.state, env)}
+${guestyActualsContext}
+${guestIntelContext}
 ${await getMonthlyTargetsForPrompt(propertyId, property, env)}
 ${await getMarketAndTrendContextForPrompt(propertyId, property, env)}
 ${prevStrategyContext}${prevOptContext}
@@ -4280,100 +5254,36 @@ Generate a COMPREHENSIVE PriceLabs pricing strategy. Respond ONLY with JSON (no 
 }
 
 async function generateRevenueOptimization(propertyId, env) {
-  const property = await env.DB.prepare(`SELECT * FROM properties WHERE id = ?`).bind(propertyId).first();
-  if (!property) return json({ error: 'Property not found' }, 404);
-  const { results: amenities } = await env.DB.prepare(`SELECT a.* FROM amenities a JOIN property_amenities pa ON pa.amenity_id = a.id WHERE pa.property_id = ?`).bind(propertyId).all();
-  const { results: platforms } = await env.DB.prepare(`SELECT * FROM property_platforms WHERE property_id = ?`).bind(propertyId).all();
-  const { results: strategies } = await env.DB.prepare(`SELECT * FROM pricing_strategies WHERE property_id = ? ORDER BY created_at DESC LIMIT 3`).bind(propertyId).all();
-  const { results: comparables } = await env.DB.prepare(`SELECT * FROM comparables WHERE property_id = ? ORDER BY scraped_at DESC LIMIT 10`).bind(propertyId).all();
+  // Unified data collection — shared with analyzePricing + PL strategy
+  const ctx = await gatherPropertyContext(propertyId, env);
+  if (!ctx) return json({ error: 'Property not found' }, 404);
+  const { property, amenities, market, comparables, taxRate, platforms, strategies, plData, seasonData, actualsData, avgStayLength, rateMatrixContext, buildingContext, servicesMonthly, servicesList, totalMonthly, monthlyCost, utilities, prevReports, guestIntelContext, guestyActualsContext } = ctx;
 
-  // Property services — read-only, adds to full cost picture
-  let servicesMonthly = 0;
-  let servicesList = '';
-  try {
-    const { results: services } = await env.DB.prepare(
-      `SELECT name, monthly_cost FROM property_services WHERE property_id = ? ORDER BY monthly_cost DESC`
-    ).bind(propertyId).all();
-    if (services && services.length > 0) {
-      servicesMonthly = services.reduce((a, s) => a + (s.monthly_cost || 0), 0);
-      servicesList = services.map(s => `${s.name} $${s.monthly_cost}/mo`).join(', ');
-    }
-  } catch (e) { syslog(env, 'error', 'generateRevenueOptimization', 'L3966', e.message); }
-
-  // Previous reports — read-only, gives AI continuity without re-reading its own DB writes back into pipeline
+  // Previous report contexts — already gathered by gatherPropertyContext
   let prevOptContext = '';
-  try {
-    const prevOpt = await env.DB.prepare(
-      `SELECT report_data, provider, created_at FROM analysis_reports
-       WHERE property_id = ? AND report_type = 'revenue_optimization' ORDER BY created_at DESC LIMIT 1`
-    ).bind(propertyId).first();
-    if (prevOpt && prevOpt.report_data) {
-      const opt = JSON.parse(prevOpt.report_data);
-      const o = opt.optimization || {};
-      prevOptContext = `\nPREVIOUS OPTIMIZATION (${prevOpt.created_at ? prevOpt.created_at.substring(0,10) : 'prior'}, by ${prevOpt.provider || 'AI'}):\n`;
+  if (prevReports.revOpt) {
+    try {
+      const opt = JSON.parse(prevReports.revOpt.data);
+      const o = opt.optimization || opt;
+      prevOptContext = `\nPREVIOUS OPTIMIZATION (${prevReports.revOpt.date ? prevReports.revOpt.date.substring(0,10) : 'prior'}, by ${prevReports.revOpt.provider || 'AI'}):\n`;
       if (o.quick_wins && o.quick_wins.length > 0) prevOptContext += `  Prior quick wins: ${o.quick_wins.slice(0,3).join(' | ')}\n`;
       if (o.target_monthly_revenue) prevOptContext += `  Prior target: $${o.target_monthly_revenue}/mo (+${o.revenue_increase_pct || '?'}%)\n`;
       prevOptContext += `  Review whether prior recommendations were acted on, and assess if targets were met based on current Guesty actuals.\n`;
-    }
-  } catch (e) { syslog(env, 'error', 'generateRevenueOptimization', 'L3983', e.message); }
+    } catch {}
+  }
 
   let prevStratContext = '';
-  try {
-    const prevStrat = await env.DB.prepare(
-      `SELECT report_data, created_at FROM analysis_reports
-       WHERE property_id = ? AND report_type = 'pl_strategy' ORDER BY created_at DESC LIMIT 1`
-    ).bind(propertyId).first();
-    if (prevStrat && prevStrat.report_data) {
-      const ps = JSON.parse(prevStrat.report_data);
-      const s = ps.strategy || {};
+  if (prevReports.plStrategy) {
+    try {
+      const ps = JSON.parse(prevReports.plStrategy.data);
+      const s = ps.strategy || ps;
       if (s.base_price) {
-        prevStratContext = `\nPREVIOUS PRICELABS STRATEGY (${prevStrat.created_at ? prevStrat.created_at.substring(0,10) : 'prior'}): `;
+        prevStratContext = `\nPREVIOUS PRICELABS STRATEGY (${prevReports.plStrategy.date ? prevReports.plStrategy.date.substring(0,10) : 'prior'}): `;
         prevStratContext += `Base $${s.base_price}/nt | Proj $${s.projected_monthly_revenue || '?'}/mo | Occ ${Math.round((s.projected_occupancy || 0) * 100)}%\n`;
         prevStratContext += `  Consider whether actual Guesty performance aligns with what that strategy projected.\n`;
       }
-    }
-  } catch (e) { syslog(env, 'error', 'generateRevenueOptimization', 'L4000', e.message); }
-
-  let plData = null;
-  const plLink = await env.DB.prepare(`SELECT * FROM pricelabs_listings WHERE property_id = ?`).bind(propertyId).first();
-  if (plLink) {
-    let channels = [];
-    try { channels = plLink.channel_details ? JSON.parse(plLink.channel_details) : []; } catch (e) { syslog(env, 'error', 'generateRevenueOptimization', 'L4006', e.message); }
-    plData = plLink;
-    plData.channels = channels;
+    } catch {}
   }
-
-  const baseCost = property.ownership_type === 'rental'
-    ? (property.monthly_rent_cost || 0)
-    : (property.monthly_mortgage || 0) + (property.monthly_insurance || 0) + Math.round((property.annual_taxes || 0) / 12) + (property.hoa_monthly || 0);
-  const utilities = (property.expense_electric || 0) + (property.expense_gas || 0) + (property.expense_water || 0) + (property.expense_internet || 0) + (property.expense_trash || 0) + (property.expense_other || 0);
-  const monthlyCost = baseCost + utilities + servicesMonthly;
-  const cleaningFee = property.cleaning_fee || (plData ? plData.cleaning_fees : 0) || 0;
-  const cleaningCost = property.cleaning_cost || 0;
-
-  // Structured listing audit from DB data — replaces fragile HTML scraping
-  // Airbnb/VRBO actively block scrapes; HTML parsing was producing mostly empty strings
-  // Instead, derive listing quality signals from what we have stored
-  const listingAudit = [];
-  for (const plat of platforms) {
-    const audit = {
-      platform: plat.platform,
-      has_url: !!plat.listing_url,
-      rating: plat.rating || null,
-      review_count: plat.review_count || 0,
-      nightly_rate: plat.nightly_rate || null,
-      has_description: !!plat.description,
-    };
-    listingAudit.push(
-      `${plat.platform}: ${plat.rating ? plat.rating + '★ (' + plat.review_count + ' reviews)' : 'no rating'} | ` +
-      `Rate: ${plat.nightly_rate ? '$' + plat.nightly_rate + '/nt' : 'not stored'} | ` +
-      `URL: ${plat.listing_url ? 'linked' : 'missing'}`
-    );
-  }
-
-  const currentRev = plData && plData.base_price && plData.occupancy_next_30
-    ? Math.round(plData.base_price * 30 * parseInt(plData.occupancy_next_30) / 100)
-    : (strategies[0] ? strategies[0].projected_monthly_avg : 0);
 
   const prompt = `You are an expert STR revenue optimization consultant. A property owner wants to INCREASE their occupancy and revenue. Analyze their current performance and give specific, actionable recommendations.
 
@@ -4412,8 +5322,8 @@ COMPS: ${comparables.slice(0, 5).map(c => (c.bedrooms || '?') + 'BR $' + (c.nigh
 
 PREVIOUS STRATEGIES: ${strategies.slice(0, 2).map(s => s.strategy_name + ': $' + s.base_nightly_rate + '/nt, ' + Math.round(s.projected_occupancy * 100) + '% occ, $' + Math.round(s.projected_monthly_avg) + '/mo').join(' | ') || 'None'}
 
-${await getGuestyActualsForPrompt(propertyId, property.city, property.state, env)}
-${await getGuestIntelForPrompt(propertyId, property.city, property.state, env)}
+${guestyActualsContext}
+${guestIntelContext}
 ${await getMonthlyTargetsForPrompt(propertyId, property, env)}
 ${await getMarketAndTrendContextForPrompt(propertyId, property, env)}
 ${getPriceLabsCustomizationsForPrompt(property)}
@@ -8303,6 +9213,260 @@ async function getExpensesSummary(env) {
     recent: (all || []).slice(0, 10),
   });
 }
+
+// ── BILL TRACKER ────────────────────────────────────────────────────────────
+// Recurring bill accounts + monthly payment records
+
+async function createBillAccount(request, env) {
+  const b = await request.json();
+  if (!b.name || !b.category) return json({ error: 'name and category required' }, 400);
+  // Check for duplicate: same name + same category + same property
+  const propId = b.property_id || null;
+  const existing = propId
+    ? await env.DB.prepare(`SELECT id, name FROM bill_accounts WHERE LOWER(name) = LOWER(?) AND category = ? AND property_id = ?`).bind(b.name, b.category, propId).first()
+    : await env.DB.prepare(`SELECT id, name FROM bill_accounts WHERE LOWER(name) = LOWER(?) AND category = ? AND property_id IS NULL`).bind(b.name, b.category).first();
+  if (existing) return json({ error: 'A ' + b.category + ' bill named "' + existing.name + '" already exists for this property' }, 409);
+  await env.DB.prepare(
+    `INSERT INTO bill_accounts (property_id, name, provider, category, estimated_amount, due_day, is_autopay, account_number, notes)
+     VALUES (?,?,?,?,?,?,?,?,?)`
+  ).bind(
+    b.property_id || null, b.name, b.provider || null, b.category,
+    b.estimated_amount || 0, b.due_day || 1, b.is_autopay ? 1 : 0,
+    b.account_number || null, b.notes || null
+  ).run();
+  return json({ ok: true });
+}
+
+async function updateBillAccount(billId, request, env) {
+  const b = await request.json();
+  const sets = [];
+  const vals = [];
+  for (const k of ['name','provider','category','estimated_amount','due_day','is_autopay','account_number','notes','property_id','is_active']) {
+    if (b[k] !== undefined) {
+      sets.push(k + ' = ?');
+      vals.push(k === 'is_autopay' || k === 'is_active' ? (b[k] ? 1 : 0) : b[k]);
+    }
+  }
+  if (sets.length === 0) return json({ error: 'Nothing to update' }, 400);
+  vals.push(billId);
+  await env.DB.prepare(`UPDATE bill_accounts SET ${sets.join(', ')} WHERE id = ?`).bind(...vals).run();
+  // If property_id changed, update existing payment records too
+  if (b.property_id !== undefined) {
+    await env.DB.prepare(`UPDATE bill_payments SET property_id = ? WHERE bill_account_id = ?`).bind(b.property_id || null, billId).run();
+  }
+  return json({ ok: true });
+}
+
+async function recordBillPayment(request, env) {
+  const b = await request.json();
+  if (!b.bill_account_id || !b.period) return json({ error: 'bill_account_id and period required' }, 400);
+  // Get bill account for property_id
+  const acct = await env.DB.prepare(`SELECT property_id, estimated_amount FROM bill_accounts WHERE id = ?`).bind(b.bill_account_id).first();
+  if (!acct) return json({ error: 'Bill account not found' }, 404);
+  const amountPaid = b.amount_paid !== undefined ? b.amount_paid : (b.amount_due || acct.estimated_amount || 0);
+  await env.DB.prepare(
+    `INSERT INTO bill_payments (bill_account_id, property_id, period, amount_due, amount_paid, status, paid_at, due_date, notes)
+     VALUES (?,?,?,?,?,?,?,?,?)
+     ON CONFLICT(bill_account_id, period) DO UPDATE SET
+       amount_paid=excluded.amount_paid, status=excluded.status, paid_at=excluded.paid_at,
+       amount_due=COALESCE(excluded.amount_due, amount_due), notes=COALESCE(excluded.notes, notes)`
+  ).bind(
+    b.bill_account_id, acct.property_id, b.period,
+    b.amount_due || acct.estimated_amount || 0,
+    amountPaid, 'paid',
+    b.paid_at || new Date().toISOString(),
+    b.due_date || null, b.notes || null
+  ).run();
+  // Update expense estimates from trailing 3-month avg
+  try { await updateExpenseEstimates(b.bill_account_id, env); } catch {}
+  return json({ ok: true });
+}
+
+async function updateExpenseEstimates(billAccountId, env) {
+  // Get the bill account to see its category and property
+  const acct = await env.DB.prepare(`SELECT * FROM bill_accounts WHERE id = ?`).bind(billAccountId).first();
+  if (!acct || !acct.property_id) return;
+  // Map bill category to property expense column
+  const catToCol = {
+    electric: 'expense_electric', gas: 'expense_gas', water: 'expense_water',
+    internet: 'expense_internet', trash: 'expense_trash',
+    sewer: 'expense_water', // bundle sewer with water
+  };
+  const col = catToCol[acct.category];
+  if (!col) return; // Only auto-update mapped utility categories
+  // Get trailing 3-month average of actual payments for this category+property
+  const avg = await env.DB.prepare(
+    `SELECT ROUND(AVG(amount_paid)) as avg_paid, COUNT(*) as months
+     FROM (
+       SELECT amount_paid FROM bill_payments
+       WHERE bill_account_id IN (
+         SELECT id FROM bill_accounts WHERE property_id = ? AND category = ? AND is_active = 1
+       ) AND status = 'paid' AND amount_paid > 0
+       ORDER BY period DESC LIMIT 3
+     )`
+  ).bind(acct.property_id, acct.category).first();
+  if (avg && avg.months >= 2 && avg.avg_paid > 0) {
+    // Safe: col is from hardcoded catToCol map above, never user input
+    // Use explicit per-column updates to avoid validate.js interpolation warning
+    const pid = acct.property_id;
+    const val = avg.avg_paid;
+    if (col === 'expense_electric') await env.DB.prepare(`UPDATE properties SET expense_electric = ? WHERE id = ?`).bind(val, pid).run();
+    else if (col === 'expense_gas') await env.DB.prepare(`UPDATE properties SET expense_gas = ? WHERE id = ?`).bind(val, pid).run();
+    else if (col === 'expense_water') await env.DB.prepare(`UPDATE properties SET expense_water = ? WHERE id = ?`).bind(val, pid).run();
+    else if (col === 'expense_internet') await env.DB.prepare(`UPDATE properties SET expense_internet = ? WHERE id = ?`).bind(val, pid).run();
+    else if (col === 'expense_trash') await env.DB.prepare(`UPDATE properties SET expense_trash = ? WHERE id = ?`).bind(val, pid).run();
+  }
+}
+
+async function generateMonthlyBills(request, env) {
+  const b = await request.json().catch(() => ({}));
+  const period = b.period || new Date().toISOString().substring(0, 7); // YYYY-MM
+  const { results: accounts } = await env.DB.prepare(
+    `SELECT * FROM bill_accounts WHERE is_active = 1`
+  ).all();
+  if (!accounts || accounts.length === 0) return json({ generated: 0, message: 'No active bill accounts' });
+  const stmts = [];
+  const stmt = env.DB.prepare(
+    `INSERT INTO bill_payments (bill_account_id, property_id, period, amount_due, status, due_date)
+     VALUES (?,?,?,?,?,?)
+     ON CONFLICT(bill_account_id, period) DO NOTHING`
+  );
+  for (const a of accounts) {
+    const dueDay = Math.min(a.due_day || 1, 28);
+    const dueDate = period + '-' + String(dueDay).padStart(2, '0');
+    stmts.push(stmt.bind(a.id, a.property_id, period, a.estimated_amount || 0, 'pending', dueDate));
+  }
+  if (stmts.length > 0) {
+    for (let i = 0; i < stmts.length; i += 80) {
+      await env.DB.batch(stmts.slice(i, i + 80));
+    }
+  }
+  return json({ generated: stmts.length, period, message: stmts.length + ' bill entries generated for ' + period });
+}
+
+async function getBillsSummary(env) {
+  const today = new Date().toISOString().split('T')[0];
+  const currentPeriod = today.substring(0, 7);
+  // Auto-generate current month bills for any accounts missing payment records
+  // Uses ON CONFLICT DO NOTHING so safe to call every time
+  try {
+    const acctCount = await env.DB.prepare(`SELECT COUNT(*) as c FROM bill_accounts WHERE is_active = 1`).first();
+    if (acctCount && acctCount.c > 0) {
+      const fakeReq = { json: async () => ({ period: currentPeriod }) };
+      await generateMonthlyBills(fakeReq, env);
+    }
+  } catch {}
+
+  // Get all accounts with property info
+  const { results: accounts } = await env.DB.prepare(
+    `SELECT ba.*,
+            COALESCE(p.platform_listing_name, p.name, p.address) as prop_name,
+            p.unit_number, p.city, p.parent_id
+     FROM bill_accounts ba
+     LEFT JOIN properties p ON ba.property_id = p.id
+     ORDER BY ba.category, ba.name`
+  ).all();
+
+  // Get payments for current month + last 3 months
+  const { results: payments } = await env.DB.prepare(
+    `SELECT bp.*,
+            ba.name as bill_name, ba.category, ba.provider, ba.is_autopay, ba.estimated_amount,
+            ba.account_number, ba.due_day,
+            COALESCE(p.platform_listing_name, p.name, p.address) as prop_name,
+            p.unit_number, p.city
+     FROM bill_payments bp
+     JOIN bill_accounts ba ON bp.bill_account_id = ba.id
+     LEFT JOIN properties p ON ba.property_id = p.id
+     WHERE bp.period >= date('now', '-4 months')
+     ORDER BY bp.period DESC, ba.category, ba.name`
+  ).all();
+
+  // Organize by period
+  const byPeriod = {};
+  for (const p of (payments || [])) {
+    if (!byPeriod[p.period]) byPeriod[p.period] = [];
+    byPeriod[p.period].push(p);
+  }
+
+  // Current month stats
+  const currentBills = byPeriod[currentPeriod] || [];
+  const totalDue = currentBills.reduce((s, b) => s + (b.amount_due || 0), 0);
+  const totalPaid = currentBills.filter(b => b.status === 'paid').reduce((s, b) => s + (b.amount_paid || 0), 0);
+  const unpaidCount = currentBills.filter(b => b.status !== 'paid').length;
+  const overdueCount = currentBills.filter(b => b.status !== 'paid' && b.due_date && b.due_date < today).length;
+
+  // Trailing average by category
+  const catAvg = {};
+  for (const p of (payments || [])) {
+    if (p.status === 'paid' && p.amount_paid > 0) {
+      if (!catAvg[p.category]) catAvg[p.category] = { total: 0, months: new Set() };
+      catAvg[p.category].total += p.amount_paid;
+      catAvg[p.category].months.add(p.period);
+    }
+  }
+  const categoryAverages = {};
+  for (const cat in catAvg) {
+    categoryAverages[cat] = Math.round(catAvg[cat].total / catAvg[cat].months.size);
+  }
+
+  return json({
+    accounts: accounts || [],
+    payments_by_period: byPeriod,
+    current_period: currentPeriod,
+    summary: { total_due: totalDue, total_paid: totalPaid, unpaid: unpaidCount, overdue: overdueCount },
+    category_averages: categoryAverages,
+  });
+}
+
+async function getBillsDashboard(env) {
+  const today = new Date().toISOString().split('T')[0];
+  const currentPeriod = today.substring(0, 7);
+
+  // Auto-generate current month bills for any accounts missing payment records
+  try {
+    const acctCount = await env.DB.prepare(`SELECT COUNT(*) as c FROM bill_accounts WHERE is_active = 1`).first();
+    if (acctCount && acctCount.c > 0) {
+      const fakeReq = { json: async () => ({ period: currentPeriod }) };
+      await generateMonthlyBills(fakeReq, env);
+    }
+  } catch {}
+
+  // Get current month unpaid/overdue bills
+  const { results: upcoming } = await env.DB.prepare(
+    `SELECT bp.id, bp.period, bp.amount_due, bp.status, bp.due_date,
+            ba.name, ba.category, ba.provider, ba.is_autopay,
+            COALESCE(p.unit_number, '') as unit,
+            COALESCE(p.platform_listing_name, p.name, p.address, '') as prop_name
+     FROM bill_payments bp
+     JOIN bill_accounts ba ON bp.bill_account_id = ba.id
+     LEFT JOIN properties p ON ba.property_id = p.id
+     WHERE bp.period = ? AND bp.status != 'paid'
+     ORDER BY bp.due_date ASC`
+  ).bind(currentPeriod).all();
+
+  const overdue = (upcoming || []).filter(b => b.due_date && b.due_date < today);
+  const dueSoon = (upcoming || []).filter(b => {
+    if (!b.due_date || b.due_date < today) return false;
+    const daysUntil = Math.round((new Date(b.due_date) - new Date(today)) / 86400000);
+    return daysUntil <= 7;
+  });
+
+  // Total due this month
+  const monthTotal = await env.DB.prepare(
+    `SELECT SUM(amount_due) as total, COUNT(*) as count,
+            SUM(CASE WHEN status = 'paid' THEN 1 ELSE 0 END) as paid_count
+     FROM bill_payments WHERE period = ?`
+  ).bind(currentPeriod).first();
+
+  return json({
+    overdue: overdue || [],
+    due_soon: dueSoon || [],
+    month_total: monthTotal?.total || 0,
+    month_count: monthTotal?.count || 0,
+    month_paid: monthTotal?.paid_count || 0,
+  });
+}
+
 function normalizeAddress(addr) {
   if (!addr) return '';
   return addr.toLowerCase().trim()
@@ -9562,7 +10726,7 @@ async function syncGuestyListingsApi(env) {
 
   try {
     while (hasMore) {
-      const data = await guestyApiFetch(env, '/v1/listings', { limit, skip, fields: '_id title address.full address.street address.city address.state address.zipcode nickname propertyType bedrooms bathrooms accommodates picture.thumbnail pictures amenities' });
+      const data = await guestyApiFetch(env, '/v1/listings', { limit, skip, fields: '_id title address.full address.street address.city address.state address.zipcode nickname propertyType bedrooms bathrooms accommodates picture.thumbnail pictures amenities prices.basePrice prices.cleaningFee prices.extraPersonFee prices.guestsIncludedInRegularFee prices.petFee prices.weeklyPriceFactor prices.monthlyPriceFactor terms.minNights terms.maxNights petsAllowed defaultCheckInTime defaultCheckOutTime' });
       const results = data.results || [];
       allListings.push(...results);
       skip += limit;
@@ -9596,19 +10760,43 @@ async function syncGuestyListingsApi(env) {
       const amenitiesArr = Array.isArray(l.amenities) ? l.amenities : [];
       const amenitiesJson = amenitiesArr.length > 0 ? JSON.stringify(amenitiesArr) : null;
 
+      // Extract pricing & terms from Guesty (PriceLabs overrides nightly rate, but NOT these fees/terms)
+      const gBasePrice = l.prices?.basePrice || null; // Note: PriceLabs overrides this dynamically
+      const gCleaningFee = l.prices?.cleaningFee ?? null; // Guesty-authoritative
+      const gExtraPersonFee = l.prices?.extraPersonFee ?? null; // Guesty-authoritative
+      const gGuestsIncluded = l.prices?.guestsIncludedInRegularFee || null; // threshold before extra person fee
+      const gWeeklyFactor = l.prices?.weeklyPriceFactor || null;
+      const gMonthlyFactor = l.prices?.monthlyPriceFactor || null;
+      const gMinNights = l.terms?.minNights || null; // Default min nights (PL may override per-date)
+      const gMaxNights = l.terms?.maxNights || null;
+      const gPetsAllowed = l.petsAllowed !== undefined ? (l.petsAllowed ? 1 : 0) : null;
+      const gCheckIn = l.defaultCheckInTime || null;
+      const gCheckOut = l.defaultCheckOutTime || null;
+      // Pet fee: check prices.petFee first, then additionalFees array
+      let gPetFee = l.prices?.petFee ?? null;
+      try {
+        if (!gPetFee) {
+          const addFees = l.addOns || l.additionalFees || [];
+          if (Array.isArray(addFees)) {
+            const petFeeItem = addFees.find(f => (f.name || f.type || '').toLowerCase().includes('pet'));
+            if (petFeeItem) gPetFee = petFeeItem.amount || petFeeItem.price || petFeeItem.value || null;
+          }
+        }
+      } catch {}
+
       // Check if a listing with this name already exists (from CSV import with different ID)
       const existingByName = await env.DB.prepare(`SELECT id, guesty_listing_id, property_id FROM guesty_listings WHERE listing_name = ?`).bind(title).first();
       if (existingByName && existingByName.guesty_listing_id !== gId) {
         // Update existing row with the real Guesty API ID — preserve property_id link
-        await env.DB.prepare(`UPDATE guesty_listings SET guesty_listing_id = ?, listing_address = COALESCE(NULLIF(?, ''), listing_address), listing_city = COALESCE(NULLIF(?, ''), listing_city), listing_state = COALESCE(NULLIF(?, ''), listing_state), listing_zip = COALESCE(NULLIF(?, ''), listing_zip), listing_property_type = COALESCE(NULLIF(?, ''), listing_property_type), listing_bedrooms = COALESCE(?, listing_bedrooms), listing_bathrooms = COALESCE(?, listing_bathrooms), listing_accommodates = COALESCE(?, listing_accommodates), listing_thumbnail = COALESCE(NULLIF(?, ''), listing_thumbnail), listing_pictures_json = COALESCE(?, listing_pictures_json), listing_description = COALESCE(NULLIF(?, ''), listing_description), listing_amenities_json = COALESCE(?, listing_amenities_json) WHERE id = ?`)
-          .bind(gId, addr, city, state, zip, pType, beds, baths, accommodates, thumbnail, picsJson, desc, amenitiesJson, existingByName.id).run();
+        await env.DB.prepare(`UPDATE guesty_listings SET guesty_listing_id = ?, listing_address = COALESCE(NULLIF(?, ''), listing_address), listing_city = COALESCE(NULLIF(?, ''), listing_city), listing_state = COALESCE(NULLIF(?, ''), listing_state), listing_zip = COALESCE(NULLIF(?, ''), listing_zip), listing_property_type = COALESCE(NULLIF(?, ''), listing_property_type), listing_bedrooms = COALESCE(?, listing_bedrooms), listing_bathrooms = COALESCE(?, listing_bathrooms), listing_accommodates = COALESCE(?, listing_accommodates), listing_thumbnail = COALESCE(NULLIF(?, ''), listing_thumbnail), listing_pictures_json = COALESCE(?, listing_pictures_json), listing_description = COALESCE(NULLIF(?, ''), listing_description), listing_amenities_json = COALESCE(?, listing_amenities_json), guesty_base_price = COALESCE(?, guesty_base_price), guesty_cleaning_fee = COALESCE(?, guesty_cleaning_fee), guesty_extra_person_fee = COALESCE(?, guesty_extra_person_fee), guesty_pet_fee = COALESCE(?, guesty_pet_fee), guesty_pets_allowed = COALESCE(?, guesty_pets_allowed), guesty_min_nights = COALESCE(?, guesty_min_nights), guesty_max_nights = COALESCE(?, guesty_max_nights), guesty_weekly_factor = COALESCE(?, guesty_weekly_factor), guesty_monthly_factor = COALESCE(?, guesty_monthly_factor), guesty_check_in_time = COALESCE(?, guesty_check_in_time), guesty_check_out_time = COALESCE(?, guesty_check_out_time), guesty_guests_included = COALESCE(?, guesty_guests_included), guesty_prices_updated = datetime('now') WHERE id = ?`)
+          .bind(gId, addr, city, state, zip, pType, beds, baths, accommodates, thumbnail, picsJson, desc, amenitiesJson, gBasePrice, gCleaningFee, gExtraPersonFee, gPetFee, gPetsAllowed, gMinNights, gMaxNights, gWeeklyFactor, gMonthlyFactor, gCheckIn, gCheckOut, gGuestsIncluded, existingByName.id).run();
         upserted++;
         continue;
       }
 
       // Normal upsert by guesty_listing_id
-      await env.DB.prepare(`INSERT INTO guesty_listings (guesty_listing_id, listing_name, listing_address, listing_city, listing_state, listing_zip, listing_property_type, listing_bedrooms, listing_bathrooms, listing_accommodates, listing_thumbnail, listing_pictures_json, listing_description, listing_amenities_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(guesty_listing_id) DO UPDATE SET listing_name=excluded.listing_name, listing_address=COALESCE(NULLIF(excluded.listing_address, ''), listing_address), listing_city=COALESCE(NULLIF(excluded.listing_city, ''), listing_city), listing_state=COALESCE(NULLIF(excluded.listing_state, ''), listing_state), listing_zip=COALESCE(NULLIF(excluded.listing_zip, ''), listing_zip), listing_property_type=COALESCE(NULLIF(excluded.listing_property_type, ''), listing_property_type), listing_bedrooms=COALESCE(excluded.listing_bedrooms, listing_bedrooms), listing_bathrooms=COALESCE(excluded.listing_bathrooms, listing_bathrooms), listing_accommodates=COALESCE(excluded.listing_accommodates, listing_accommodates), listing_thumbnail=COALESCE(NULLIF(excluded.listing_thumbnail, ''), listing_thumbnail), listing_pictures_json=COALESCE(excluded.listing_pictures_json, listing_pictures_json), listing_description=COALESCE(NULLIF(excluded.listing_description, ''), listing_description), listing_amenities_json=COALESCE(excluded.listing_amenities_json, listing_amenities_json)`)
-        .bind(gId, title, addr, city, state, zip, pType, beds, baths, accommodates, thumbnail, picsJson, desc, amenitiesJson).run();
+      await env.DB.prepare(`INSERT INTO guesty_listings (guesty_listing_id, listing_name, listing_address, listing_city, listing_state, listing_zip, listing_property_type, listing_bedrooms, listing_bathrooms, listing_accommodates, listing_thumbnail, listing_pictures_json, listing_description, listing_amenities_json, guesty_base_price, guesty_cleaning_fee, guesty_extra_person_fee, guesty_pet_fee, guesty_pets_allowed, guesty_min_nights, guesty_max_nights, guesty_weekly_factor, guesty_monthly_factor, guesty_check_in_time, guesty_check_out_time, guesty_guests_included, guesty_prices_updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now')) ON CONFLICT(guesty_listing_id) DO UPDATE SET listing_name=excluded.listing_name, listing_address=COALESCE(NULLIF(excluded.listing_address, ''), listing_address), listing_city=COALESCE(NULLIF(excluded.listing_city, ''), listing_city), listing_state=COALESCE(NULLIF(excluded.listing_state, ''), listing_state), listing_zip=COALESCE(NULLIF(excluded.listing_zip, ''), listing_zip), listing_property_type=COALESCE(NULLIF(excluded.listing_property_type, ''), listing_property_type), listing_bedrooms=COALESCE(excluded.listing_bedrooms, listing_bedrooms), listing_bathrooms=COALESCE(excluded.listing_bathrooms, listing_bathrooms), listing_accommodates=COALESCE(excluded.listing_accommodates, listing_accommodates), listing_thumbnail=COALESCE(NULLIF(excluded.listing_thumbnail, ''), listing_thumbnail), listing_pictures_json=COALESCE(excluded.listing_pictures_json, listing_pictures_json), listing_description=COALESCE(NULLIF(excluded.listing_description, ''), listing_description), listing_amenities_json=COALESCE(excluded.listing_amenities_json, listing_amenities_json), guesty_base_price=COALESCE(excluded.guesty_base_price, guesty_base_price), guesty_cleaning_fee=COALESCE(excluded.guesty_cleaning_fee, guesty_cleaning_fee), guesty_extra_person_fee=COALESCE(excluded.guesty_extra_person_fee, guesty_extra_person_fee), guesty_pet_fee=COALESCE(excluded.guesty_pet_fee, guesty_pet_fee), guesty_pets_allowed=COALESCE(excluded.guesty_pets_allowed, guesty_pets_allowed), guesty_min_nights=COALESCE(excluded.guesty_min_nights, guesty_min_nights), guesty_max_nights=COALESCE(excluded.guesty_max_nights, guesty_max_nights), guesty_weekly_factor=COALESCE(excluded.guesty_weekly_factor, guesty_weekly_factor), guesty_monthly_factor=COALESCE(excluded.guesty_monthly_factor, guesty_monthly_factor), guesty_check_in_time=COALESCE(excluded.guesty_check_in_time, guesty_check_in_time), guesty_check_out_time=COALESCE(excluded.guesty_check_out_time, guesty_check_out_time), guesty_guests_included=COALESCE(excluded.guesty_guests_included, guesty_guests_included), guesty_prices_updated=datetime('now')`)
+        .bind(gId, title, addr, city, state, zip, pType, beds, baths, accommodates, thumbnail, picsJson, desc, amenitiesJson, gBasePrice, gCleaningFee, gExtraPersonFee, gPetFee, gPetsAllowed, gMinNights, gMaxNights, gWeeklyFactor, gMonthlyFactor, gCheckIn, gCheckOut, gGuestsIncluded).run();
       upserted++;
     } catch {}
   }
@@ -10035,6 +11223,36 @@ async function getIntelligenceDebug(env) {
     const excluded = await env.DB.prepare(`SELECT COUNT(*) as c FROM guesty_reservations WHERE LOWER(COALESCE(status,'')) IN ()`).first();
     const eligible = await env.DB.prepare(`SELECT COUNT(*) as c FROM guesty_reservations WHERE guest_name IS NOT NULL AND guest_name != '' AND ${LIVE_STATUS_SQL}`).first();
 
+    // Top guests by reservation count (diagnostic for inflated guest counts)
+    const { results: topGuestsByCount } = await env.DB.prepare(
+      `SELECT g.id, g.full_name, g.total_stays as profile_stays,
+        (SELECT COUNT(*) FROM guesty_reservations gr WHERE gr.guest_id = g.id AND ${LIVE_STATUS_GR}) as actual_res_count,
+        (SELECT GROUP_CONCAT(gr.confirmation_code, ', ') FROM guesty_reservations gr WHERE gr.guest_id = g.id AND ${LIVE_STATUS_GR} LIMIT 10) as sample_codes
+       FROM guesty_guests g
+       ORDER BY g.total_stays DESC LIMIT 10`
+    ).all();
+
+    // Duplicate detection: same guest + same check_in date = likely duplicate reservation
+    const { results: possibleDupes } = await env.DB.prepare(
+      `SELECT guest_name, check_in, COUNT(*) as cnt, GROUP_CONCAT(confirmation_code, ' | ') as codes, GROUP_CONCAT(COALESCE(source_file,'?'), ' | ') as sources
+       FROM guesty_reservations WHERE ${LIVE_STATUS_SQL}
+       GROUP BY LOWER(guest_name), check_in HAVING cnt > 1 ORDER BY cnt DESC LIMIT 20`
+    ).all();
+
+    // Profile vs actual mismatch: guests where total_stays doesn't match live reservation count
+    const { results: mismatches } = await env.DB.prepare(
+      `SELECT g.id, g.full_name, g.total_stays as profile_stays,
+        (SELECT COUNT(*) FROM guesty_reservations gr WHERE gr.guest_id = g.id AND ${LIVE_STATUS_GR}) as actual_count
+       FROM guesty_guests g
+       WHERE g.total_stays != (SELECT COUNT(*) FROM guesty_reservations gr WHERE gr.guest_id = g.id AND ${LIVE_STATUS_GR})
+       ORDER BY ABS(g.total_stays - (SELECT COUNT(*) FROM guesty_reservations gr WHERE gr.guest_id = g.id AND ${LIVE_STATUS_GR})) DESC LIMIT 10`
+    ).all();
+
+    // Orphan reservations: have guest_id but the guest doesn't exist
+    const orphanRes = await env.DB.prepare(
+      `SELECT COUNT(*) as c FROM guesty_reservations WHERE guest_id IS NOT NULL AND guest_id NOT IN (SELECT id FROM guesty_guests)`
+    ).first();
+
     return json({
       total_reservations: totalRes?.c || 0,
       with_guest_name: withGuestName?.c || 0,
@@ -10048,6 +11266,10 @@ async function getIntelligenceDebug(env) {
       guest_stays: totalStays?.c || 0, // now reads live from guesty_reservations
       guests_with_stays: guestsWithStays?.c || 0,
       sample_reservations: sampleRes.results || [],
+      top_guests_by_count: topGuestsByCount || [],
+      possible_duplicates: possibleDupes || [],
+      profile_vs_actual_mismatches: mismatches || [],
+      orphan_reservations: orphanRes?.c || 0,
     });
   } catch (err) { return json({ error: err.message }); }
 }
@@ -10202,9 +11424,11 @@ async function rebuildIntelligence(request, env) {
       // Grab ALL reservations with a guest name, EXCLUDING only canceled/declined/expired
       // This is platform-agnostic — works for Guesty, Hostaway, OwnerRez, direct booking CSV, etc.
       const { results: reservations } = await env.DB.prepare(
-        `SELECT gr.*, gl.property_id as linked_prop_id
+        `SELECT gr.*,
+                (SELECT gl.property_id FROM guesty_listings gl
+                 WHERE gl.listing_name = gr.listing_name AND gl.property_id IS NOT NULL
+                 LIMIT 1) as linked_prop_id
          FROM guesty_reservations gr
-         LEFT JOIN guesty_listings gl ON gr.listing_name = gl.listing_name
          WHERE gr.guest_name IS NOT NULL AND gr.guest_name != ''
            AND ${LIVE_STATUS_GR}`
       ).all();
@@ -10250,18 +11474,17 @@ async function rebuildIntelligence(request, env) {
         );
 
         // Find or create guest
+        // NOTE: reservation.guesty_id is the RESERVATION ID, not the guest's Guesty ID.
+        // Match existing guests by name (since that's how guestMap is keyed).
         let guestId;
-        const existingByGuestyId = g.stays.find(s => s.guesty_id);
-        if (existingByGuestyId) {
-          const existing = await env.DB.prepare(`SELECT id FROM guesty_guests WHERE guesty_id = ?`).bind(existingByGuestyId.guesty_id).first();
-          if (existing) {
-            guestId = existing.id;
-            await env.DB.prepare(`UPDATE guesty_guests SET full_name = ?, total_stays = ?, total_revenue = ?, avg_stay_nights = ?, avg_spend = ?, preferred_channel = ?, has_pets = ?, is_returning = ?, last_seen = ? WHERE id = ?`)
-              .bind(g.name, g.stays.length, Math.round(g.totalRev), avgNights, avgSpend, topChannel, hasPets ? 1 : 0, g.stays.length > 1 ? 1 : 0, g.stays[g.stays.length - 1].check_in, guestId).run();
-          }
+        const existingByName = await env.DB.prepare(`SELECT id, guesty_id FROM guesty_guests WHERE LOWER(full_name) = ?`).bind(key).first();
+        if (existingByName) {
+          guestId = existingByName.id;
+          await env.DB.prepare(`UPDATE guesty_guests SET total_stays = ?, total_revenue = ?, avg_stay_nights = ?, avg_spend = ?, preferred_channel = ?, has_pets = ?, is_returning = ?, last_seen = ? WHERE id = ?`)
+            .bind(g.stays.length, Math.round(g.totalRev), avgNights, avgSpend, topChannel, hasPets ? 1 : 0, g.stays.length > 1 ? 1 : 0, g.stays[g.stays.length - 1].check_in, guestId).run();
         }
         if (!guestId) {
-          const guestyId = existingByGuestyId?.guesty_id || 'name_' + key.replace(/[^a-z0-9]/g, '_').substring(0, 50);
+          const guestyId = 'name_' + key.replace(/[^a-z0-9]/g, '_').substring(0, 50);
           const ins = await env.DB.prepare(`INSERT INTO guesty_guests (guesty_id, full_name, total_stays, total_revenue, avg_stay_nights, avg_spend, preferred_channel, has_pets, is_returning, first_seen, last_seen) VALUES (?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(guesty_id) DO UPDATE SET full_name=excluded.full_name, total_stays=excluded.total_stays, total_revenue=excluded.total_revenue, avg_stay_nights=excluded.avg_stay_nights, avg_spend=excluded.avg_spend, preferred_channel=excluded.preferred_channel, has_pets=excluded.has_pets, is_returning=excluded.is_returning, last_seen=excluded.last_seen`)
             .bind(guestyId, g.name, g.stays.length, Math.round(g.totalRev), avgNights, avgSpend, topChannel, hasPets ? 1 : 0, g.stays.length > 1 ? 1 : 0, g.stays[0].check_in, g.stays[g.stays.length - 1].check_in).run();
           guestId = ins.meta.last_row_id || (await env.DB.prepare(`SELECT id FROM guesty_guests WHERE guesty_id = ?`).bind(guestyId).first())?.id;
@@ -10269,11 +11492,18 @@ async function rebuildIntelligence(request, env) {
         guestsProcessed++;
 
         // Stamp guest_id onto guesty_reservations (live data — no materialized view)
-        for (const s of g.stays) {
-          await env.DB.prepare(`UPDATE guesty_reservations SET guest_id = ? WHERE confirmation_code = ?`)
-            .bind(guestId, s.confirmation_code).run();
-          staysCreated++;
+        // Batch all updates for this guest's stays
+        const stampStmts = g.stays.map(s =>
+          env.DB.prepare(`UPDATE guesty_reservations SET guest_id = ? WHERE confirmation_code = ?`)
+            .bind(guestId, s.confirmation_code)
+        );
+        if (stampStmts.length > 0) {
+          // D1 batch limit ~100 — chunk if needed
+          for (let i = 0; i < stampStmts.length; i += 80) {
+            await env.DB.batch(stampStmts.slice(i, i + 80));
+          }
         }
+        staysCreated += g.stays.length;
       }
       results.guests = { processed: guestsProcessed, stays: staysCreated };
     } catch (err) { results.guests = { error: err.message }; }
@@ -10423,8 +11653,11 @@ async function rebuildIntelligence(request, env) {
     try {
       await env.DB.prepare(`DELETE FROM channel_intelligence`).run();
       const { results: reservations } = await env.DB.prepare(
-        `SELECT gr.*, gl.property_id as linked_prop_id FROM guesty_reservations gr
-         LEFT JOIN guesty_listings gl ON gr.listing_name = gl.listing_name
+        `SELECT gr.*,
+                (SELECT gl.property_id FROM guesty_listings gl
+                 WHERE gl.listing_name = gr.listing_name AND gl.property_id IS NOT NULL
+                 LIMIT 1) as linked_prop_id
+         FROM guesty_reservations gr
          WHERE ${LIVE_STATUS_GR}`
       ).all();
 

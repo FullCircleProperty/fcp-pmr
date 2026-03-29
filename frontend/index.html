@@ -594,6 +594,7 @@
     <button class="tab" data-view="intel" data-icon="radar" onclick="switchView('intel')">Intel</button>
     <button class="tab" data-view="pms" data-icon="link" onclick="switchView('pms')">Integrations</button>
     <button class="tab" data-view="finances" data-icon="wallet" onclick="switchView('finances')">Finances</button>
+    <button class="tab" data-view="bills" data-icon="receipt" onclick="switchView('bills')">Bills</button>
     <button class="tab" data-view="management" data-icon="handshake" id="managementTab" style="display:none;" onclick="switchView('management')">Management</button>
     <button class="tab" data-view="admin" data-icon="settings" id="adminTab" style="display:none;" onclick="switchView('admin')">Admin</button>
     <button class="tab" data-view="marketing" data-icon="star" id="marketingTab" style="display:none;" onclick="switchView('marketing')">Marketing</button>
@@ -1265,6 +1266,18 @@
 
   <!-- Analyze -->
   <div class="view" id="view-analyze">
+    <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:16px;">
+      <button class="tab active" onclick="switchAnalyzeTab('overview')" data-atab="overview" style="border-bottom:2px solid var(--accent);margin-bottom:-2px;">All Properties</button>
+      <button class="tab" onclick="switchAnalyzeTab('analyze')" data-atab="analyze" style="margin-bottom:-2px;">Run Analysis</button>
+    </div>
+
+    <!-- Subtab: All Properties Overview -->
+    <div id="analyzeTab-overview">
+      <div id="pricingOverviewContent"><p style="color:var(--text3);font-size:0.85rem;">Loading pricing overview...</p></div>
+    </div>
+
+    <!-- Subtab: Run Analysis (existing) -->
+    <div id="analyzeTab-analyze" style="display:none;">
     <div class="card">
       <h2 style="margin-bottom:16px;">Run Pricing Analysis</h2>
       <div class="form-group"><label>Select Property</label><select id="analyzePropertySelect" onchange="onAnalyzePropertyChange()"><option value="">-- Select --</option></select></div>
@@ -1292,6 +1305,7 @@
     </div>
     <div id="plCalendarSection" class="card" style="display:none;margin-top:14px;"></div>
     <div id="analysisResults"></div>
+    </div><!-- /analyzeTab-analyze -->
   </div>
 
   <!-- Market Data -->
@@ -1574,9 +1588,17 @@
       <div id="finPropertyTable"></div>
     </div>
     <div id="finServiceBreakdown"></div>
+    <div id="finBillTracker"></div>
     <div id="finCapitalExpenses"></div>
     <div class="card" style="margin-top:14px;">
       <div id="finApiCosts"></div>
+    </div>
+  </div>
+
+  <!-- Bills — recurring bill tracking and payment management -->
+  <div class="view" id="view-bills">
+    <div id="billsTabContent">
+      <div style="padding:20px;text-align:center;color:var(--text3);">Loading bills...</div>
     </div>
   </div>
 
@@ -2277,6 +2299,7 @@ async function loadDashboard() {
   try {
     var d = await api('/api/dashboard');
     renderDashboard(d);
+    loadDashBills();
   } catch (err) {
     el.innerHTML = '<div style="color:var(--danger);padding:20px;">' + esc(err.message) + '</div>';
   }
@@ -2673,6 +2696,9 @@ function renderDashboard(d) {
     });
     h += '</div>';
   }
+
+  // ── Bills Due Widget ────────────────────────────────────────────────────
+  h += '<div id="dashBillsWidget"></div>';
 
   // ── Setup Prompts — things that need manual action ────────────────────
   var sys = d.system_health || {};
@@ -3363,6 +3389,40 @@ async function runSmartRefresh(btn) {
   if (btn) { btn.disabled = false; btn.innerHTML = _ico('refresh', 12) + ' Update Selected'; }
 }
 
+// ── Dashboard Bills Widget ──────────────────────────────────────────────────
+async function loadDashBills() {
+  var el = document.getElementById('dashBillsWidget');
+  if (!el) return;
+  try {
+    var d = await api('/api/bills/dashboard');
+    if ((d.month_count || 0) === 0) return; // No bills configured
+    var overdue = d.overdue || [];
+
+    // Only show on dashboard if there are overdue bills
+    if (overdue.length === 0) return;
+
+    var h = '<div class="card" style="margin-bottom:16px;padding:12px 16px;border-left:4px solid #dc2626;">';
+    h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">';
+    h += '<div style="font-size:0.78rem;font-weight:600;color:#dc2626;display:flex;align-items:center;gap:6px;">' + _ico('alertTriangle', 16, '#dc2626') + ' OVERDUE BILLS';
+    h += ' <span style="font-weight:400;color:var(--text3);">(' + overdue.length + ')</span></div>';
+    h += '<button class="btn btn-xs" onclick="switchView(\'bills\')" style="font-size:0.68rem;">View All Bills</button>';
+    h += '</div>';
+
+    overdue.forEach(function(b) {
+      var propLabel = b.unit ? b.unit + ' — ' : '';
+      propLabel += b.prop_name || '';
+      h += '<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:0.78rem;color:#dc2626;">';
+      h += '<span>' + _ico('receipt', 12, '#dc2626') + ' ' + esc(b.name) + (propLabel ? ' <span style="color:var(--text3);font-size:0.68rem;">(' + esc(propLabel) + ')</span>' : '') + '</span>';
+      h += '<span style="font-family:DM Mono,monospace;">$' + (b.amount_due || 0).toLocaleString() + '</span></div>';
+    });
+
+    h += '</div>';
+    el.innerHTML = h;
+  } catch (err) {
+    // Silently fail — bills widget is optional
+  }
+}
+
 // ── 01-globals.js ──
 // ─── Premium SVG Icon System (Lucide-inspired, 18×18, 1.5px stroke) ────────
 // Returns inline SVG strings. Usage: _ico('dashboard') or _ico('home', 14, '#4ae3b5')
@@ -3419,13 +3479,18 @@ var _ICON_PATHS = {
   externalLink: 'M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3',
   chevronRight: 'M9 18l6-6-6-6',
   x:            'M18 6L6 18M6 6l12 12',
+  xCircle:      'M12 2a10 10 0 100 20 10 10 0 000-20zm3.54 6.46L12 11.59 8.46 8.46a1 1 0 00-1.42 1.42L10.59 12l-3.54 3.54a1 1 0 101.42 1.42L12 13.41l3.54 3.54a1 1 0 001.42-1.42L13.41 12l3.54-3.54a1 1 0 00-1.42-1.42z',
   layers:       'M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5',
   shield:       'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z',
   // Extended icons for modern UI
   edit:         'M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z',
+  trash:        'M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14M10 11v6M14 11v6',
   tool:         'M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z',
   package:      'M16.5 9.4l-9-5.19M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16zM3.27 6.96L12 12.01l8.73-5.05M12 22.08V12',
   flame:        'M12 22c-4.97 0-9-2.69-9-6s4.03-9 9-14c4.97 5 9 10.69 9 14s-4.03 6-9 6z',
+  droplet:      'M12 2.69l5.66 5.66a8 8 0 11-11.31 0z',
+  wifi:         'M5 12.55a11 11 0 0114.08 0M1.42 9a16 16 0 0121.16 0M8.53 16.11a6 6 0 016.95 0M12 20h.01',
+  undo:         'M3 7v6h6M3 13a9 9 0 0115.36-6.36',
   snowflake:    'M12 2v20M2 12h20M4.93 4.93l14.14 14.14M19.07 4.93L4.93 19.07',
   plug:         'M12 22v-5M9 7V2M15 7V2M5 12h14a2 2 0 002-2V7H3v3a2 2 0 002 2z',
   bell:         'M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9zM13.73 21a2 2 0 01-3.46 0',
@@ -3435,6 +3500,7 @@ var _ICON_PATHS = {
   clipboard:    'M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2M9 2h6a1 1 0 011 1v1a1 1 0 01-1 1H9a1 1 0 01-1-1V3a1 1 0 011-1z',
   fileText:     'M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8',
   heart:        'M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 000-7.78z',
+  heartPulse:   'M19.5 12.572l-7.5 7.428-7.5-7.428A5 5 0 0112 5.006a5 5 0 017.5 7.566zM6 12h2l2-3 2 5 2-3h2',
   trophy:       'M6 9H4.5a2.5 2.5 0 010-5H6M18 9h1.5a2.5 2.5 0 000-5H18M4 22h16M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20 7 22M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20 17 22M18 2H6v7a6 6 0 0012 0V2z',
   alertTriangle:'M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0zM12 9v4M12 17h.01',
   cloud:        'M18 10h-1.26A8 8 0 109 20h9a5 5 0 000-10z',
@@ -4024,7 +4090,7 @@ function switchView(name) {
   if (name === 'dashboard') loadDashboard();
   if (name === 'market') { loadMarketData(); loadMarketProfiles(); }
   if (name === 'comparables') loadComparables();
-  if (name === 'analyze') populateAnalyzeSelects();
+  if (name === 'analyze') { populateAnalyzeSelects(); loadPricingOverview(); }
   if (name === 'admin') { loadAdminUsers(); loadAdminUserSelect(); loadBudgetSettings(); }
   if (name === 'intel') { loadIntelDashboard(); loadIntelSubTabContent(); }
   if (name === 'pms') { backToPmsGrid(); loadPmsCardStats(); }
@@ -4034,6 +4100,7 @@ function switchView(name) {
     if (fh) fh.style.display = 'none';
   }
   if (name === 'finances') { loadFinances(); setTimeout(initDatePickers, 100); }
+  if (name === 'bills') loadBillsTab();
   if (name === 'management') loadManagement();
   if (name === 'pms') { setTimeout(initDatePickers, 100); }
   if (name === 'pricing') loadPricingView();
@@ -7217,6 +7284,16 @@ function renderPropertyCard(p, isBuilding, isChild) {
         var bLabel = adrDiffPct >= 5 ? '↑' : adrDiffPct >= -5 ? '≈' : '↓';
         metaBadges += '<span class="badge" style="background:' + bBg + ';color:' + bColor + ';font-size:0.62rem;" title="Your ADR $' + myAdr + ' vs market avg $' + Math.round(mktD.avg_adr) + '">' + bLabel + ' $' + myAdr + ' vs $' + Math.round(mktD.avg_adr) + ' mkt</span>';
       }
+      // Occupancy vs market badge
+      var myOcc = p.pl_occ_30d ? parseInt(String(p.pl_occ_30d).replace('%', '')) : (p.pl_occ_30 ? parseInt(String(p.pl_occ_30).replace('%', '')) : (actualData ? Math.round((actualData.occupancy || 0) * 100) : 0));
+      var mktOcc = p.pl_mkt_occ_30d ? parseInt(String(p.pl_mkt_occ_30d).replace('%', '')) : (p.pl_mkt_occ_30 ? parseInt(String(p.pl_mkt_occ_30).replace('%', '')) : (mktD && mktD.avg_occ ? Math.round(mktD.avg_occ * 100) : 0));
+      if (myOcc > 0 && mktOcc > 0) {
+        var occGap = myOcc - mktOcc;
+        var oColor = occGap >= 5 ? 'var(--accent)' : occGap >= -5 ? '#60a5fa' : 'var(--danger)';
+        var oBg = occGap >= 5 ? 'rgba(16,185,129,0.1)' : occGap >= -5 ? 'rgba(96,165,250,0.1)' : 'rgba(239,68,68,0.1)';
+        var oLabel = occGap >= 5 ? '↑' : occGap >= -5 ? '≈' : '↓';
+        metaBadges += '<span class="badge" style="background:' + oBg + ';color:' + oColor + ';font-size:0.62rem;" title="Your occ ' + myOcc + '% vs market ' + mktOcc + '%">' + oLabel + ' ' + myOcc + '% vs ' + mktOcc + '% occ</span>';
+      }
     }
 
     return '<div class="property-card" style="position:relative;border-left:' + borderLeft + ';' + indent + buildingStyle + standaloneAccent + '">' +
@@ -7353,8 +7430,8 @@ function renderStrategyCard(s, fullReasoning) {
     h += '<div style="text-align:center;padding:4px;background:var(--surface2);border-radius:4px;"><div style="font-family:DM Mono,monospace;font-weight:700;">$' + (s.cleaning_fee || 0) + '</div><div style="font-size:0.65rem;color:var(--text3);">Cleaning</div></div>';
   }
   h += '<div style="text-align:center;padding:4px;background:var(--surface2);border-radius:4px;"><div style="font-family:DM Mono,monospace;font-weight:700;">' + Math.round((s.projected_occupancy || 0) * 100) + '%</div><div style="font-size:0.65rem;color:var(--text3);">Occupancy</div></div>';
-  if (s.peak_season_markup) h += '<div style="text-align:center;padding:4px;background:var(--surface2);border-radius:4px;"><div style="font-family:DM Mono,monospace;font-weight:700;color:var(--accent);">+' + s.peak_season_markup + '%</div><div style="font-size:0.65rem;color:var(--text3);">Peak</div></div>';
-  if (s.low_season_discount) h += '<div style="text-align:center;padding:4px;background:var(--surface2);border-radius:4px;"><div style="font-family:DM Mono,monospace;font-weight:700;color:var(--danger);">-' + s.low_season_discount + '%</div><div style="font-size:0.65rem;color:var(--text3);">Low</div></div>';
+  if (s.peak_season_markup) { var peakRate = Math.round((s.base_nightly_rate || 0) * (1 + (s.peak_season_markup || 0) / 100)); h += '<div style="text-align:center;padding:4px;background:var(--surface2);border-radius:4px;"><div style="font-family:DM Mono,monospace;font-weight:700;color:var(--accent);">+' + s.peak_season_markup + '%</div><div style="font-size:0.65rem;color:var(--text3);">Peak → $' + peakRate + '/nt</div></div>'; }
+  if (s.low_season_discount) { var lowRate = Math.round((s.base_nightly_rate || 0) * (1 - (s.low_season_discount || 0) / 100)); h += '<div style="text-align:center;padding:4px;background:var(--surface2);border-radius:4px;"><div style="font-family:DM Mono,monospace;font-weight:700;color:var(--danger);">-' + s.low_season_discount + '%</div><div style="font-size:0.65rem;color:var(--text3);">Low → $' + lowRate + '/nt</div></div>'; }
   h += '<div style="text-align:center;padding:4px;background:var(--surface2);border-radius:4px;"><div style="font-family:DM Mono,monospace;font-weight:700;">$' + Math.round(s.projected_annual_revenue || 0).toLocaleString() + '</div><div style="font-size:0.65rem;color:var(--text3);">Annual</div></div>';
   h += '</div>';
 
@@ -7411,6 +7488,19 @@ function renderStrategyCard(s, fullReasoning) {
 
   // Full analysis text — always expandable, shown by default for fresh results
   var fullText = s.analysis || s.reasoning || '';
+  // Detect raw JSON and extract the analysis text
+  if (typeof fullText === 'string' && fullText.trim().charAt(0) === '{') {
+    try {
+      var parsed = JSON.parse(fullText);
+      fullText = parsed.analysis || parsed.strategy_summary || parsed.reasoning || '';
+      if (!s.recommendations && parsed.recommendations) s.recommendations = parsed.recommendations;
+      if (!s.cleaning_fee_reasoning && parsed.cleaning_fee_reasoning) s.cleaning_fee_reasoning = parsed.cleaning_fee_reasoning;
+    } catch(e) {
+      var am = fullText.match(/"analysis"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+      if (am) fullText = am[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
+      else fullText = fullText.substring(0, 500) + '...';
+    }
+  }
   if (fullText) {
     if (fullReasoning || fullText.length <= 400) {
       h += '<div style="font-size:0.78rem;color:var(--text2);line-height:1.5;margin-top:8px;">';
@@ -10062,6 +10152,76 @@ async function runPropAnalysisFromDialog() {
         d.strategies.forEach(function(s) { h += renderStrategyCard(s, true); });
       }
 
+      // Unified analysis extras (PriceLabs setup, seasonal, optimization)
+      if (d.unified) {
+        var u = d.unified;
+
+        // Seasonal strategy
+        if (u.seasonal && (u.seasonal.peak_months || u.seasonal.low_months)) {
+          var se = u.seasonal;
+          h += '<div style="margin-top:14px;"><div style="font-size:0.78rem;font-weight:600;color:var(--text2);margin-bottom:8px;">' + _ico('calendar', 13) + ' SEASONAL STRATEGY</div>';
+          h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">';
+          if (se.peak_months && se.peak_months.length > 0) {
+            h += '<div style="padding:10px 14px;background:rgba(239,68,68,0.05);border:1px solid rgba(239,68,68,0.15);border-radius:8px;">';
+            h += '<div style="font-size:0.72rem;font-weight:600;color:var(--danger);margin-bottom:4px;">' + _ico('flame', 13, 'var(--danger)') + ' PEAK +' + (se.peak_markup_pct || 0) + '%' + (se.peak_rate ? ' → $' + se.peak_rate + '/nt' : '') + '</div>';
+            h += '<div style="font-size:0.78rem;">' + se.peak_months.join(', ') + '</div></div>';
+          }
+          if (se.low_months && se.low_months.length > 0) {
+            h += '<div style="padding:10px 14px;background:rgba(59,130,246,0.05);border:1px solid rgba(59,130,246,0.15);border-radius:8px;">';
+            h += '<div style="font-size:0.72rem;font-weight:600;color:var(--blue);margin-bottom:4px;">' + _ico('snowflake', 13, 'var(--blue)') + ' LOW -' + (se.low_discount_pct || 0) + '%' + (se.low_rate ? ' → $' + se.low_rate + '/nt' : '') + '</div>';
+            h += '<div style="font-size:0.78rem;">' + se.low_months.join(', ') + '</div></div>';
+          }
+          h += '</div>';
+          var discParts = [];
+          if (se.orphan_day_discount_pct) discParts.push('Orphan day: -' + se.orphan_day_discount_pct + '%');
+          if (se.last_minute_discount_pct) discParts.push('Last minute: -' + se.last_minute_discount_pct + '%');
+          if (se.early_bird_discount_pct) discParts.push('Early bird: -' + se.early_bird_discount_pct + '%');
+          if (discParts.length > 0) h += '<div style="font-size:0.72rem;color:var(--text3);margin-bottom:8px;">' + discParts.join(' · ') + '</div>';
+          h += '</div>';
+        }
+
+        // PriceLabs setup steps
+        if (u.pricelabs && u.pricelabs.setup_steps && u.pricelabs.setup_steps.length > 0) {
+          h += '<div style="padding:14px;background:rgba(167,139,250,0.04);border:1px solid rgba(167,139,250,0.15);border-radius:8px;margin-bottom:14px;">';
+          h += '<div style="font-size:0.78rem;font-weight:600;color:var(--purple);margin-bottom:8px;">' + _ico('receipt', 13) + ' PRICELABS SETUP STEPS</div>';
+          u.pricelabs.setup_steps.forEach(function(step, i) {
+            h += '<div style="display:flex;gap:8px;margin:6px 0;font-size:0.78rem;">';
+            h += '<span style="flex-shrink:0;width:22px;height:22px;border-radius:50%;background:var(--purple);color:var(--bg);display:flex;align-items:center;justify-content:center;font-size:0.68rem;font-weight:700;">' + (i+1) + '</span>';
+            h += '<span style="color:var(--text);line-height:1.4;">' + esc(step) + '</span></div>';
+          });
+          h += '</div>';
+        }
+
+        // PriceLabs action items
+        if (u.pricelabs && u.pricelabs.action_items && u.pricelabs.action_items.length > 0) {
+          h += '<div style="padding:14px;background:rgba(167,139,250,0.04);border:1px solid rgba(167,139,250,0.15);border-radius:8px;margin-bottom:14px;">';
+          h += '<div style="font-size:0.78rem;font-weight:600;color:var(--purple);margin-bottom:8px;">' + _ico('settings', 13) + ' PRICELABS ACTION ITEMS</div>';
+          h += '<table class="comp-table" style="font-size:0.78rem;"><thead><tr><th>Setting</th><th>Current</th><th>Recommended</th><th>Why</th></tr></thead><tbody>';
+          u.pricelabs.action_items.forEach(function(ai) {
+            h += '<tr><td style="font-weight:600;">' + esc(ai.setting || '') + '</td>';
+            h += '<td style="font-family:DM Mono,monospace;color:var(--text3);">' + esc(String(ai.current || '')) + '</td>';
+            h += '<td style="font-family:DM Mono,monospace;color:var(--accent);font-weight:600;">' + esc(String(ai.recommended || '')) + '</td>';
+            h += '<td style="font-size:0.72rem;color:var(--text2);">' + esc(ai.reason || '') + '</td></tr>';
+          });
+          h += '</tbody></table></div>';
+        }
+
+        // Quick wins
+        if (u.optimization && u.optimization.quick_wins && u.optimization.quick_wins.length > 0) {
+          h += '<div style="padding:12px 14px;background:rgba(16,185,129,0.05);border:1px solid rgba(16,185,129,0.15);border-radius:8px;margin-bottom:12px;">';
+          h += '<div style="font-size:0.78rem;font-weight:600;color:var(--accent);margin-bottom:6px;">' + _ico('zap', 13) + ' QUICK WINS</div>';
+          u.optimization.quick_wins.forEach(function(w) { h += '<div style="font-size:0.78rem;margin:4px 0;">✓ ' + esc(w) + '</div>'; });
+          h += '</div>';
+        }
+
+        // Strategy summary
+        if (u.strategy_summary) {
+          h += '<div style="padding:12px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;margin-bottom:12px;font-size:0.82rem;color:var(--text);line-height:1.5;">';
+          h += '<strong style="color:var(--purple);">Strategy Summary:</strong> ' + esc(u.strategy_summary);
+          h += '</div>';
+        }
+      }
+
       resultsEl.innerHTML = h;
       resultsEl.setAttribute('data-fresh', 'true');
     }
@@ -10694,14 +10854,31 @@ async function runAnalysis() {
         if (s.pet_fee) h += '<span>Pet $' + s.pet_fee + '</span>';
         h += '</div>';
       }
-      if (s.reasoning) {
+      if (s.reasoning || s.analysis) {
         h += '<div style="margin-top:10px;padding:10px 12px;background:' + (ai ? 'rgba(167,139,250,0.08)' : 'var(--bg)') + ';border-radius:6px;font-size:0.82rem;line-height:1.55;color:var(--text2);">';
         if (ai) h += '<span style="color:var(--purple);font-weight:600;font-size:0.75rem;display:block;margin-bottom:4px;">' + _ico('sparkle', 13, 'var(--purple)') + ' AI ANALYSIS</span>';
-        // Show full analysis with paragraph breaks
+        // Show full analysis with paragraph breaks — detect raw JSON and parse it
         var analysisText = s.analysis || s.reasoning || '';
-        analysisText.split(/\n\n|\n/).forEach(function(para) {
-          if (para.trim()) h += '<p style="margin:0 0 8px 0;">' + esc(para.trim()) + '</p>';
-        });
+        // If reasoning/analysis is raw JSON, try to extract the analysis text from it
+        if (typeof analysisText === 'string' && analysisText.trim().charAt(0) === '{') {
+          try {
+            var parsed = JSON.parse(analysisText);
+            analysisText = parsed.analysis || parsed.strategy_summary || parsed.reasoning || '';
+            // Also extract recommendations if present
+            if (!s.recommendations && parsed.recommendations) s.recommendations = parsed.recommendations;
+            if (!s.cleaning_fee_reasoning && parsed.cleaning_fee_reasoning) s.cleaning_fee_reasoning = parsed.cleaning_fee_reasoning;
+          } catch(e) {
+            // If JSON parse fails, try to extract analysis field with regex
+            var am = analysisText.match(/"analysis"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+            if (am) analysisText = am[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
+            else analysisText = analysisText.substring(0, 500) + '...';
+          }
+        }
+        if (analysisText) {
+          analysisText.split(/\n\n|\n/).forEach(function(para) {
+            if (para.trim()) h += '<p style="margin:0 0 8px 0;">' + esc(para.trim()) + '</p>';
+          });
+        }
         h += '</div>';
       }
       // Recommendations
@@ -11005,6 +11182,575 @@ function setCompType(type) {
   if (st) st.innerHTML = '';
 }
 
+
+// ── PRICING OVERVIEW (All Properties Subtab) ───────────────────────────────
+
+var _poSort = { col: null, asc: true };
+var _poFilter = 'all';
+
+function switchAnalyzeTab(tab) {
+  document.querySelectorAll('[data-atab]').forEach(function(b) {
+    var isActive = b.getAttribute('data-atab') === tab;
+    b.classList.toggle('active', isActive);
+    b.style.borderBottom = isActive ? '2px solid var(--accent)' : '2px solid transparent';
+  });
+  ['overview', 'analyze'].forEach(function(t) {
+    var el = document.getElementById('analyzeTab-' + t);
+    if (el) el.style.display = t === tab ? '' : 'none';
+  });
+  if (tab === 'overview') loadPricingOverview();
+}
+
+var _pricingOverviewCache = null;
+
+async function loadPricingOverview(forceRefresh) {
+  var container = document.getElementById('pricingOverviewContent');
+  if (!container) return;
+  if (_pricingOverviewCache && !forceRefresh) { renderPricingOverview(_pricingOverviewCache, container); return; }
+  container.innerHTML = '<p style="color:var(--text3);font-size:0.85rem;">' + _ico('loader',14) + ' Loading pricing data...</p>';
+  try {
+    var d = await api('/api/pricing/overview');
+    _pricingOverviewCache = d;
+    renderPricingOverview(d, container);
+  } catch (err) {
+    container.innerHTML = '<p style="color:var(--danger);">Error loading pricing overview: ' + esc(err.message) + '</p>';
+  }
+}
+
+function renderPricingOverview(d, container) {
+  var props = d.properties || [];
+  if (props.length === 0) { container.innerHTML = '<p style="color:var(--text3);">No active properties found.</p>'; return; }
+
+  // Apply filter
+  var filtered = props;
+  if (_poFilter === 'underpriced') filtered = props.filter(function(p) { return p.rate_context && (p.rate_context.classification === 'underpriced_high_occ' || p.rate_context.classification === 'possibly_underpriced'); });
+  else if (_poFilter === 'overpriced') filtered = props.filter(function(p) { return p.rate_context && p.rate_context.classification === 'overpriced_low_occ'; });
+  else if (_poFilter === 'stale') filtered = props.filter(function(p) { return _analysisAge(p) > 14; });
+  else if (_poFilter === 'unanalyzed') filtered = props.filter(function(p) { return !p.latest_analysis; });
+
+  // Apply sort
+  if (_poSort.col) {
+    filtered = filtered.slice().sort(function(a, b) {
+      var va = _poSortVal(a, _poSort.col);
+      var vb = _poSortVal(b, _poSort.col);
+      if (va === null && vb === null) return 0;
+      if (va === null) return 1;
+      if (vb === null) return -1;
+      var r = va < vb ? -1 : va > vb ? 1 : 0;
+      return _poSort.asc ? r : -r;
+    });
+  }
+
+  // Summary KPIs
+  var withPL = props.filter(function(p) { return p.pricelabs; }).length;
+  var withAnalysis = props.filter(function(p) { return p.latest_analysis; }).length;
+  var underpriced = props.filter(function(p) { return p.rate_context && (p.rate_context.classification === 'underpriced_high_occ' || p.rate_context.classification === 'possibly_underpriced'); }).length;
+  var overpriced = props.filter(function(p) { return p.rate_context && p.rate_context.classification === 'overpriced_low_occ'; }).length;
+  var staleCount = props.filter(function(p) { return _analysisAge(p) > 14; }).length;
+  var totalRev3mo = 0; var totalNights3mo = 0; var propsWithActuals = 0;
+  props.forEach(function(p) {
+    if (p.actuals) { totalRev3mo += (p.actuals.rev_3mo || 0); totalNights3mo += (p.actuals.nights || 0); propsWithActuals++; }
+  });
+  var avgPortAdr = totalNights3mo > 0 ? Math.round(totalRev3mo / totalNights3mo) : 0;
+
+  var h = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:16px;">';
+  h += _poKpi('Properties', props.length, 'home', 'var(--accent)');
+  h += _poKpi('PriceLabs', withPL + '/' + props.length, 'link', '#8b5cf6');
+  h += _poKpi('Analyzed', withAnalysis + '/' + props.length, 'sparkle', '#06b6d4');
+  h += _poKpi('Avg ADR', avgPortAdr > 0 ? '$' + avgPortAdr : '—', 'dollarSign', '#10b981');
+  h += _poKpi('3mo Revenue', totalRev3mo > 0 ? '$' + Math.round(totalRev3mo).toLocaleString() : '—', 'trendingUp', '#059669');
+  if (underpriced > 0) h += _poKpi('Underpriced', underpriced, 'trendingDown', '#f59e0b');
+  if (overpriced > 0) h += _poKpi('Overpriced', overpriced, 'alertTriangle', '#ef4444');
+  if (staleCount > 0) h += _poKpi('Stale Analysis', staleCount, 'clock', '#f97316');
+  h += '</div>';
+
+  // Filter bar
+  h += '<div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;align-items:center;">';
+  h += '<span style="font-size:0.72rem;color:var(--text3);margin-right:4px;">Filter:</span>';
+  var filters = [['all','All ('+props.length+')'],['underpriced','Underpriced'],['overpriced','Overpriced'],['stale','Stale (>14d)'],['unanalyzed','No Analysis']];
+  filters.forEach(function(f) {
+    var active = _poFilter === f[0];
+    h += '<button class="btn btn-xs' + (active ? ' btn-primary' : '') + '" onclick="_poFilter=\'' + f[0] + '\';renderPricingOverview(_pricingOverviewCache,document.getElementById(\'pricingOverviewContent\'));" style="font-size:0.7rem;">' + f[1] + '</button>';
+  });
+  h += '<div style="flex:1;"></div>';
+  h += '<button class="btn btn-xs" onclick="_runReanalyzeAll();" title="Re-run unified AI analysis on all active properties">' + _ico('zap',12) + ' Re-analyze All</button>';
+  h += '<button class="btn btn-xs" onclick="_runPricingHealthCheck();" title="Run daily pricing health check">' + _ico('heartPulse',12) + ' Health Check</button>';
+  h += '<button class="btn btn-xs" onclick="_pricingOverviewCache=null;loadPricingOverview(true);" title="Refresh data">' + _ico('refresh',12) + ' Refresh</button>';
+  h += '</div>';
+
+  // Table
+  h += '<div class="card" style="overflow-x:auto;padding:0;">';
+  h += '<table style="width:100%;border-collapse:collapse;font-size:0.78rem;" id="poTable">';
+  h += '<thead><tr style="background:var(--bg2);border-bottom:2px solid var(--border);text-align:left;">';
+  var cols = [
+    ['label','Property',180,'left'],
+    ['health','Health',75,'center'],
+    ['pl_base','Rate (PL)',70,'right'],
+    ['pl_min','Min',60,'right'],
+    ['pl_max','Max',60,'right'],
+    ['actual_adr','ADR',70,'right'],
+    ['actual_occ','Occ',50,'right'],
+    ['mkt_occ','Mkt',50,'right'],
+    ['rev_3mo','Rev 3mo',80,'right'],
+    ['cleaning','Cleaning',90,'right'],
+    ['pet_fee','Pet Fee',80,'right'],
+    ['extra_guest','Extra Guest',100,'right'],
+    ['min_nights','Min Nts',60,'right'],
+    ['discounts','Discounts',95,'center'],
+    ['age','Analyzed',65,'center'],
+    ['actions','',70,'center']
+  ];
+  cols.forEach(function(c) {
+    var arrow = _poSort.col === c[0] ? (_poSort.asc ? ' ↑' : ' ↓') : '';
+    var sortable = c[0] !== 'actions' && c[0] !== 'discounts';
+    h += '<th style="padding:8px 6px;font-weight:600;text-align:' + c[3] + ';min-width:' + c[2] + 'px;white-space:nowrap;font-size:0.7rem;cursor:' + (sortable ? 'pointer' : 'default') + ';" ' + (sortable ? 'onclick="_poToggleSort(\'' + c[0] + '\')"' : '') + '>' + c[1] + arrow + '</th>';
+  });
+  h += '</tr></thead><tbody>';
+
+  // Data rows
+  filtered.forEach(function(p, i) {
+    h += _poRow(p, i);
+  });
+
+  // Totals row
+  if (filtered.length > 1) {
+    h += _poTotalsRow(filtered);
+  }
+
+  h += '</tbody></table></div>';
+
+  // Recommendation cards
+  var analyzed = filtered.filter(function(p) { return p.recommendations && p.recommendations.length > 0; });
+  if (analyzed.length > 0) {
+    h += '<div style="margin-top:20px;">';
+    h += '<h3 style="font-size:0.88rem;margin-bottom:12px;color:var(--text2);">' + _ico('sparkle',16,'var(--accent)') + ' Analysis Recommendations</h3>';
+    h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px;">';
+    analyzed.forEach(function(p) {
+      p.recommendations.forEach(function(r) {
+        h += _poRecCard(p, r);
+      });
+    });
+    h += '</div></div>';
+  }
+
+  // Unanalyzed prompt
+  var unanalyzed = filtered.filter(function(p) { return !p.latest_analysis; });
+  if (unanalyzed.length > 0 && _poFilter !== 'unanalyzed') {
+    h += '<div class="card" style="margin-top:16px;border-left:3px solid var(--warning);padding:14px;">';
+    h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">' + _ico('alertTriangle',15,'var(--warning)') + '<span style="font-weight:600;font-size:0.85rem;">' + unanalyzed.length + ' properties without pricing analysis</span></div>';
+    h += '<div style="display:flex;gap:6px;flex-wrap:wrap;">';
+    unanalyzed.forEach(function(p) {
+      h += '<button class="btn btn-xs" onclick="_poRunAnalysis(' + p.id + ')">' + esc(p.label) + '</button>';
+    });
+    h += '</div></div>';
+  }
+
+  container.innerHTML = h;
+}
+
+function _poRow(p, i) {
+  var bg = i % 2 === 0 ? 'var(--bg1)' : 'var(--bg2)';
+  var pl = p.pricelabs || {};
+  var ai = p.latest_analysis || {};
+  var act = p.actuals || {};
+  var rc = p.rate_context;
+  var gs = p.guesty_settings || {};
+
+  // Health badge
+  var healthBadge = '<span style="color:var(--text3);font-size:0.68rem;">—</span>';
+  if (rc) {
+    var hmap = {
+      'underpriced_high_occ': ['#f59e0b','Underpriced'],
+      'possibly_underpriced': ['#eab308','Check'],
+      'overpriced_low_occ': ['#ef4444','Overpriced'],
+      'well_priced': ['#10b981','Good']
+    };
+    var hinfo = hmap[rc.classification] || ['#6b7280','—'];
+    healthBadge = '<span style="display:inline-block;padding:2px 7px;border-radius:10px;font-size:0.65rem;font-weight:600;color:#fff;background:' + hinfo[0] + ';" title="ADR gap: ' + (rc.gap_pct > 0 ? '+' : '') + rc.gap_pct + '% over ' + rc.months + ' months">' + hinfo[1] + '</span>';
+  }
+
+  // Occupancy with market comparison color
+  var occDisplay = act.occ ? act.occ + '%' : '—';
+  var mktOcc = pl.mkt_occ_30d ? (parseFloat(pl.mkt_occ_30d) * 100).toFixed(0) + '%' : '—';
+  var occStyle = '';
+  if (act.occ && pl.mkt_occ_30d) {
+    var mktVal = parseFloat(pl.mkt_occ_30d) * 100;
+    if (act.occ >= mktVal) occStyle = 'color:#10b981;font-weight:600;';
+    else if (act.occ < mktVal - 10) occStyle = 'color:#ef4444;font-weight:600;';
+  }
+
+  // Rev 3mo
+  var rev3 = act.rev_3mo ? '$' + Math.round(act.rev_3mo).toLocaleString() : '—';
+
+  // ── COMPACT CELLS WITH DISAGREEMENT INDICATORS ──
+
+  // Rate: PriceLabs dynamic rate + AI disagreement
+  var rateCell = _$(pl.base);
+  if (pl.base && ai.base && Math.abs(ai.base - pl.base) >= 5) {
+    var rdiff = Math.round(ai.base - pl.base);
+    var rcol = rdiff > 0 ? '#10b981' : '#ef4444';
+    rateCell += '<div style="font-size:0.6rem;color:' + rcol + ';" title="AI recommends $' + ai.base + '">AI ' + (rdiff > 0 ? '+' : '') + '$' + rdiff + '</div>';
+  }
+
+  // Cleaning: Guesty setting + AI disagreement
+  var cleanVal = _$(p.cleaning_fee);
+  var cleanSrc = p.cleaning_source;
+  var cleanTip = cleanSrc === 'guesty' ? 'Guesty listing' : cleanSrc === 'property' ? 'Property setting' : cleanSrc === 'guesty_avg' ? 'Guesty avg' : cleanSrc === 'pricelabs' ? 'PriceLabs' : cleanSrc === 'ai_rec' ? 'AI rec' : '';
+  if (cleanSrc !== 'guesty' && cleanSrc !== 'none') cleanVal += '<sup style="font-size:0.5rem;color:var(--text3);">*</sup>';
+  if (p.cleaning_fee && ai.cleaning && Math.abs(ai.cleaning - p.cleaning_fee) >= 10) {
+    var cdiff = Math.round(ai.cleaning - p.cleaning_fee);
+    cleanVal += '<div style="font-size:0.6rem;color:' + (cdiff > 0 ? '#10b981' : '#ef4444') + ';" title="AI recommends $' + ai.cleaning + '">AI ' + (cdiff > 0 ? '+' : '') + '$' + cdiff + '</div>';
+  }
+
+  // Pet fee: Guesty setting + AI disagreement
+  var petVal = _$(p.pet_fee);
+  var petSrc = p.pet_fee_source;
+  var petTip = petSrc === 'guesty' ? 'Guesty listing' : petSrc === 'guesty_avg' ? 'Guesty avg' : petSrc === 'ai_analysis' ? 'AI rec' : '';
+  if (petSrc !== 'guesty' && petSrc !== 'none') petVal += '<sup style="font-size:0.5rem;color:var(--text3);">*</sup>';
+  if (p.pet_fee && ai.pet_fee && Math.abs(ai.pet_fee - p.pet_fee) >= 10) {
+    var pdiff = Math.round(ai.pet_fee - p.pet_fee);
+    petVal += '<div style="font-size:0.6rem;color:' + (pdiff > 0 ? '#10b981' : '#ef4444') + ';" title="AI recommends $' + ai.pet_fee + '">AI ' + (pdiff > 0 ? '+' : '') + '$' + pdiff + '</div>';
+  }
+
+  // Extra guest: Guesty setting with threshold
+  var egVal = '—';
+  var egTip = '';
+  if (p.extra_guest_fee && p.extra_guest_fee > 0) {
+    var threshold = gs.guests_included || '?';
+    egVal = '$' + p.extra_guest_fee + '/nt';
+    egTip = 'After ' + threshold + ' guests · Guesty listing';
+    egVal += '<div style="font-size:0.58rem;color:var(--text3);">after ' + threshold + 'g</div>';
+  } else if (p.recommendations) {
+    for (var ri = 0; ri < p.recommendations.length; ri++) {
+      if (p.recommendations[ri].extra_guest && p.recommendations[ri].extra_guest > 0) {
+        egVal = '<span style="color:var(--text3);">$' + p.recommendations[ri].extra_guest + '/nt</span>';
+        egTip = 'AI recommendation (not set in Guesty)';
+        egVal += '<div style="font-size:0.58rem;color:var(--warning);">AI rec</div>';
+        break;
+      }
+    }
+  }
+
+  // Min nights: Guesty default, note if PL overrides per-date
+  var cm = p.calendar_min_nights;
+  var minNDisplay = '—';
+  var minNTip = '';
+  if (gs.min_nights) {
+    minNDisplay = String(gs.min_nights);
+    minNTip = 'Guesty default';
+    if (cm && cm.min !== cm.max) {
+      minNDisplay += '<div style="font-size:0.58rem;color:var(--text3);">' + cm.min + '-' + cm.max + 'd</div>';
+      minNTip += ' (PL overrides: ' + cm.min + '-' + cm.max + ' next 30d)';
+    }
+  } else if (cm) {
+    minNDisplay = cm.min === cm.max ? String(cm.min) : cm.min + '-' + cm.max;
+    minNTip = 'Guesty calendar (next 30d)';
+  } else if (ai.min_nights) {
+    minNDisplay = '<span style="color:var(--text3);">' + ai.min_nights + '</span>';
+    minNTip = 'AI recommendation';
+  }
+
+  // Discounts: Guesty weekly/monthly + AI disagreement
+  var discDisplay = '';
+  var wDisc = gs.weekly_factor ? Math.round((1 - gs.weekly_factor) * 100) : null;
+  var mDisc = gs.monthly_factor ? Math.round((1 - gs.monthly_factor) * 100) : null;
+  if (wDisc || mDisc) {
+    var parts = [];
+    if (wDisc) parts.push('W:' + wDisc + '%');
+    if (mDisc) parts.push('M:' + mDisc + '%');
+    discDisplay = '<span style="font-size:0.68rem;color:var(--text2);">' + parts.join(' · ') + '</span>';
+    // AI disagreement on discounts
+    if (ai.weekly_disc && wDisc && Math.abs(ai.weekly_disc - wDisc) >= 5) {
+      discDisplay += '<div style="font-size:0.55rem;color:var(--accent);">AI W:' + ai.weekly_disc + '%</div>';
+    }
+  } else if (ai.weekly_disc || ai.monthly_disc) {
+    var aParts = [];
+    if (ai.weekly_disc) aParts.push('W:' + ai.weekly_disc + '%');
+    if (ai.monthly_disc) aParts.push('M:' + ai.monthly_disc + '%');
+    discDisplay = '<span style="font-size:0.68rem;color:var(--text3);">' + aParts.join(' · ') + '</span>';
+    discDisplay += '<div style="font-size:0.55rem;color:var(--warning);">AI rec</div>';
+  }
+  if (ai.peak_markup && ai.peak_markup > 0) {
+    discDisplay += (discDisplay ? '<br>' : '') + '<span style="font-size:0.6rem;color:#f59e0b;">Peak +' + ai.peak_markup + '%</span>';
+  }
+  if (!discDisplay) discDisplay = '<span style="color:var(--text3);font-size:0.68rem;">—</span>';
+
+  // Analysis age
+  var ageDays = _analysisAge(p);
+  var ageBadge = '<span style="color:var(--text3);font-size:0.68rem;">Never</span>';
+  if (ai.date) {
+    var aColor = ageDays <= 7 ? '#10b981' : ageDays <= 14 ? '#eab308' : '#ef4444';
+    ageBadge = '<span style="color:' + aColor + ';font-size:0.7rem;font-weight:500;" title="' + esc(ai.date) + '">' + _timeAgo(ai.date) + '</span>';
+  }
+
+  // ── BUILD ROW ──
+  var h = '<tr style="background:' + bg + ';border-bottom:1px solid var(--border);" onmouseover="this.style.background=\'var(--bg3)\'" onmouseout="this.style.background=\'' + bg + '\'">';
+  // Property name
+  h += '<td style="padding:7px 8px;position:sticky;left:0;background:inherit;z-index:1;">';
+  h += '<a href="#" onclick="event.preventDefault();switchView(\'properties\');setTimeout(function(){loadPropertyDetail(' + p.id + ')},100);" style="color:var(--accent);text-decoration:none;font-weight:500;font-size:0.78rem;">' + esc(p.label) + '</a>';
+  if (p.city) h += '<div style="font-size:0.65rem;color:var(--text3);">' + esc(p.city) + (p.state ? ', ' + p.state : '') + (p.bedrooms ? ' · ' + p.bedrooms + 'BR' : '') + (p.max_guests ? '/' + p.max_guests + 'g' : '') + '</div>';
+  h += '</td>';
+  h += '<td style="padding:7px 6px;text-align:center;">' + healthBadge + '</td>';
+  h += '<td style="padding:7px 6px;text-align:right;font-variant-numeric:tabular-nums;" title="PriceLabs dynamic rate">' + rateCell + '</td>';
+  h += '<td style="padding:7px 6px;text-align:right;font-variant-numeric:tabular-nums;" title="PriceLabs min floor">' + _$(pl.min) + '</td>';
+  h += '<td style="padding:7px 6px;text-align:right;font-variant-numeric:tabular-nums;" title="PriceLabs max ceiling">' + _$(pl.max) + '</td>';
+  h += '<td style="padding:7px 6px;text-align:right;font-weight:600;font-variant-numeric:tabular-nums;">' + _$(act.adr) + '</td>';
+  h += '<td style="padding:7px 6px;text-align:right;font-variant-numeric:tabular-nums;' + occStyle + '">' + occDisplay + '</td>';
+  h += '<td style="padding:7px 6px;text-align:right;font-variant-numeric:tabular-nums;color:var(--text3);font-size:0.72rem;">' + mktOcc + '</td>';
+  h += '<td style="padding:7px 6px;text-align:right;font-variant-numeric:tabular-nums;font-size:0.75rem;">' + rev3 + '</td>';
+  h += '<td style="padding:7px 6px;text-align:right;font-variant-numeric:tabular-nums;" title="' + cleanTip + '">' + cleanVal + '</td>';
+  h += '<td style="padding:7px 6px;text-align:right;font-variant-numeric:tabular-nums;" title="' + petTip + '">' + petVal + '</td>';
+  h += '<td style="padding:7px 6px;text-align:right;font-size:0.72rem;" title="' + egTip + '">' + egVal + '</td>';
+  h += '<td style="padding:7px 6px;text-align:right;" title="' + minNTip + '">' + minNDisplay + '</td>';
+  h += '<td style="padding:7px 6px;text-align:center;">' + discDisplay + '</td>';
+  h += '<td style="padding:7px 6px;text-align:center;">' + ageBadge + '</td>';
+  h += '<td style="padding:7px 6px;text-align:center;white-space:nowrap;">';
+  h += '<button class="btn btn-xs" onclick="_poRunAnalysis(' + p.id + ')" title="Run analysis" style="padding:3px 6px;">' + _ico('sparkle',12) + '</button> ';
+  h += '<button class="btn btn-xs" onclick="switchView(\'properties\');setTimeout(function(){loadPropertyDetail(' + p.id + ')},100);" title="View" style="padding:3px 6px;">' + _ico('eye',12) + '</button>';
+  h += '</td>';
+  h += '</tr>';
+  return h;
+}
+
+function _poTotalsRow(filtered) {
+  var totals = { plBase: [], plMin: [], plMax: [], adr: [], occ: [], mktOcc: [], rev: 0, cleaning: [], pet: [], eg: [] };
+  filtered.forEach(function(p) {
+    var pl = p.pricelabs || {};
+    var act = p.actuals || {};
+    if (pl.base) totals.plBase.push(pl.base);
+    if (pl.min) totals.plMin.push(pl.min);
+    if (pl.max) totals.plMax.push(pl.max);
+    if (act.adr) totals.adr.push(act.adr);
+    if (act.occ) totals.occ.push(act.occ);
+    if (pl.mkt_occ_30d) totals.mktOcc.push(parseFloat(pl.mkt_occ_30d) * 100);
+    if (act.rev_3mo) totals.rev += act.rev_3mo;
+    if (p.cleaning_fee) totals.cleaning.push(p.cleaning_fee);
+    if (p.pet_fee) totals.pet.push(p.pet_fee);
+    if (p.extra_guest_fee) totals.eg.push(p.extra_guest_fee);
+  });
+  var avg = function(arr) { return arr.length > 0 ? Math.round(arr.reduce(function(s,v){return s+v;},0) / arr.length) : null; };
+
+  var h = '<tr style="background:var(--bg2);border-top:2px solid var(--border);font-weight:600;font-size:0.75rem;">';
+  h += '<td style="padding:8px;position:sticky;left:0;background:var(--bg2);z-index:1;">Portfolio Avg / Total</td>';
+  h += '<td></td>'; // health
+  h += _poCell(avg(totals.plBase));
+  h += _poCell(avg(totals.plMin));
+  h += _poCell(avg(totals.plMax));
+  h += '<td style="padding:7px 6px;text-align:right;">' + _$(avg(totals.adr)) + '</td>';
+  h += '<td style="padding:7px 6px;text-align:right;">' + (totals.occ.length > 0 ? Math.round(avg(totals.occ)) + '%' : '—') + '</td>';
+  h += '<td style="padding:7px 6px;text-align:right;color:var(--text3);">' + (totals.mktOcc.length > 0 ? Math.round(avg(totals.mktOcc)) + '%' : '—') + '</td>';
+  h += '<td style="padding:7px 6px;text-align:right;">$' + Math.round(totals.rev).toLocaleString() + '</td>';
+  h += _poCell(avg(totals.cleaning));
+  h += _poCell(avg(totals.pet));
+  h += '<td style="padding:7px 6px;text-align:right;font-size:0.72rem;">' + (totals.eg.length > 0 ? '$' + avg(totals.eg) + '/nt' : '—') + '</td>';
+  h += '<td colspan="3"></td>'; // min nts, discounts, analyzed
+  h += '<td></td>'; // actions
+  h += '</tr>';
+  return h;
+}
+
+function _poRecCard(p, r) {
+  var h = '<div class="card" style="padding:14px;">';
+  h += '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">';
+  h += '<div><span style="font-weight:600;font-size:0.82rem;color:var(--text1);">' + esc(p.label) + '</span>';
+  h += '<div style="font-size:0.68rem;color:var(--text3);margin-top:2px;">' + esc(r.type) + (r.strategy_name ? ' — ' + esc(r.strategy_name) : '') + ' · ' + _timeAgo(r.date) + '</div></div>';
+  if (r.provider) h += '<span style="font-size:0.62rem;padding:2px 6px;border-radius:8px;background:var(--bg3);color:var(--text3);">' + esc(r.provider) + '</span>';
+  h += '</div>';
+  if (r.base || r.min || r.max || r.cleaning || r.pet || r.extra_guest) {
+    h += '<div style="display:flex;gap:10px;margin-bottom:8px;flex-wrap:wrap;">';
+    if (r.base) h += _poRecChip('Base', '$' + r.base, 'var(--accent)');
+    if (r.min) h += _poRecChip('Min', '$' + r.min, 'var(--text2)');
+    if (r.max) h += _poRecChip('Max', '$' + r.max, 'var(--text2)');
+    if (r.cleaning) h += _poRecChip('Clean', '$' + r.cleaning, '#8b5cf6');
+    if (r.pet) h += _poRecChip('Pet', '$' + r.pet, '#f59e0b');
+    if (r.extra_guest) h += _poRecChip('Extra Guest', '$' + r.extra_guest, '#06b6d4');
+    h += '</div>';
+  }
+  if (r.summary) h += '<p style="font-size:0.76rem;color:var(--text2);line-height:1.4;margin:0;">' + esc(r.summary) + '</p>';
+  h += '</div>';
+  return h;
+}
+
+function _poRecChip(label, value, color) {
+  return '<div style="font-size:0.7rem;"><span style="color:var(--text3);">' + label + ' </span><span style="font-weight:600;color:' + color + ';">' + value + '</span></div>';
+}
+
+function _poRunAnalysis(pid) {
+  switchAnalyzeTab('analyze');
+  setTimeout(function() {
+    var s = document.getElementById('analyzePropertySelect');
+    if (s) { s.value = pid; onAnalyzePropertyChange(); }
+  }, 100);
+}
+
+function _poToggleSort(col) {
+  if (_poSort.col === col) _poSort.asc = !_poSort.asc;
+  else { _poSort.col = col; _poSort.asc = true; }
+  renderPricingOverview(_pricingOverviewCache, document.getElementById('pricingOverviewContent'));
+}
+
+function _poSortVal(p, col) {
+  var pl = p.pricelabs || {};
+  var ai = p.latest_analysis || {};
+  var act = p.actuals || {};
+  switch (col) {
+    case 'label': return (p.label || '').toLowerCase();
+    case 'health': var cm = {'underpriced_high_occ':1,'possibly_underpriced':2,'overpriced_low_occ':3,'well_priced':4}; return p.rate_context ? (cm[p.rate_context.classification] || 5) : 6;
+    case 'pl_base': return pl.base || null;
+    case 'pl_min': return pl.min || null;
+    case 'pl_max': return pl.max || null;
+    case 'actual_adr': return act.adr || null;
+    case 'actual_occ': return act.occ || null;
+    case 'mkt_occ': return pl.mkt_occ_30d ? parseFloat(pl.mkt_occ_30d) * 100 : null;
+    case 'rev_3mo': return act.rev_3mo || null;
+    case 'cleaning': return p.cleaning_fee || null;
+    case 'pet_fee': return p.pet_fee || null;
+    case 'extra_guest': return p.extra_guest_fee || null;
+    case 'min_nights': var _gs = p.guesty_settings || {}; return _gs.min_nights || (p.calendar_min_nights ? p.calendar_min_nights.min : null) || (ai.min_nights || null);
+    case 'age': return _analysisAge(p);
+    default: return null;
+  }
+}
+
+function _analysisAge(p) {
+  if (!p.latest_analysis || !p.latest_analysis.date) return 9999;
+  return Math.floor((new Date() - new Date(p.latest_analysis.date)) / 86400000);
+}
+
+function _poKpi(label, value, icon, color) {
+  return '<div style="background:var(--bg2);border-radius:10px;padding:12px 14px;border:1px solid var(--border);">'
+    + '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">'
+    + _ico(icon, 14, color) + '<span style="font-size:0.68rem;color:var(--text3);text-transform:uppercase;letter-spacing:0.4px;">' + label + '</span></div>'
+    + '<div style="font-size:1.3rem;font-weight:700;color:var(--text1);font-variant-numeric:tabular-nums;">' + value + '</div></div>';
+}
+
+function _poCell(val) {
+  var display = _$(val);
+  return '<td style="padding:7px 6px;text-align:right;font-variant-numeric:tabular-nums;">' + display + '</td>';
+}
+
+function _$(val) {
+  if (val === null || val === undefined || val === 0) return '<span style="color:var(--text3);">—</span>';
+  return '$' + (typeof val === 'number' ? val.toLocaleString(undefined, {maximumFractionDigits:0}) : val);
+}
+
+function _timeAgo(dateStr) {
+  if (!dateStr) return '';
+  var d = new Date(dateStr);
+  var now = new Date();
+  var diff = Math.floor((now - d) / 86400000);
+  if (diff === 0) return 'today';
+  if (diff === 1) return 'yesterday';
+  if (diff < 7) return diff + 'd ago';
+  if (diff < 30) return Math.floor(diff / 7) + 'w ago';
+  if (diff < 365) return Math.floor(diff / 30) + 'mo ago';
+  return Math.floor(diff / 365) + 'y ago';
+}
+
+// ── Pricing Health Check ─────────────────────────────────────────────────────
+async function _runReanalyzeAll() {
+  if (!confirm('Re-run unified AI pricing analysis on ALL active properties?\n\nThis will use AI API credits for each property (~$0.02-0.05 each). Properties are analyzed sequentially.')) return;
+  var container = document.getElementById('pricingOverviewContent');
+  if (!container) return;
+  var oldHtml = container.innerHTML;
+  container.innerHTML = '<div style="text-align:center;padding:30px;"><div class="spinner"></div><p style="color:var(--text3);margin-top:12px;">Running unified analysis on all properties... This may take a few minutes.</p></div>';
+  try {
+    var d = await api('/api/analyze/bulk', 'POST', { analysis_type: 'str', quality: 'standard', max: 20, reanalyze_all: true });
+    var h = '<div class="card" style="padding:16px;margin-bottom:16px;">';
+    h += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">';
+    h += _ico('zap', 20, 'var(--accent)');
+    h += '<h3 style="margin:0;font-size:1rem;">Bulk Re-Analysis Results</h3>';
+    h += '<div style="flex:1;"></div>';
+    h += '<button class="btn btn-xs" onclick="_pricingOverviewCache=null;loadPricingOverview(true);">← Back to Overview</button>';
+    h += '</div>';
+    h += '<div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;">';
+    h += '<span class="badge" style="background:#f0fdf4;color:#16a34a;padding:6px 12px;">' + _ico('check', 13) + ' ' + (d.analyzed || 0) + ' analyzed</span>';
+    if ((d.failed || 0) > 0) h += '<span class="badge" style="background:#fef2f2;color:#dc2626;padding:6px 12px;">' + _ico('alertTriangle', 13) + ' ' + d.failed + ' failed</span>';
+    h += '<span class="badge" style="background:var(--bg2);padding:6px 12px;">' + (d.total || 0) + ' total</span>';
+    h += '</div>';
+    if (d.results && d.results.length > 0) {
+      h += '<table style="width:100%;border-collapse:collapse;font-size:0.78rem;">';
+      h += '<thead><tr style="background:var(--bg2);border-bottom:2px solid var(--border);"><th style="padding:7px 8px;text-align:left;">Property</th><th style="padding:7px 8px;text-align:center;">Status</th><th style="padding:7px 8px;text-align:left;">Details</th></tr></thead><tbody>';
+      d.results.forEach(function(r) {
+        var statusColor = r.status === 'ok' ? 'var(--accent)' : 'var(--danger)';
+        var statusIcon = r.status === 'ok' ? _ico('check', 13, statusColor) : _ico('x', 13, statusColor);
+        h += '<tr style="border-bottom:1px solid var(--border);">';
+        h += '<td style="padding:6px 8px;">' + esc(r.label || 'Property #' + r.id) + '</td>';
+        h += '<td style="padding:6px 8px;text-align:center;">' + statusIcon + '</td>';
+        h += '<td style="padding:6px 8px;color:var(--text3);">' + (r.status === 'ok' ? r.strategies + ' strategies' : esc(r.error || r.status)) + '</td>';
+        h += '</tr>';
+      });
+      h += '</tbody></table>';
+    }
+    h += '<div style="font-size:0.72rem;color:var(--text3);margin-top:10px;">' + esc(d.message || '') + '</div>';
+    h += '</div>';
+    container.innerHTML = h;
+  } catch (err) {
+    container.innerHTML = oldHtml;
+    toast('Bulk re-analysis failed: ' + err.message, 'error');
+  }
+}
+
+async function _runPricingHealthCheck() {
+  var container = document.getElementById('pricingOverviewContent');
+  if (!container) return;
+  var oldHtml = container.innerHTML;
+  container.innerHTML = '<div style="text-align:center;padding:30px;"><div class="spinner"></div><p style="color:var(--text3);margin-top:12px;">Running pricing health check across all properties...</p></div>';
+  try {
+    var d = await api('/api/pricing/health-check', 'POST', {});
+    var h = '<div class="card" style="padding:16px;margin-bottom:16px;">';
+    h += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">';
+    h += _ico('heartPulse',20,'var(--accent)');
+    h += '<h3 style="margin:0;font-size:1rem;">Pricing Health Check Results</h3>';
+    h += '<div style="flex:1;"></div>';
+    h += '<button class="btn btn-xs" onclick="renderPricingOverview(_pricingOverviewCache,document.getElementById(\'pricingOverviewContent\'));">← Back to Overview</button>';
+    h += '</div>';
+
+    // Summary badges
+    h += '<div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;">';
+    h += '<span class="badge" style="background:var(--bg2);padding:6px 12px;">' + _ico('home',13) + ' ' + (d.checked||0) + ' checked</span>';
+    if ((d.divergent||0) > 0) h += '<span class="badge" style="background:#fef2f2;color:#dc2626;padding:6px 12px;">' + _ico('alertTriangle',13) + ' ' + d.divergent + ' divergent</span>';
+    h += '<span class="badge" style="background:#f0fdf4;color:#16a34a;padding:6px 12px;">' + _ico('check',13) + ' ' + (d.healthy||0) + ' healthy</span>';
+    h += '</div>';
+
+    // Property details table
+    var checks = d.checks || [];
+    if (checks.length > 0) {
+      h += '<table style="width:100%;border-collapse:collapse;font-size:0.78rem;">';
+      h += '<thead><tr style="background:var(--bg2);border-bottom:2px solid var(--border);">';
+      h += '<th style="padding:7px 8px;text-align:left;">Property</th>';
+      h += '<th style="padding:7px 8px;text-align:center;">Status</th>';
+      h += '<th style="padding:7px 8px;text-align:left;">Issues</th></tr></thead><tbody>';
+      // Sort: divergent first, then warning, then healthy
+      var order = {divergent:0, error:1, warning:2, healthy:3};
+      checks.sort(function(a,b) { return (order[a.severity]||9) - (order[b.severity]||9); });
+      checks.forEach(function(c) {
+        var sevColor = c.severity === 'divergent' ? '#dc2626' : c.severity === 'warning' ? '#f59e0b' : c.severity === 'error' ? '#ef4444' : '#16a34a';
+        var sevIcon = c.severity === 'divergent' ? 'alertTriangle' : c.severity === 'warning' ? 'clock' : c.severity === 'error' ? 'xCircle' : 'check';
+        h += '<tr style="border-bottom:1px solid var(--border);">';
+        h += '<td style="padding:7px 8px;"><a href="#" onclick="showPropertyDetail(' + c.id + ');return false;" style="color:var(--accent);">' + esc(c.label) + '</a></td>';
+        h += '<td style="padding:7px 8px;text-align:center;">';
+        h += '<span style="color:' + sevColor + ';font-weight:600;font-size:0.72rem;text-transform:uppercase;">' + _ico(sevIcon,12,sevColor) + ' ' + esc(c.severity) + '</span></td>';
+        h += '<td style="padding:7px 8px;">';
+        if (c.issues && c.issues.length > 0) {
+          c.issues.forEach(function(iss) {
+            var issColor = ['pl_ai_divergence','adr_below_set','no_analysis'].indexOf(iss.type) >= 0 ? '#dc2626' : '#92400e';
+            h += '<div style="font-size:0.72rem;color:' + issColor + ';margin-bottom:2px;">' + _ico('chevronRight',10,issColor) + ' ' + esc(iss.detail) + '</div>';
+          });
+        } else {
+          h += '<span style="color:var(--text3);font-size:0.72rem;">No issues detected</span>';
+        }
+        h += '</td></tr>';
+      });
+      h += '</tbody></table>';
+    }
+    h += '</div>';
+    container.innerHTML = h;
+  } catch (err) {
+    container.innerHTML = oldHtml;
+    toast('Health check failed: ' + err.message, 'danger');
+  }
+}
 
 // ── 04-comparables.js ──
 function onCompPropertyChange() {
@@ -14060,6 +14806,7 @@ async function loadFinances() {
     renderFinActualVsExpected(d.portfolio);
     renderServiceBreakdown(d.portfolio);
     loadCapitalExpenses();
+    loadBillsSummaryCard();
     renderFinanceByCity(d.by_city || []);
     renderFinancePropertyTable(d.properties || []);
     renderApiCosts(d.api_costs || {});
@@ -15638,6 +16385,510 @@ function exportAllOwnerStatements() {
   });
   toast('Generating ' + ownerList.length + ' PDF statement(s)...', 'info');
 }
+// ── BILL TRACKER ────────────────────────────────────────────────────────────
+var _billsData = null;
+
+// Compact summary card for Finance tab
+async function loadBillsSummaryCard() {
+  var el = document.getElementById('finBillTracker');
+  if (!el) return;
+  try {
+    var d = await api('/api/bills/dashboard');
+    if ((d.month_count || 0) === 0) { el.innerHTML = ''; return; }
+    var overdue = d.overdue || [];
+    var dueSoon = d.due_soon || [];
+    var paidPct = d.month_count > 0 ? Math.round(d.month_paid / d.month_count * 100) : 0;
+    var remaining = Math.round(d.month_total - (d.month_total * d.month_paid / d.month_count));
+    var borderColor = overdue.length > 0 ? '#dc2626' : d.month_paid === d.month_count ? '#16a34a' : '#3b82f6';
+
+    var h = '<div class="card" style="margin-top:14px;border-left:4px solid ' + borderColor + ';padding:12px 16px;">';
+    h += '<div style="display:flex;justify-content:space-between;align-items:center;">';
+    h += '<div>';
+    h += '<div style="font-size:0.82rem;font-weight:600;display:flex;align-items:center;gap:6px;">' + _ico('receipt', 15, borderColor) + ' Bills</div>';
+    h += '<div style="font-size:0.75rem;color:var(--text3);margin-top:2px;">';
+    h += d.month_paid + '/' + d.month_count + ' paid (' + paidPct + '%)';
+    if (overdue.length > 0) h += ' · <span style="color:#dc2626;font-weight:600;">' + overdue.length + ' overdue</span>';
+    else if (dueSoon.length > 0) h += ' · <span style="color:#f59e0b;">' + dueSoon.length + ' due soon</span>';
+    h += '</div></div>';
+    h += '<div style="display:flex;align-items:center;gap:12px;">';
+    if (d.month_paid < d.month_count) {
+      h += '<span style="font-family:DM Mono,monospace;font-size:0.88rem;font-weight:600;color:var(--text2);">$' + Math.round(d.month_total).toLocaleString() + '</span>';
+    }
+    h += '<button class="btn btn-xs" onclick="switchView(\'bills\')" style="font-size:0.7rem;">' + _ico('arrowRight', 11) + ' View All</button>';
+    h += '</div></div>';
+    // Progress bar
+    h += '<div style="height:4px;background:var(--surface2);border-radius:2px;margin-top:8px;overflow:hidden;">';
+    h += '<div style="height:100%;width:' + paidPct + '%;background:' + borderColor + ';border-radius:2px;transition:width 0.3s;"></div>';
+    h += '</div>';
+    h += '</div>';
+    el.innerHTML = h;
+  } catch { el.innerHTML = ''; }
+}
+
+// Full Bills tab
+async function loadBillsTab() {
+  var el = document.getElementById('billsTabContent');
+  if (!el) return;
+  el.innerHTML = '<div style="padding:20px;text-align:center;"><div class="spinner"></div></div>';
+  try {
+    var d = await api('/api/bills');
+    _billsData = d;
+    renderBillTracker(d, el);
+  } catch (err) {
+    el.innerHTML = '<p style="color:var(--danger);padding:12px;">Bill tracker error: ' + esc(err.message) + '</p>';
+  }
+}
+
+function renderBillTracker(d, el) {
+  var accts = d.accounts || [];
+  var byPeriod = d.payments_by_period || {};
+  var cp = d.current_period || '';
+  var sum = d.summary || {};
+  var currentBills = byPeriod[cp] || [];
+  var today = new Date().toISOString().split('T')[0];
+
+  var h = '<div class="card">';
+  h += '<div class="card-header"><h2>' + _ico('receipt', 20) + ' Bill Tracker</h2>';
+  h += '<div style="display:flex;gap:6px;">';
+  h += '<button class="btn btn-xs" onclick="_showAddBillForm()" title="Add a recurring bill">' + _ico('plus', 12) + ' Add Bill</button>';
+  h += '<button class="btn btn-xs" onclick="loadBillsTab()" title="Refresh">' + _ico('refresh', 12) + '</button>';
+  h += '</div></div>';
+
+  // Summary KPIs
+  var paidCount = currentBills.filter(function(b) { return b.status === 'paid'; }).length;
+  var overdueCount = currentBills.filter(function(b) { return b.status !== 'paid' && b.due_date && b.due_date < today; }).length;
+  h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:14px;">';
+  h += _billKpi('Total Due', '$' + Math.round(sum.total_due || 0).toLocaleString(), 'dollarSign', 'var(--text)');
+  h += _billKpi('Paid', '$' + Math.round(sum.total_paid || 0).toLocaleString(), 'check', '#16a34a');
+  h += _billKpi('Progress', paidCount + '/' + currentBills.length, 'target', '#06b6d4');
+  if (overdueCount > 0) h += _billKpi('Overdue', overdueCount, 'alertTriangle', '#dc2626');
+  var remaining = (sum.total_due || 0) - (sum.total_paid || 0);
+  if (remaining > 0) h += _billKpi('Remaining', '$' + Math.round(remaining).toLocaleString(), 'clock', '#f59e0b');
+  h += '</div>';
+
+  // Add Bill form placeholder
+  h += '<div id="addBillFormArea"></div>';
+
+  if (accts.length === 0) {
+    h += '<div style="text-align:center;padding:24px;color:var(--text3);">';
+    h += _ico('receipt', 32, 'var(--text3)');
+    h += '<p style="margin:8px 0 4px;">No bills set up yet</p>';
+    h += '<p style="font-size:0.75rem;">Add your recurring bills (electric, gas, internet, insurance) to track payments across all properties.</p>';
+    h += '<button class="btn btn-primary btn-sm" onclick="_showAddBillForm()" style="margin-top:8px;">' + _ico('plus', 14) + ' Add Your First Bill</button>';
+    h += '</div>';
+    h += '</div>';
+    el.innerHTML = h;
+    return;
+  }
+
+  // Period selector + filters
+  var periods = Object.keys(byPeriod).sort().reverse();
+  if (periods.indexOf(cp) < 0) periods.unshift(cp);
+  h += '<div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;align-items:center;">';
+  h += '<span style="font-size:0.72rem;color:var(--text3);">Month:</span>';
+  var showPeriods = periods.slice(0, 6);
+  showPeriods.forEach(function(p) {
+    var active = p === (window._billPeriod || cp);
+    var label = _periodLabel(p);
+    h += '<button class="btn btn-xs' + (active ? ' btn-primary' : '') + '" onclick="window._billPeriod=\'' + p + '\';renderBillTracker(_billsData,document.getElementById(\'billsTabContent\'));" style="font-size:0.7rem;">' + label + '</button>';
+  });
+  h += '</div>';
+
+  // Bills table for selected period
+  var selPeriod = window._billPeriod || cp;
+  var bills = byPeriod[selPeriod] || [];
+
+  // Collect filter options from all bills + generated entries
+  var allBillsForFilters = bills.slice();
+  var billAcctIds = new Set(bills.map(function(b) { return b.bill_account_id; }));
+  accts.forEach(function(a) {
+    if (a.is_active && !billAcctIds.has(a.id)) {
+      allBillsForFilters.push({ city: a.city || '', category: a.category, status: 'pending', due_date: null, due_day: a.due_day || 1 });
+    }
+  });
+
+  // Unique cities and categories for filters
+  var cities = {};
+  allBillsForFilters.forEach(function(b) { var c = b.city || 'Portfolio'; if (c) cities[c] = (cities[c] || 0) + 1; });
+  var cityList = Object.keys(cities).sort();
+
+  // Filter bar
+  var bf = window._billFilter || 'all';
+  var bt = window._billTown || 'all';
+  h += '<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center;">';
+  h += '<span style="font-size:0.72rem;color:var(--text3);">Status:</span>';
+  var statusFilters = [['all','All'],['unpaid','Unpaid'],['overdue','Overdue'],['due_soon','Due Soon'],['paid','Paid']];
+  statusFilters.forEach(function(f) {
+    var active = bf === f[0];
+    h += '<button class="btn btn-xs' + (active ? ' btn-primary' : '') + '" onclick="window._billFilter=\'' + f[0] + '\';renderBillTracker(_billsData,document.getElementById(\'billsTabContent\'));" style="font-size:0.7rem;">' + f[1] + '</button>';
+  });
+  if (cityList.length > 1) {
+    h += '<span style="font-size:0.72rem;color:var(--text3);margin-left:6px;">Town:</span>';
+    h += '<select onchange="window._billTown=this.value;renderBillTracker(_billsData,document.getElementById(\'billsTabContent\'));" style="font-size:0.7rem;padding:2px 6px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:4px;">';
+    h += '<option value="all"' + (bt === 'all' ? ' selected' : '') + '>All Towns</option>';
+    cityList.forEach(function(c) {
+      h += '<option value="' + esc(c) + '"' + (bt === c ? ' selected' : '') + '>' + esc(c) + ' (' + cities[c] + ')</option>';
+    });
+    h += '</select>';
+  }
+  h += '</div>';
+
+  // Apply status + town filters
+  var filteredBills = bills.slice();
+
+  // Add generated entries for accounts missing payment records
+  var existingAcctIds = new Set(filteredBills.map(function(b) { return b.bill_account_id; }));
+  accts.forEach(function(a) {
+    if (a.is_active && !existingAcctIds.has(a.id)) {
+      filteredBills.push({
+        bill_account_id: a.id, period: selPeriod, amount_due: a.estimated_amount || 0,
+        status: 'pending', bill_name: a.name, category: a.category, provider: a.provider,
+        is_autopay: a.is_autopay, prop_name: a.prop_name || '', unit_number: a.unit_number || '',
+        account_number: a.account_number || '', due_day: a.due_day || 1, city: a.city || '',
+        _generated: true
+      });
+    }
+  });
+
+  // Town filter
+  if (bt && bt !== 'all') {
+    filteredBills = filteredBills.filter(function(b) {
+      var bCity = b.city || 'Portfolio';
+      return bCity === bt;
+    });
+  }
+
+  // Status filter
+  if (bf && bf !== 'all') {
+    filteredBills = filteredBills.filter(function(b) {
+      var isPd = b.status === 'paid';
+      if (bf === 'paid') return isPd;
+      if (bf === 'unpaid') return !isPd;
+      if (bf === 'overdue') {
+        if (isPd) return false;
+        var dd = b.due_date || (selPeriod + '-' + String(b.due_day || 1).padStart(2, '0'));
+        return dd < today;
+      }
+      if (bf === 'due_soon') {
+        if (isPd) return false;
+        var dd2 = b.due_date || (selPeriod + '-' + String(b.due_day || 1).padStart(2, '0'));
+        if (dd2 < today) return false;
+        var daysLeft = Math.round((new Date(dd2 + 'T12:00:00') - new Date(today + 'T12:00:00')) / 86400000);
+        return daysLeft <= 7;
+      }
+      return true;
+    });
+  }
+
+  // Group by category
+  var cats = {};
+  filteredBills.forEach(function(b) {
+    var cat = b.category || 'other';
+    if (!cats[cat]) cats[cat] = [];
+    cats[cat].push(b);
+  });
+
+  var catIcons = {electric:'zap',gas:'flame',water:'droplet',internet:'wifi',trash:'trash',insurance:'shield',mortgage:'home',hoa:'building',sewer:'droplet',other:'receipt'};
+  var catColors = {electric:'#f59e0b',gas:'#ef4444',water:'#3b82f6',internet:'#8b5cf6',trash:'#6b7280',insurance:'#06b6d4',mortgage:'#10b981',hoa:'#f97316',sewer:'#3b82f6',other:'#9ca3af'};
+  var catOrder = ['electric','gas','water','sewer','internet','trash','insurance','mortgage','hoa','other'];
+
+  h += '<table style="width:100%;border-collapse:collapse;font-size:0.78rem;">';
+  h += '<thead><tr style="background:var(--bg2);border-bottom:2px solid var(--border);">';
+  h += '<th style="padding:7px 8px;text-align:left;">Bill</th>';
+  h += '<th style="padding:7px 8px;text-align:left;">Property</th>';
+  h += '<th style="padding:7px 8px;text-align:right;">Amount</th>';
+  h += '<th style="padding:7px 8px;text-align:right;">Paid</th>';
+  h += '<th style="padding:7px 8px;text-align:center;">Status</th>';
+  h += '<th style="padding:7px 8px;text-align:center;width:80px;">Action</th>';
+  h += '</tr></thead><tbody>';
+
+  var totalDue = 0, totalPaid = 0;
+  catOrder.forEach(function(cat) {
+    var items = cats[cat];
+    if (!items || items.length === 0) return;
+    var icon = catIcons[cat] || 'receipt';
+    var color = catColors[cat] || '#9ca3af';
+    h += '<tr style="background:var(--surface2);"><td colspan="6" style="padding:10px 8px 6px;font-weight:600;font-size:0.74rem;color:' + color + ';border-top:2px solid var(--border);">' + _ico(icon, 14, color) + ' ' + cat.charAt(0).toUpperCase() + cat.slice(1) + ' <span style="font-weight:400;color:var(--text3);">(' + items.length + ')</span></td></tr>';
+    items.forEach(function(b) {
+      var isPaid = b.status === 'paid';
+      var isOverdue = !isPaid && b.due_date && b.due_date < today;
+      var rowBg = isPaid ? 'rgba(16,185,129,0.04)' : isOverdue ? 'rgba(239,68,68,0.06)' : '';
+      var propLabel = b.unit_number ? b.unit_number + ' — ' : '';
+      propLabel += b.prop_name || '—';
+
+      totalDue += (b.amount_due || 0);
+      if (isPaid) totalPaid += (b.amount_paid || 0);
+      var autopayBadge = b.is_autopay ? ' <span style="font-size:0.6rem;background:rgba(139,92,246,0.1);color:#7c3aed;padding:1px 5px;border-radius:3px;">AUTO</span>' : '';
+
+      h += '<tr style="border-bottom:1px solid var(--border);background:' + rowBg + ';">';
+      h += '<td style="padding:6px 8px;">' + _ico(icon, 13, color) + ' ' + esc(b.bill_name || '') + autopayBadge;
+      if (b.provider) h += '<div style="font-size:0.66rem;color:var(--text3);">' + esc(b.provider) + (b.account_number ? ' · Acct: ' + esc(b.account_number) : '') + '</div>';
+      else if (b.account_number) h += '<div style="font-size:0.66rem;color:var(--text3);">Acct: ' + esc(b.account_number) + '</div>';
+      h += '</td>';
+      h += '<td style="padding:6px 8px;font-size:0.74rem;color:var(--text2);">' + esc(propLabel) + '</td>';
+      h += '<td style="padding:6px 8px;text-align:right;font-family:DM Mono,monospace;">$' + (b.amount_due || 0).toLocaleString() + '</td>';
+      h += '<td style="padding:6px 8px;text-align:right;font-family:DM Mono,monospace;">' + (isPaid ? '$' + (b.amount_paid || 0).toLocaleString() : '—') + '</td>';
+      // Smart status column
+      h += '<td style="padding:6px 8px;text-align:center;">';
+      if (isPaid) {
+        var paidDate = b.paid_at ? b.paid_at.substring(5, 10).replace('-', '/') : '';
+        h += '<span style="color:#16a34a;font-size:0.7rem;font-weight:600;">' + _ico('check',12,'#16a34a') + ' Paid' + (paidDate ? ' ' + paidDate : '') + '</span>';
+      } else {
+        var dueStr = b.due_date || (selPeriod + '-' + String(b.due_day || 1).padStart(2, '0'));
+        var dueDate = new Date(dueStr + 'T12:00:00');
+        var todayDate = new Date(today + 'T12:00:00');
+        var daysUntil = Math.round((dueDate - todayDate) / 86400000);
+        var dueMM = dueStr.substring(5, 10).replace('-', '/');
+        if (daysUntil < 0) {
+          h += '<span style="color:#dc2626;font-size:0.7rem;font-weight:600;">' + _ico('alertTriangle',12,'#dc2626') + ' Overdue ' + Math.abs(daysUntil) + 'd</span>';
+        } else if (daysUntil === 0) {
+          h += '<span style="color:#dc2626;font-size:0.7rem;font-weight:600;">' + _ico('alertTriangle',12,'#dc2626') + ' Due Today</span>';
+        } else if (daysUntil <= 3) {
+          h += '<span style="color:#ea580c;font-size:0.7rem;font-weight:600;">' + _ico('clock',12,'#ea580c') + ' Due in ' + daysUntil + 'd</span>';
+        } else if (daysUntil <= 7) {
+          h += '<span style="color:#f59e0b;font-size:0.7rem;font-weight:600;">' + _ico('clock',12,'#f59e0b') + ' Due in ' + daysUntil + 'd</span>';
+        } else {
+          h += '<span style="color:var(--text3);font-size:0.7rem;">' + _ico('calendar',12) + ' Due ' + dueMM + '</span>';
+        }
+      }
+      h += '</td>';
+      h += '<td style="padding:6px 8px;text-align:center;">';
+      if (isPaid) {
+        h += '<button class="btn btn-xs" onclick="_undoBillPayment(' + b.id + ')" style="font-size:0.65rem;" title="Undo payment">' + _ico('undo', 11) + '</button>';
+      } else {
+        h += '<button class="btn btn-xs btn-primary" onclick="_markBillPaid(' + (b.bill_account_id || 0) + ',\'' + esc(selPeriod) + '\',' + (b.amount_due || 0) + ')" style="font-size:0.65rem;">' + _ico('check', 11) + ' Pay</button>';
+      }
+      h += '</td></tr>';
+    });
+  });
+
+  // Totals row
+  h += '<tr style="border-top:2px solid var(--border);font-weight:600;">';
+  h += '<td colspan="2" style="padding:7px 8px;">Total</td>';
+  h += '<td style="padding:7px 8px;text-align:right;font-family:DM Mono,monospace;">$' + Math.round(totalDue).toLocaleString() + '</td>';
+  h += '<td style="padding:7px 8px;text-align:right;font-family:DM Mono,monospace;color:#16a34a;">$' + Math.round(totalPaid).toLocaleString() + '</td>';
+  h += '<td colspan="2"></td></tr>';
+  h += '</tbody></table>';
+
+  // Manage accounts link
+  h += '<div style="margin-top:10px;display:flex;gap:8px;justify-content:flex-end;">';
+  h += '<button class="btn btn-xs" onclick="_showManageBills()" style="font-size:0.68rem;">' + _ico('settings', 11) + ' Manage Bill Accounts</button>';
+  h += '</div>';
+
+  h += '</div>';
+  el.innerHTML = h;
+}
+
+function _billKpi(label, value, icon, color) {
+  return '<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;text-align:center;">' +
+    '<div style="font-size:0.68rem;color:var(--text3);margin-bottom:3px;">' + _ico(icon, 12, color) + ' ' + label + '</div>' +
+    '<div style="font-size:1.1rem;font-weight:700;color:' + color + ';font-family:DM Mono,monospace;">' + value + '</div></div>';
+}
+
+function _periodLabel(p) {
+  if (!p) return '';
+  var parts = p.split('-');
+  var months = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return months[parseInt(parts[1])] + ' ' + parts[0];
+}
+
+async function _markBillPaid(billAccountId, period, amountDue) {
+  var amountStr = prompt('Amount paid:', amountDue || '');
+  if (amountStr === null) return;
+  var amount = parseFloat(amountStr);
+  if (isNaN(amount)) { toast('Invalid amount', 'danger'); return; }
+  try {
+    await api('/api/bills/pay', 'POST', {
+      bill_account_id: billAccountId, period: period,
+      amount_paid: amount, amount_due: amountDue
+    });
+    toast('Payment recorded', 'success');
+    loadBillsTab();
+  } catch (err) { toast('Error: ' + err.message, 'danger'); }
+}
+
+async function _undoBillPayment(paymentId) {
+  if (!confirm('Undo this payment?')) return;
+  try {
+    await api('/api/bills/' + paymentId + '/unpay', 'POST', {});
+    toast('Payment undone', 'success');
+    loadBillsTab();
+  } catch (err) { toast('Error: ' + err.message, 'danger'); }
+}
+
+async function _showAddBillForm() {
+  var area = document.getElementById('addBillFormArea');
+  if (!area) return;
+  if (area.innerHTML.length > 10) { area.innerHTML = ''; return; } // toggle
+
+  // Ensure properties are loaded (may not be if user hasn't visited Properties tab)
+  if (!properties || properties.length === 0) {
+    try { var pd = await api('/api/properties'); properties = pd.properties || []; } catch {}
+  }
+
+  var propOpts = '<option value="">— Portfolio-wide —</option>';
+  properties.forEach(function(p) {
+    var label = (p.unit_number ? p.unit_number + ' — ' : '') + (p.platform_listing_name || p.name || p.address);
+    propOpts += '<option value="' + p.id + '">' + esc(label) + '</option>';
+  });
+
+  var cats = ['electric','gas','water','sewer','internet','trash','insurance','mortgage','hoa','other'];
+  var catOpts = cats.map(function(c) { return '<option value="' + c + '">' + c.charAt(0).toUpperCase() + c.slice(1) + '</option>'; }).join('');
+
+  var h = '<div class="card" style="padding:14px;margin-bottom:12px;border:1px dashed var(--accent);background:var(--surface2);">';
+  h += '<div style="font-size:0.82rem;font-weight:600;margin-bottom:10px;">' + _ico('plus', 14) + ' Add Recurring Bill</div>';
+  h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">';
+  h += '<div><label style="font-size:0.72rem;color:var(--text3);">Bill Name *</label><input id="billName" class="form-control form-control-sm" placeholder="e.g. Eversource Electric"></div>';
+  h += '<div><label style="font-size:0.72rem;color:var(--text3);">Provider</label><input id="billProvider" class="form-control form-control-sm" placeholder="e.g. Eversource"></div>';
+  h += '<div><label style="font-size:0.72rem;color:var(--text3);">Category *</label><select id="billCategory" class="form-control form-control-sm">' + catOpts + '</select></div>';
+  h += '<div><label style="font-size:0.72rem;color:var(--text3);">Property</label><select id="billProperty" class="form-control form-control-sm">' + propOpts + '</select></div>';
+  h += '<div><label style="font-size:0.72rem;color:var(--text3);">Est. Monthly Amount</label><input id="billAmount" class="form-control form-control-sm" type="number" step="0.01" placeholder="85.00"></div>';
+  h += '<div><label style="font-size:0.72rem;color:var(--text3);">Due Day of Month</label><input id="billDueDay" class="form-control form-control-sm" type="number" min="1" max="28" value="1"></div>';
+  h += '<div><label style="font-size:0.72rem;color:var(--text3);">Account #</label><input id="billAcct" class="form-control form-control-sm" placeholder="Optional"></div>';
+  h += '<div style="display:flex;align-items:flex-end;gap:12px;">';
+  h += '<label style="font-size:0.72rem;color:var(--text3);display:flex;align-items:center;gap:4px;cursor:pointer;"><input type="checkbox" id="billAutopay"> Autopay</label>';
+  h += '</div>';
+  h += '</div>';
+  h += '<div style="display:flex;gap:6px;margin-top:10px;">';
+  h += '<button class="btn btn-sm btn-primary" onclick="_saveBillAccount()">Save Bill</button>';
+  h += '<button class="btn btn-sm" onclick="document.getElementById(\'addBillFormArea\').innerHTML=\'\';">Cancel</button>';
+  h += '</div></div>';
+  area.innerHTML = h;
+}
+
+async function _saveBillAccount() {
+  var name = document.getElementById('billName')?.value?.trim();
+  var category = document.getElementById('billCategory')?.value;
+  if (!name) { toast('Bill name is required', 'danger'); return; }
+  try {
+    await api('/api/bills', 'POST', {
+      name: name,
+      provider: document.getElementById('billProvider')?.value?.trim() || null,
+      category: category,
+      property_id: document.getElementById('billProperty')?.value || null,
+      estimated_amount: parseFloat(document.getElementById('billAmount')?.value) || 0,
+      due_day: parseInt(document.getElementById('billDueDay')?.value) || 1,
+      is_autopay: document.getElementById('billAutopay')?.checked || false,
+      account_number: document.getElementById('billAcct')?.value?.trim() || null,
+    });
+    toast('Bill account created', 'success');
+    document.getElementById('addBillFormArea').innerHTML = '';
+    loadBillsTab();
+  } catch (err) { toast('Error: ' + err.message, 'danger'); }
+}
+
+function _showManageBills() {
+  var area = document.getElementById('addBillFormArea');
+  if (!area || !_billsData) return;
+  var accts = _billsData.accounts || [];
+  if (accts.length === 0) { toast('No bill accounts to manage', 'info'); return; }
+
+  var h = '<div class="card" style="padding:14px;margin-bottom:12px;border:1px solid var(--border);background:var(--surface2);">';
+  h += '<div style="font-size:0.82rem;font-weight:600;margin-bottom:10px;">' + _ico('settings', 14) + ' Manage Bill Accounts</div>';
+  h += '<div style="display:grid;gap:8px;">';
+  accts.forEach(function(a) {
+    var propLabel = a.unit_number ? a.unit_number + ' — ' + (a.prop_name || '') : (a.prop_name || 'Portfolio-wide');
+    var catIcons = {electric:'zap',gas:'flame',water:'droplet',internet:'wifi',trash:'trash',insurance:'shield',mortgage:'home',hoa:'building',sewer:'droplet',other:'receipt'};
+    var catColors = {electric:'#f59e0b',gas:'#ef4444',water:'#3b82f6',internet:'#8b5cf6',trash:'#6b7280',insurance:'#06b6d4',mortgage:'#10b981',hoa:'#f97316',sewer:'#3b82f6',other:'#9ca3af'};
+    var icon = catIcons[a.category] || 'receipt';
+    var color = catColors[a.category] || '#9ca3af';
+    h += '<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;border-left:3px solid ' + color + ';">';
+    h += '<div style="flex:1;min-width:0;">';
+    h += '<div style="font-size:0.78rem;font-weight:600;">' + _ico(icon, 13, color) + ' ' + esc(a.name) + '</div>';
+    h += '<div style="font-size:0.66rem;color:var(--text3);">';
+    h += esc(a.category) + ' · ' + esc(propLabel);
+    if (a.provider) h += ' · ' + esc(a.provider);
+    h += ' · Due day ' + (a.due_day || 1);
+    if (a.is_autopay) h += ' · Autopay';
+    if (!a.is_active) h += ' · <span style="color:#dc2626;">Inactive</span>';
+    h += '</div></div>';
+    h += '<div style="font-family:DM Mono,monospace;font-size:0.82rem;font-weight:600;color:var(--text2);white-space:nowrap;">$' + (a.estimated_amount || 0) + '/mo</div>';
+    h += '<div style="display:flex;gap:4px;">';
+    h += '<button class="btn btn-xs" onclick="_editBillAccount(' + a.id + ')" style="font-size:0.65rem;">' + _ico('edit', 11) + ' Edit</button>';
+    h += '<button class="btn btn-xs" onclick="_deleteBillAccount(' + a.id + ',\'' + esc(a.name).replace(/'/g, "\\'") + '\')" style="font-size:0.65rem;color:var(--danger);">' + _ico('trash', 11) + ' Delete</button>';
+    h += '</div></div>';
+  });
+  h += '</div>';
+  h += '<div style="margin-top:10px;display:flex;gap:6px;">';
+  h += '<button class="btn btn-xs" onclick="document.getElementById(\'addBillFormArea\').innerHTML=\'\';">Close</button>';
+  h += '<button class="btn btn-xs" onclick="_showAddBillForm()">' + _ico('plus', 11) + ' Add New</button>';
+  h += '</div></div>';
+  area.innerHTML = h;
+}
+
+async function _editBillAccount(billId) {
+  var acct = (_billsData.accounts || []).find(function(a) { return a.id === billId; });
+  if (!acct) return;
+  var area = document.getElementById('addBillFormArea');
+  if (!area) return;
+
+  if (!properties || properties.length === 0) {
+    try { var pd = await api('/api/properties'); properties = pd.properties || []; } catch {}
+  }
+
+  var propOpts = '<option value="">— Portfolio-wide —</option>';
+  properties.forEach(function(p) {
+    var label = (p.unit_number ? p.unit_number + ' — ' : '') + (p.platform_listing_name || p.name || p.address);
+    var sel = acct.property_id && String(acct.property_id) === String(p.id) ? ' selected' : '';
+    propOpts += '<option value="' + p.id + '"' + sel + '>' + esc(label) + '</option>';
+  });
+
+  var cats = ['electric','gas','water','sewer','internet','trash','insurance','mortgage','hoa','other'];
+  var catOpts = cats.map(function(c) {
+    var sel = acct.category === c ? ' selected' : '';
+    return '<option value="' + c + '"' + sel + '>' + c.charAt(0).toUpperCase() + c.slice(1) + '</option>';
+  }).join('');
+
+  var h = '<div class="card" style="padding:14px;margin-bottom:12px;border:1px dashed #f59e0b;background:var(--surface2);">';
+  h += '<div style="font-size:0.82rem;font-weight:600;margin-bottom:10px;">' + _ico('edit', 14) + ' Edit: ' + esc(acct.name) + '</div>';
+  h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">';
+  h += '<div><label style="font-size:0.72rem;color:var(--text3);">Bill Name *</label><input id="editBillName" class="form-control form-control-sm" value="' + esc(acct.name) + '"></div>';
+  h += '<div><label style="font-size:0.72rem;color:var(--text3);">Provider</label><input id="editBillProvider" class="form-control form-control-sm" value="' + esc(acct.provider || '') + '"></div>';
+  h += '<div><label style="font-size:0.72rem;color:var(--text3);">Category</label><select id="editBillCategory" class="form-control form-control-sm">' + catOpts + '</select></div>';
+  h += '<div><label style="font-size:0.72rem;color:var(--text3);">Property</label><select id="editBillProperty" class="form-control form-control-sm">' + propOpts + '</select></div>';
+  h += '<div><label style="font-size:0.72rem;color:var(--text3);">Est. Monthly Amount</label><input id="editBillAmount" class="form-control form-control-sm" type="number" step="0.01" value="' + (acct.estimated_amount || 0) + '"></div>';
+  h += '<div><label style="font-size:0.72rem;color:var(--text3);">Due Day of Month</label><input id="editBillDueDay" class="form-control form-control-sm" type="number" min="1" max="28" value="' + (acct.due_day || 1) + '"></div>';
+  h += '<div><label style="font-size:0.72rem;color:var(--text3);">Account #</label><input id="editBillAcct" class="form-control form-control-sm" value="' + esc(acct.account_number || '') + '"></div>';
+  h += '<div style="display:flex;align-items:flex-end;gap:12px;">';
+  h += '<label style="font-size:0.72rem;color:var(--text3);display:flex;align-items:center;gap:4px;cursor:pointer;"><input type="checkbox" id="editBillAutopay"' + (acct.is_autopay ? ' checked' : '') + '> Autopay</label>';
+  h += '<label style="font-size:0.72rem;color:var(--text3);display:flex;align-items:center;gap:4px;cursor:pointer;"><input type="checkbox" id="editBillActive"' + (acct.is_active ? ' checked' : '') + '> Active</label>';
+  h += '</div></div>';
+  h += '<div style="display:flex;gap:6px;margin-top:10px;">';
+  h += '<button class="btn btn-sm btn-primary" onclick="_updateBillAccount(' + billId + ')">Save Changes</button>';
+  h += '<button class="btn btn-sm" onclick="_showManageBills()">Cancel</button>';
+  h += '</div></div>';
+  area.innerHTML = h;
+}
+
+async function _updateBillAccount(billId) {
+  var name = document.getElementById('editBillName')?.value?.trim();
+  if (!name) { toast('Bill name is required', 'danger'); return; }
+  try {
+    await api('/api/bills/' + billId, 'PUT', {
+      name: name,
+      provider: document.getElementById('editBillProvider')?.value?.trim() || null,
+      category: document.getElementById('editBillCategory')?.value,
+      property_id: document.getElementById('editBillProperty')?.value || null,
+      estimated_amount: parseFloat(document.getElementById('editBillAmount')?.value) || 0,
+      due_day: parseInt(document.getElementById('editBillDueDay')?.value) || 1,
+      is_autopay: document.getElementById('editBillAutopay')?.checked || false,
+      is_active: document.getElementById('editBillActive')?.checked ?? true,
+      account_number: document.getElementById('editBillAcct')?.value?.trim() || null,
+    });
+    toast('Bill account updated', 'success');
+    loadBillsTab();
+  } catch (err) { toast('Error: ' + err.message, 'danger'); }
+}
+
+async function _deleteBillAccount(id, name) {
+  if (!confirm('Delete bill account "' + name + '" and all its payment records?')) return;
+  try {
+    await api('/api/bills/' + id, 'DELETE');
+    toast('Bill account deleted', 'success');
+    loadBillsTab();
+  } catch (err) { toast('Error: ' + err.message, 'danger'); }
+}
+
 // ── 11-pricing.js ──
 // Platform Pricing Comparison
 let pricingPropertyId = null;

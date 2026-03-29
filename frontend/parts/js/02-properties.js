@@ -2168,6 +2168,16 @@ function renderPropertyCard(p, isBuilding, isChild) {
         var bLabel = adrDiffPct >= 5 ? '↑' : adrDiffPct >= -5 ? '≈' : '↓';
         metaBadges += '<span class="badge" style="background:' + bBg + ';color:' + bColor + ';font-size:0.62rem;" title="Your ADR $' + myAdr + ' vs market avg $' + Math.round(mktD.avg_adr) + '">' + bLabel + ' $' + myAdr + ' vs $' + Math.round(mktD.avg_adr) + ' mkt</span>';
       }
+      // Occupancy vs market badge
+      var myOcc = p.pl_occ_30d ? parseInt(String(p.pl_occ_30d).replace('%', '')) : (p.pl_occ_30 ? parseInt(String(p.pl_occ_30).replace('%', '')) : (actualData ? Math.round((actualData.occupancy || 0) * 100) : 0));
+      var mktOcc = p.pl_mkt_occ_30d ? parseInt(String(p.pl_mkt_occ_30d).replace('%', '')) : (p.pl_mkt_occ_30 ? parseInt(String(p.pl_mkt_occ_30).replace('%', '')) : (mktD && mktD.avg_occ ? Math.round(mktD.avg_occ * 100) : 0));
+      if (myOcc > 0 && mktOcc > 0) {
+        var occGap = myOcc - mktOcc;
+        var oColor = occGap >= 5 ? 'var(--accent)' : occGap >= -5 ? '#60a5fa' : 'var(--danger)';
+        var oBg = occGap >= 5 ? 'rgba(16,185,129,0.1)' : occGap >= -5 ? 'rgba(96,165,250,0.1)' : 'rgba(239,68,68,0.1)';
+        var oLabel = occGap >= 5 ? '↑' : occGap >= -5 ? '≈' : '↓';
+        metaBadges += '<span class="badge" style="background:' + oBg + ';color:' + oColor + ';font-size:0.62rem;" title="Your occ ' + myOcc + '% vs market ' + mktOcc + '%">' + oLabel + ' ' + myOcc + '% vs ' + mktOcc + '% occ</span>';
+      }
     }
 
     return '<div class="property-card" style="position:relative;border-left:' + borderLeft + ';' + indent + buildingStyle + standaloneAccent + '">' +
@@ -2304,8 +2314,8 @@ function renderStrategyCard(s, fullReasoning) {
     h += '<div style="text-align:center;padding:4px;background:var(--surface2);border-radius:4px;"><div style="font-family:DM Mono,monospace;font-weight:700;">$' + (s.cleaning_fee || 0) + '</div><div style="font-size:0.65rem;color:var(--text3);">Cleaning</div></div>';
   }
   h += '<div style="text-align:center;padding:4px;background:var(--surface2);border-radius:4px;"><div style="font-family:DM Mono,monospace;font-weight:700;">' + Math.round((s.projected_occupancy || 0) * 100) + '%</div><div style="font-size:0.65rem;color:var(--text3);">Occupancy</div></div>';
-  if (s.peak_season_markup) h += '<div style="text-align:center;padding:4px;background:var(--surface2);border-radius:4px;"><div style="font-family:DM Mono,monospace;font-weight:700;color:var(--accent);">+' + s.peak_season_markup + '%</div><div style="font-size:0.65rem;color:var(--text3);">Peak</div></div>';
-  if (s.low_season_discount) h += '<div style="text-align:center;padding:4px;background:var(--surface2);border-radius:4px;"><div style="font-family:DM Mono,monospace;font-weight:700;color:var(--danger);">-' + s.low_season_discount + '%</div><div style="font-size:0.65rem;color:var(--text3);">Low</div></div>';
+  if (s.peak_season_markup) { var peakRate = Math.round((s.base_nightly_rate || 0) * (1 + (s.peak_season_markup || 0) / 100)); h += '<div style="text-align:center;padding:4px;background:var(--surface2);border-radius:4px;"><div style="font-family:DM Mono,monospace;font-weight:700;color:var(--accent);">+' + s.peak_season_markup + '%</div><div style="font-size:0.65rem;color:var(--text3);">Peak → $' + peakRate + '/nt</div></div>'; }
+  if (s.low_season_discount) { var lowRate = Math.round((s.base_nightly_rate || 0) * (1 - (s.low_season_discount || 0) / 100)); h += '<div style="text-align:center;padding:4px;background:var(--surface2);border-radius:4px;"><div style="font-family:DM Mono,monospace;font-weight:700;color:var(--danger);">-' + s.low_season_discount + '%</div><div style="font-size:0.65rem;color:var(--text3);">Low → $' + lowRate + '/nt</div></div>'; }
   h += '<div style="text-align:center;padding:4px;background:var(--surface2);border-radius:4px;"><div style="font-family:DM Mono,monospace;font-weight:700;">$' + Math.round(s.projected_annual_revenue || 0).toLocaleString() + '</div><div style="font-size:0.65rem;color:var(--text3);">Annual</div></div>';
   h += '</div>';
 
@@ -2362,6 +2372,19 @@ function renderStrategyCard(s, fullReasoning) {
 
   // Full analysis text — always expandable, shown by default for fresh results
   var fullText = s.analysis || s.reasoning || '';
+  // Detect raw JSON and extract the analysis text
+  if (typeof fullText === 'string' && fullText.trim().charAt(0) === '{') {
+    try {
+      var parsed = JSON.parse(fullText);
+      fullText = parsed.analysis || parsed.strategy_summary || parsed.reasoning || '';
+      if (!s.recommendations && parsed.recommendations) s.recommendations = parsed.recommendations;
+      if (!s.cleaning_fee_reasoning && parsed.cleaning_fee_reasoning) s.cleaning_fee_reasoning = parsed.cleaning_fee_reasoning;
+    } catch(e) {
+      var am = fullText.match(/"analysis"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+      if (am) fullText = am[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
+      else fullText = fullText.substring(0, 500) + '...';
+    }
+  }
   if (fullText) {
     if (fullReasoning || fullText.length <= 400) {
       h += '<div style="font-size:0.78rem;color:var(--text2);line-height:1.5;margin-top:8px;">';
@@ -5011,6 +5034,76 @@ async function runPropAnalysisFromDialog() {
       if (d.strategies && d.strategies.length > 0) {
         h += '<div style="font-size:0.78rem;font-weight:600;color:var(--text2);margin-bottom:8px;">PRICING STRATEGIES (' + d.strategies.length + ')</div>';
         d.strategies.forEach(function(s) { h += renderStrategyCard(s, true); });
+      }
+
+      // Unified analysis extras (PriceLabs setup, seasonal, optimization)
+      if (d.unified) {
+        var u = d.unified;
+
+        // Seasonal strategy
+        if (u.seasonal && (u.seasonal.peak_months || u.seasonal.low_months)) {
+          var se = u.seasonal;
+          h += '<div style="margin-top:14px;"><div style="font-size:0.78rem;font-weight:600;color:var(--text2);margin-bottom:8px;">' + _ico('calendar', 13) + ' SEASONAL STRATEGY</div>';
+          h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">';
+          if (se.peak_months && se.peak_months.length > 0) {
+            h += '<div style="padding:10px 14px;background:rgba(239,68,68,0.05);border:1px solid rgba(239,68,68,0.15);border-radius:8px;">';
+            h += '<div style="font-size:0.72rem;font-weight:600;color:var(--danger);margin-bottom:4px;">' + _ico('flame', 13, 'var(--danger)') + ' PEAK +' + (se.peak_markup_pct || 0) + '%' + (se.peak_rate ? ' → $' + se.peak_rate + '/nt' : '') + '</div>';
+            h += '<div style="font-size:0.78rem;">' + se.peak_months.join(', ') + '</div></div>';
+          }
+          if (se.low_months && se.low_months.length > 0) {
+            h += '<div style="padding:10px 14px;background:rgba(59,130,246,0.05);border:1px solid rgba(59,130,246,0.15);border-radius:8px;">';
+            h += '<div style="font-size:0.72rem;font-weight:600;color:var(--blue);margin-bottom:4px;">' + _ico('snowflake', 13, 'var(--blue)') + ' LOW -' + (se.low_discount_pct || 0) + '%' + (se.low_rate ? ' → $' + se.low_rate + '/nt' : '') + '</div>';
+            h += '<div style="font-size:0.78rem;">' + se.low_months.join(', ') + '</div></div>';
+          }
+          h += '</div>';
+          var discParts = [];
+          if (se.orphan_day_discount_pct) discParts.push('Orphan day: -' + se.orphan_day_discount_pct + '%');
+          if (se.last_minute_discount_pct) discParts.push('Last minute: -' + se.last_minute_discount_pct + '%');
+          if (se.early_bird_discount_pct) discParts.push('Early bird: -' + se.early_bird_discount_pct + '%');
+          if (discParts.length > 0) h += '<div style="font-size:0.72rem;color:var(--text3);margin-bottom:8px;">' + discParts.join(' · ') + '</div>';
+          h += '</div>';
+        }
+
+        // PriceLabs setup steps
+        if (u.pricelabs && u.pricelabs.setup_steps && u.pricelabs.setup_steps.length > 0) {
+          h += '<div style="padding:14px;background:rgba(167,139,250,0.04);border:1px solid rgba(167,139,250,0.15);border-radius:8px;margin-bottom:14px;">';
+          h += '<div style="font-size:0.78rem;font-weight:600;color:var(--purple);margin-bottom:8px;">' + _ico('receipt', 13) + ' PRICELABS SETUP STEPS</div>';
+          u.pricelabs.setup_steps.forEach(function(step, i) {
+            h += '<div style="display:flex;gap:8px;margin:6px 0;font-size:0.78rem;">';
+            h += '<span style="flex-shrink:0;width:22px;height:22px;border-radius:50%;background:var(--purple);color:var(--bg);display:flex;align-items:center;justify-content:center;font-size:0.68rem;font-weight:700;">' + (i+1) + '</span>';
+            h += '<span style="color:var(--text);line-height:1.4;">' + esc(step) + '</span></div>';
+          });
+          h += '</div>';
+        }
+
+        // PriceLabs action items
+        if (u.pricelabs && u.pricelabs.action_items && u.pricelabs.action_items.length > 0) {
+          h += '<div style="padding:14px;background:rgba(167,139,250,0.04);border:1px solid rgba(167,139,250,0.15);border-radius:8px;margin-bottom:14px;">';
+          h += '<div style="font-size:0.78rem;font-weight:600;color:var(--purple);margin-bottom:8px;">' + _ico('settings', 13) + ' PRICELABS ACTION ITEMS</div>';
+          h += '<table class="comp-table" style="font-size:0.78rem;"><thead><tr><th>Setting</th><th>Current</th><th>Recommended</th><th>Why</th></tr></thead><tbody>';
+          u.pricelabs.action_items.forEach(function(ai) {
+            h += '<tr><td style="font-weight:600;">' + esc(ai.setting || '') + '</td>';
+            h += '<td style="font-family:DM Mono,monospace;color:var(--text3);">' + esc(String(ai.current || '')) + '</td>';
+            h += '<td style="font-family:DM Mono,monospace;color:var(--accent);font-weight:600;">' + esc(String(ai.recommended || '')) + '</td>';
+            h += '<td style="font-size:0.72rem;color:var(--text2);">' + esc(ai.reason || '') + '</td></tr>';
+          });
+          h += '</tbody></table></div>';
+        }
+
+        // Quick wins
+        if (u.optimization && u.optimization.quick_wins && u.optimization.quick_wins.length > 0) {
+          h += '<div style="padding:12px 14px;background:rgba(16,185,129,0.05);border:1px solid rgba(16,185,129,0.15);border-radius:8px;margin-bottom:12px;">';
+          h += '<div style="font-size:0.78rem;font-weight:600;color:var(--accent);margin-bottom:6px;">' + _ico('zap', 13) + ' QUICK WINS</div>';
+          u.optimization.quick_wins.forEach(function(w) { h += '<div style="font-size:0.78rem;margin:4px 0;">✓ ' + esc(w) + '</div>'; });
+          h += '</div>';
+        }
+
+        // Strategy summary
+        if (u.strategy_summary) {
+          h += '<div style="padding:12px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;margin-bottom:12px;font-size:0.82rem;color:var(--text);line-height:1.5;">';
+          h += '<strong style="color:var(--purple);">Strategy Summary:</strong> ' + esc(u.strategy_summary);
+          h += '</div>';
+        }
       }
 
       resultsEl.innerHTML = h;

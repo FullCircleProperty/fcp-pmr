@@ -53,13 +53,18 @@ var _ICON_PATHS = {
   externalLink: 'M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3',
   chevronRight: 'M9 18l6-6-6-6',
   x:            'M18 6L6 18M6 6l12 12',
+  xCircle:      'M12 2a10 10 0 100 20 10 10 0 000-20zm3.54 6.46L12 11.59 8.46 8.46a1 1 0 00-1.42 1.42L10.59 12l-3.54 3.54a1 1 0 101.42 1.42L12 13.41l3.54 3.54a1 1 0 001.42-1.42L13.41 12l3.54-3.54a1 1 0 00-1.42-1.42z',
   layers:       'M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5',
   shield:       'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z',
   // Extended icons for modern UI
   edit:         'M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z',
+  trash:        'M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14M10 11v6M14 11v6',
   tool:         'M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z',
   package:      'M16.5 9.4l-9-5.19M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16zM3.27 6.96L12 12.01l8.73-5.05M12 22.08V12',
   flame:        'M12 22c-4.97 0-9-2.69-9-6s4.03-9 9-14c4.97 5 9 10.69 9 14s-4.03 6-9 6z',
+  droplet:      'M12 2.69l5.66 5.66a8 8 0 11-11.31 0z',
+  wifi:         'M5 12.55a11 11 0 0114.08 0M1.42 9a16 16 0 0121.16 0M8.53 16.11a6 6 0 016.95 0M12 20h.01',
+  undo:         'M3 7v6h6M3 13a9 9 0 0115.36-6.36',
   snowflake:    'M12 2v20M2 12h20M4.93 4.93l14.14 14.14M19.07 4.93L4.93 19.07',
   plug:         'M12 22v-5M9 7V2M15 7V2M5 12h14a2 2 0 002-2V7H3v3a2 2 0 002 2z',
   bell:         'M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9zM13.73 21a2 2 0 01-3.46 0',
@@ -69,6 +74,7 @@ var _ICON_PATHS = {
   clipboard:    'M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2M9 2h6a1 1 0 011 1v1a1 1 0 01-1 1H9a1 1 0 01-1-1V3a1 1 0 011-1z',
   fileText:     'M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8',
   heart:        'M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 000-7.78z',
+  heartPulse:   'M19.5 12.572l-7.5 7.428-7.5-7.428A5 5 0 0112 5.006a5 5 0 017.5 7.566zM6 12h2l2-3 2 5 2-3h2',
   trophy:       'M6 9H4.5a2.5 2.5 0 010-5H6M18 9h1.5a2.5 2.5 0 000-5H18M4 22h16M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20 7 22M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20 17 22M18 2H6v7a6 6 0 0012 0V2z',
   alertTriangle:'M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0zM12 9v4M12 17h.01',
   cloud:        'M18 10h-1.26A8 8 0 109 20h9a5 5 0 000-10z',
@@ -658,7 +664,7 @@ function switchView(name) {
   if (name === 'dashboard') loadDashboard();
   if (name === 'market') { loadMarketData(); loadMarketProfiles(); }
   if (name === 'comparables') loadComparables();
-  if (name === 'analyze') populateAnalyzeSelects();
+  if (name === 'analyze') { populateAnalyzeSelects(); loadPricingOverview(); }
   if (name === 'admin') { loadAdminUsers(); loadAdminUserSelect(); loadBudgetSettings(); }
   if (name === 'intel') { loadIntelDashboard(); loadIntelSubTabContent(); }
   if (name === 'pms') { backToPmsGrid(); loadPmsCardStats(); }
@@ -668,6 +674,7 @@ function switchView(name) {
     if (fh) fh.style.display = 'none';
   }
   if (name === 'finances') { loadFinances(); setTimeout(initDatePickers, 100); }
+  if (name === 'bills') loadBillsTab();
   if (name === 'management') loadManagement();
   if (name === 'pms') { setTimeout(initDatePickers, 100); }
   if (name === 'pricing') loadPricingView();
