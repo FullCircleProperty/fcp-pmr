@@ -535,3 +535,47 @@ function _clearSystemLog() {
     .then(function() { toast('System log cleared'); loadSystemLog(); })
     .catch(function(err) { toast(err.message, 'error'); });
 }
+
+// ── Alert Threshold Settings ─────────────────────────────────────────────
+var ALERT_THRESHOLD_DEFAULTS = {
+  adr_divergence_pct: { label: 'PriceLabs vs AI Rate Divergence', default: 20, unit: '%', desc: 'Flag when PriceLabs avg rate differs from AI recommendation by more than this %' },
+  adr_below_set_pct: { label: 'Actual ADR Below Set Rate', default: 20, unit: '%', desc: 'Flag when actual ADR is below PriceLabs set rate by more than this %' },
+  occ_below_market_pts: { label: 'Occupancy Below Market', default: 15, unit: 'pts', desc: 'Flag when property occupancy is below market by more than this many percentage points' },
+  stale_analysis_days: { label: 'Stale Analysis Age', default: 30, unit: 'days', desc: 'Flag when AI analysis is older than this many days' },
+  auto_analyze_max_daily: { label: 'Auto-Analyze Max Per Day', default: 3, unit: 'props', desc: 'Maximum properties to auto-analyze per daily cron run' },
+  auto_analyze_stale_days: { label: 'Auto-Analyze Stale Threshold', default: 14, unit: 'days', desc: 'Auto-analyze considers properties stale after this many days' }
+};
+
+async function loadAlertThresholds() {
+  var el = document.getElementById('alertThresholds');
+  if (!el) return;
+  try {
+    var keys = Object.keys(ALERT_THRESHOLD_DEFAULTS);
+    var values = {};
+    for (var i = 0; i < keys.length; i++) {
+      try {
+        var r = await api('/api/admin/settings/alert_' + keys[i]);
+        values[keys[i]] = r.value !== null ? parseFloat(r.value) : ALERT_THRESHOLD_DEFAULTS[keys[i]].default;
+      } catch { values[keys[i]] = ALERT_THRESHOLD_DEFAULTS[keys[i]].default; }
+    }
+    var h = '<table class="comp-table" style="font-size:0.82rem;"><thead><tr><th>Metric</th><th>Threshold</th><th>Unit</th><th>Description</th></tr></thead><tbody>';
+    keys.forEach(function(k) {
+      var def = ALERT_THRESHOLD_DEFAULTS[k];
+      var val = values[k];
+      h += '<tr><td style="font-weight:600;">' + esc(def.label) + '</td>';
+      h += '<td><input type="number" step="1" min="0" value="' + val + '" style="width:65px;font-size:0.82rem;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:3px 6px;" onchange="saveAlertThreshold(\'' + k + '\',this.value)"></td>';
+      h += '<td style="color:var(--text3);">' + esc(def.unit) + '</td>';
+      h += '<td style="color:var(--text3);font-size:0.72rem;">' + esc(def.desc) + '</td></tr>';
+    });
+    h += '</tbody></table>';
+    h += '<div style="font-size:0.68rem;color:var(--text3);margin-top:6px;">Changes take effect on the next daily pricing health check (6 AM ET). Defaults shown if not yet customized.</div>';
+    el.innerHTML = h;
+  } catch (err) { el.innerHTML = '<span style="color:var(--danger);">Error: ' + esc(err.message) + '</span>'; }
+}
+
+async function saveAlertThreshold(key, value) {
+  try {
+    await api('/api/admin/settings', 'POST', { key: 'alert_' + key, value: String(parseFloat(value) || 0) });
+    toast('Threshold saved: ' + ALERT_THRESHOLD_DEFAULTS[key].label + ' → ' + value + ' ' + ALERT_THRESHOLD_DEFAULTS[key].unit);
+  } catch (err) { toast('Error: ' + err.message, 'error'); }
+}

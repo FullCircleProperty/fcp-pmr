@@ -24,7 +24,10 @@
     <button class="tab" data-view="intel" data-icon="radar" onclick="switchView('intel')">Intel</button>
     <button class="tab" data-view="pms" data-icon="link" onclick="switchView('pms')">Integrations</button>
     <button class="tab" data-view="finances" data-icon="wallet" onclick="switchView('finances')">Finances</button>
+    <button class="tab" data-view="portfolio" data-icon="briefcase" onclick="switchView('portfolio')">Portfolio</button>
     <button class="tab" data-view="bills" data-icon="receipt" onclick="switchView('bills')">Bills</button>
+    <button class="tab" data-view="private-loans" data-icon="handCoins" onclick="switchView('private-loans')">Loans</button>
+    <button class="tab" data-view="import" data-icon="upload" onclick="switchView('import')">Import</button>
     <button class="tab" data-view="management" data-icon="handshake" id="managementTab" style="display:none;" onclick="switchView('management')">Management</button>
     <button class="tab" data-view="admin" data-icon="settings" id="adminTab" style="display:none;" onclick="switchView('admin')">Admin</button>
     <button class="tab" data-view="marketing" data-icon="star" id="marketingTab" style="display:none;" onclick="switchView('marketing')">Marketing</button>
@@ -277,6 +280,10 @@
       </div>
       <div id="financePurchased" class="prop-section green">
         <div class="prop-section-hdr"><span class="icon">🏦</span><span style="color:#10b981;">Purchase / Ownership</span></div>
+        <div style="display:flex;gap:6px;margin-bottom:10px;">
+          <button class="btn btn-sm financing-btn active" data-fin="conventional" onclick="setFinancing('conventional')">Bank / Institution</button>
+          <button class="btn btn-sm financing-btn" data-fin="owner_financed" onclick="setFinancing('owner_financed')">Owner Financed</button>
+        </div>
         <div class="form-grid">
           <div class="form-group"><label>Purchase Price ($)</label><input type="number" id="f_price" placeholder="1388000" oninput="calcMortgage()"></div>
           <div class="form-group"><label>Est. Value ($) <button class="btn btn-xs btn-purple" onclick="fetchZestimate()" style="font-size:0.62rem;padding:1px 6px;margin-left:4px;" title="Scrape Zillow for estimated value">Zestimate</button></label><input type="number" id="f_value" placeholder="1311000"><div id="zestimateInfo" style="font-size:0.65rem;color:var(--text3);"></div></div>
@@ -284,35 +291,21 @@
           <div class="form-group"><label>Annual Taxes ($)</label><input type="number" id="f_taxes" placeholder="17159"></div>
           <div class="form-group"><label>Tax Rate (%) <span style="font-size:0.6rem;font-weight:400;color:var(--text3);text-transform:none;">occupancy/sales tax</span></label><input type="number" id="f_tax_rate_pct" step="0.1" min="0" max="50" placeholder="e.g. 12.5"></div>
           <div class="form-group"><label>Monthly HOA ($)</label><input type="number" id="f_hoa" placeholder="293"></div>
-          <div class="form-group"><label>Monthly Mortgage ($)</label><input type="number" id="f_mortgage" placeholder="4500"></div>
           <div class="form-group"><label>Insurance ($/mo)</label><input type="number" id="f_insurance" placeholder="350"></div>
         </div>
-        <!-- Mortgage Calculator - auto-calculates -->
-        <div id="mortCalcSection" style="margin-top:10px;padding:12px 14px;background:var(--bg);border:1px solid var(--border);border-radius:8px;">
-          <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;" onclick="toggleMortCalc()">
-            <label style="font-size:0.78rem;color:var(--text2);font-weight:600;cursor:pointer;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;flex-shrink:0;"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg> Mortgage Calculator</label>
-            <span id="mortCalcArrow" style="color:var(--text3);">▸</span>
+        <!-- Linked Loans — read-only, managed in Loans tab -->
+        <div id="propLinkedLoans" style="margin-top:10px;padding:12px 14px;background:var(--bg);border:1px solid var(--border);border-radius:8px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <label style="font-size:0.78rem;color:var(--text2);font-weight:600;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;flex-shrink:0;"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg> Financing</label>
+            <button class="btn btn-xs" onclick="switchView('private-loans')" type="button" style="font-size:0.68rem;">Manage Loans →</button>
           </div>
-          <div id="mortCalcBody" style="display:none;margin-top:10px;">
-            <div class="form-grid" style="margin-bottom:8px;">
-              <div class="form-group"><label>Down Payment (%)</label><input type="number" id="mc_down_pct" value="20" min="0" max="100" step="0.5" oninput="calcMortgage()"></div>
-              <div class="form-group"><label>Down Payment ($)</label><input type="number" id="mc_down_amt" placeholder="277600" oninput="calcMortgageFromAmt()"></div>
-              <div class="form-group"><label>Loan Amount ($)</label><input type="number" id="mc_loan" readonly style="background:var(--surface2);"></div>
-              <div class="form-group"><label>Interest Rate (%)</label><input type="number" id="mc_rate" value="7.0" min="0" max="20" step="0.125" oninput="calcMortgage()"></div>
-              <div class="form-group"><label>Loan Term (years)</label><select id="mc_term" onchange="calcMortgage()"><option value="30" selected>30 years</option><option value="20">20 years</option><option value="15">15 years</option><option value="10">10 years</option></select></div>
-              <div class="form-group"><label>Monthly P&I</label><input type="number" id="mc_monthly" readonly style="background:var(--surface2);font-weight:600;color:var(--accent);"></div>
-            </div>
-            <div id="mortCalcSummary" style="font-size:0.75rem;color:var(--text3);margin-bottom:8px;"></div>
-            <label style="display:flex;align-items:center;gap:8px;font-size:0.78rem;cursor:pointer;color:var(--text2);">
-              <input type="checkbox" id="mc_auto_apply" checked onchange="calcMortgage()" style="width:16px;height:16px;">
-              Auto-update Monthly Mortgage field
-            </label>
-          </div>
+          <div id="propLinkedLoansBody" style="margin-top:8px;font-size:0.78rem;color:var(--text3);">No loans linked. Add via the Loans tab.</div>
         </div>
       </div>
       <div id="financeRental" class="prop-section amber" style="display:none;">
         <div class="prop-section-hdr"><span style="color:#f59e0b;">Rental / Sublet Costs</span></div>
         <div class="form-grid">
+          <div class="form-group"><label>Lease Start Date</label><input type="date" id="f_lease_start_date"></div>
           <div class="form-group"><label>Monthly Rent ($)</label><input type="number" id="f_monthly_rent" placeholder="2800"></div>
           <div class="form-group"><label>Security Deposit ($)</label><input type="number" id="f_deposit" placeholder="2800"></div>
         </div>
@@ -1025,10 +1018,24 @@
     </div>
   </div>
 
+  <!-- Portfolio Intelligence — investor/lender-facing financial analysis -->
+  <div class="view" id="view-portfolio">
+    <div id="portfolioTabContent">
+      <div style="padding:20px;text-align:center;color:var(--text3);">Loading portfolio intelligence...</div>
+    </div>
+  </div>
+
   <!-- Bills — recurring bill tracking and payment management -->
   <div class="view" id="view-bills">
     <div id="billsTabContent">
       <div style="padding:20px;text-align:center;color:var(--text3);">Loading bills...</div>
+    </div>
+  </div>
+
+  <!-- Private Loans — track non-institutional debt -->
+  <div class="view" id="view-private-loans">
+    <div id="privateLoansContent">
+      <div style="padding:20px;text-align:center;color:var(--text3);">Loading private loans...</div>
     </div>
   </div>
 
@@ -1579,6 +1586,11 @@
       <div id="budgetSettings"></div>
       <div id="budgetAlerts" style="margin-top:10px;"></div>
     </div>
+    <div class="card" style="margin-top:14px;">
+      <div class="card-header"><h2>Pricing Alert Thresholds</h2><button class="btn btn-xs" onclick="loadAlertThresholds()">Refresh</button></div>
+      <div style="font-size:0.72rem;color:var(--text3);margin-bottom:10px;">Configure when the daily pricing health check flags properties as divergent. These thresholds control auto-analyze prioritization and dashboard warnings.</div>
+      <div id="alertThresholds"></div>
+    </div>
     <!-- PriceLabs moved to Integrations tab (view-pms) -->
     <div class="card" style="margin-top:14px;">
       <div class="card-header"><h2>System Log</h2><button class="btn btn-sm" onclick="loadSystemLog()">Refresh</button></div>
@@ -1678,6 +1690,10 @@
     </div>
   </div>
 </div>
+
+  <div class="view" id="view-import">
+    <div id="importContent"><p style="color:var(--text3);text-align:center;padding:40px;">Loading import dashboard...</p></div>
+  </div>
 
   <div class="view" id="view-marketing">
     <div id="marketingContent"><p style="color:var(--text3);text-align:center;padding:40px;">Loading marketing dashboard...</p></div>

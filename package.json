@@ -1,6 +1,6 @@
 {
   "name": "fcp-pmr",
-  "version": "2.37.1",
+  "version": "2.49.0",
   "private": true,
   "scripts": {
     "build": "node build.js",

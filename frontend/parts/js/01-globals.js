@@ -26,6 +26,7 @@ var _ICON_PATHS = {
   clock:        'M12 22C6.5 22 2 17.5 2 12S6.5 2 12 2s10 4.5 10 10-4.5 10-10 10zM12 6v6l4 2',
   eye:          'M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8zM12 15a3 3 0 100-6 3 3 0 000 6z',
   // Finance
+  handCoins:    'M11 15h2a2 2 0 100-4h-3c-1.1 0-2-.9-2-2s.9-2 2-2h3M10 20.5a1 1 0 01-1-1v-3a1 1 0 012 0v3a1 1 0 01-1 1zM14 20.5a1 1 0 01-1-1v-3a1 1 0 012 0v3a1 1 0 01-1 1zM18 3a2 2 0 100 4 2 2 0 000-4z',
   dollarSign:   'M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6',
   receipt:      'M4 2v20l4-2 4 2 4-2 4 2V2l-4 2-4-2-4 2L4 2zM8 10h8M8 14h4',
   lock:         'M19 11H5a2 2 0 00-2 2v7a2 2 0 002 2h14a2 2 0 002-2v-7a2 2 0 00-2-2zM7 11V7a5 5 0 0110 0v4',
@@ -80,6 +81,13 @@ var _ICON_PATHS = {
   cloud:        'M18 10h-1.26A8 8 0 109 20h9a5 5 0 000-10z',
   cpu:          'M6 4h12a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2zM9 9h6v6H9zM9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3',
   key:          'M21 2l-2 2m-7.61 7.61a5.5 5.5 0 11-7.78 7.78 5.5 5.5 0 017.78-7.78zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4',
+  star:         'M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z',
+  plus:         'M12 5v14M5 12h14',
+  minus:        'M5 12h14',
+  loader:       'M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83',
+  upload:       'M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12',
+  checkCircle:  'M22 11.08V12a10 10 0 11-5.93-9.14M22 4L12 14.01l-3-3',
+  checkSquare:  'M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11',
 };
 
 function _ico(name, size, color) {
@@ -173,6 +181,7 @@ let csvRows = [];
 let selectedProps = new Set();
 let propSortKey = 'address_asc';
 let currentOwnership = 'purchased';
+let currentFinancing = 'conventional';
 let compType = 'str';
 let marketAiEnabled = true;
 let compAiEnabled = true;
@@ -665,7 +674,7 @@ function switchView(name) {
   if (name === 'market') { loadMarketData(); loadMarketProfiles(); }
   if (name === 'comparables') loadComparables();
   if (name === 'analyze') { populateAnalyzeSelects(); loadPricingOverview(); }
-  if (name === 'admin') { loadAdminUsers(); loadAdminUserSelect(); loadBudgetSettings(); }
+  if (name === 'admin') { loadAdminUsers(); loadAdminUserSelect(); loadBudgetSettings(); loadAlertThresholds(); }
   if (name === 'intel') { loadIntelDashboard(); loadIntelSubTabContent(); }
   if (name === 'pms') { backToPmsGrid(); loadPmsCardStats(); }
   // Clean up monthly actuals float header when leaving PMS
@@ -674,11 +683,14 @@ function switchView(name) {
     if (fh) fh.style.display = 'none';
   }
   if (name === 'finances') { loadFinances(); setTimeout(initDatePickers, 100); }
+  if (name === 'portfolio') loadPortfolioIntel();
   if (name === 'bills') loadBillsTab();
+  if (name === 'private-loans') loadPrivateLoansTab();
   if (name === 'management') loadManagement();
   if (name === 'pms') { setTimeout(initDatePickers, 100); }
   if (name === 'pricing') loadPricingView();
   if (name === 'marketing') loadMarketing();
+  if (name === 'import') loadImportTab();
   _navPush({ type: 'view', name: name });
 }
 

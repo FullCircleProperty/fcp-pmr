@@ -7,88 +7,39 @@ function getPropertyLabel(p) {
   return base;
 }
 
-function toggleMortCalc() {
-  var body = document.getElementById('mortCalcBody');
-  var arrow = document.getElementById('mortCalcArrow');
-  if (!body) return;
-  body.style.display = body.style.display === 'none' ? '' : 'none';
-  if (arrow) arrow.textContent = body.style.display === 'none' ? '▸' : '▾';
-}
+function toggleMortCalc() {}
+function calcMortgage() {}
+function calcMortgageFromAmt() {}
 
-function calcMortgage() {
-  var price = parseFloat((document.getElementById('f_price') || {}).value) || 0;
-  var downPct = parseFloat((document.getElementById('mc_down_pct') || {}).value);
-  if (isNaN(downPct)) downPct = 20;
-  var rate = parseFloat((document.getElementById('mc_rate') || {}).value) || 7.0;
-  var termYrs = parseInt((document.getElementById('mc_term') || {}).value) || 30;
-
-  if (price <= 0) return;
-
-  // Auto-open the calculator when user enters a purchase price
-  var body = document.getElementById('mortCalcBody');
-  var arrow = document.getElementById('mortCalcArrow');
-  if (body && body.style.display === 'none' && price > 0) {
-    body.style.display = '';
-    if (arrow) arrow.textContent = '▾';
-  }
-
-  var downAmt = Math.round(price * downPct / 100);
-  var loan = price - downAmt;
-  var el;
-
-  el = document.getElementById('mc_down_amt');
-  if (el && document.activeElement !== el) el.value = downAmt;
-  el = document.getElementById('mc_loan');
-  if (el) el.value = loan;
-
-  if (loan <= 0 || rate <= 0) {
-    el = document.getElementById('mc_monthly');
-    if (el) el.value = 0;
-    return;
-  }
-
-  // Standard amortization: M = P * [r(1+r)^n] / [(1+r)^n - 1]
-  var monthlyRate = rate / 100 / 12;
-  var numPayments = termYrs * 12;
-  var monthly = loan * (monthlyRate * Math.pow(1 + monthlyRate, numPayments)) / (Math.pow(1 + monthlyRate, numPayments) - 1);
-  monthly = Math.round(monthly);
-
-  el = document.getElementById('mc_monthly');
-  if (el) el.value = monthly;
-
-  // Auto-apply to mortgage field
-  var autoApply = document.getElementById('mc_auto_apply');
-  if (autoApply && autoApply.checked) {
-    var mortEl = document.getElementById('f_mortgage');
-    if (mortEl) {
-      mortEl.value = monthly;
-      if (typeof updateCostSummary === 'function') updateCostSummary();
+// Load linked loans for property form
+async function loadPropLinkedLoans(propertyId) {
+  var el = document.getElementById('propLinkedLoansBody');
+  if (!el) return;
+  if (!propertyId) { el.innerHTML = '<span style="color:var(--text3);">Save the property first, then add loans via the Loans tab.</span>'; return; }
+  try {
+    var d = await api('/api/loans');
+    var linked = (d.loans || []).filter(function(l) { return String(l.property_id) === String(propertyId) && l.status === 'active'; });
+    if (linked.length === 0) {
+      el.innerHTML = '<span style="color:var(--text3);">No active loans linked.</span> <button class="btn btn-xs" onclick="switchView(\'private-loans\')" type="button">Add in Loans tab →</button>';
+      return;
     }
-  }
-
-  // Summary
-  var totalPaid = monthly * numPayments;
-  var totalInterest = totalPaid - loan;
-  var summaryEl = document.getElementById('mortCalcSummary');
-  if (summaryEl) {
-    summaryEl.innerHTML = '<div style="display:flex;gap:10px;flex-wrap:wrap;">' +
-      '<span>Down: <strong>$' + downAmt.toLocaleString() + '</strong> (' + downPct + '%)</span>' +
-      '<span>Loan: <strong>$' + loan.toLocaleString() + '</strong></span>' +
-      '<span>Monthly P&I: <strong style="color:var(--accent);">$' + monthly.toLocaleString() + '</strong></span>' +
-      '<span>Total Interest: <strong style="color:var(--danger);">$' + totalInterest.toLocaleString() + '</strong> over ' + termYrs + 'yr</span>' +
-      '</div>';
-  }
-}
-
-function calcMortgageFromAmt() {
-  var price = parseFloat((document.getElementById('f_price') || {}).value) || 0;
-  var downAmt = parseFloat((document.getElementById('mc_down_amt') || {}).value) || 0;
-  if (price > 0 && downAmt > 0) {
-    var pct = Math.round(downAmt / price * 1000) / 10;
-    var el = document.getElementById('mc_down_pct');
-    if (el) el.value = pct;
-  }
-  calcMortgage();
+    var h = '<div style="display:flex;flex-direction:column;gap:6px;">';
+    var totalMo = 0;
+    linked.forEach(function(l) {
+      totalMo += l.monthly_payment || 0;
+      h += '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;background:var(--surface2);border-radius:6px;border:1px solid var(--border);">';
+      h += '<div><strong style="color:var(--accent);font-size:0.78rem;">' + esc(l.lender_name) + '</strong>';
+      h += ' <span style="font-size:0.65rem;color:var(--text3);">' + (l.interest_rate || 0) + '% · ' + esc(l.payment_type || 'fixed') + '</span></div>';
+      h += '<div style="text-align:right;font-family:DM Mono,monospace;font-size:0.78rem;"><div style="color:var(--text);">$' + (l.monthly_payment || 0).toLocaleString() + '/mo</div>';
+      h += '<div style="font-size:0.65rem;color:var(--text3);">Bal: $' + (l.computed_balance || 0).toLocaleString() + '</div></div>';
+      h += '</div>';
+    });
+    if (linked.length > 1) {
+      h += '<div style="text-align:right;font-size:0.72rem;color:var(--text2);font-weight:600;">Total: $' + totalMo.toLocaleString() + '/mo</div>';
+    }
+    h += '</div>';
+    el.innerHTML = h;
+  } catch (e) { el.innerHTML = '<span style="color:var(--text3);">Could not load loans.</span>'; }
 }
 
 function applyPriceLabsToProperty() {
@@ -3243,7 +3194,7 @@ async function doBulkEdit() {
   if (!field) { toast('Select a field to edit', 'error'); return; }
   if (value === '' && field !== 'algo_template_id') { toast('Enter a value', 'error'); return; }
 
-  var numFields = ['bedrooms', 'bathrooms', 'sqft', 'lot_acres', 'year_built', 'stories', 'parking_spaces', 'purchase_price', 'estimated_value', 'annual_taxes', 'hoa_monthly', 'monthly_mortgage', 'monthly_insurance', 'monthly_rent_cost', 'cleaning_fee', 'cleaning_cost', 'algo_template_id'];
+  var numFields = ['bedrooms', 'bathrooms', 'sqft', 'lot_acres', 'year_built', 'stories', 'parking_spaces', 'purchase_price', 'estimated_value', 'annual_taxes', 'hoa_monthly', 'monthly_insurance', 'monthly_rent_cost', 'cleaning_fee', 'cleaning_cost', 'algo_template_id'];
   var updates = {};
   if (numFields.indexOf(field) >= 0) {
     updates[field] = value === '' ? null : parseFloat(value);
@@ -3393,31 +3344,16 @@ async function openProperty(id, initialTab) {
     sv('f_image', p.image_url);
     loadPropertyGallery(p.id);
     sv('f_unit', p.unit_number);
-    sv('f_mortgage', p.monthly_mortgage);
     sv('f_insurance', p.monthly_insurance);
     sv('f_purchase_date', p.purchase_date);
-    // Populate mortgage calc with saved loan details
-    if (p.down_payment_pct) sv('mc_down_pct', p.down_payment_pct);
-    if (p.interest_rate) sv('mc_rate', p.interest_rate);
-    if (p.loan_term_years) sv('mc_term', p.loan_term_years);
+    sv('f_lease_start_date', p.lease_start_date);
+    // Load linked loans from Loans tab
+    loadPropLinkedLoans(p.id);
     // Show zestimate info
     var zInfo = document.getElementById('zestimateInfo');
     if (zInfo && p.zestimate) {
       var zLink2 = p.zillow_url ? ' · <a href="' + esc(p.zillow_url) + '" target="_blank" style="color:var(--accent);">View on Zillow ↗</a>' : '';
       zInfo.innerHTML = 'Zestimate: $' + p.zestimate.toLocaleString() + (p.zestimate_date ? ' (' + p.zestimate_date + ')' : '') + zLink2;
-    }
-    // Initialize mortgage calculator from existing data
-    var mcBody = document.getElementById('mortCalcBody');
-    if (mcBody) mcBody.style.display = 'none';
-    var mcArrow = document.getElementById('mortCalcArrow');
-    if (mcArrow) mcArrow.textContent = '▸';
-    // If we have a purchase price, pre-fill the calculator
-    if (p.purchase_price > 0 && p.monthly_mortgage > 0) {
-      // Keep auto-apply OFF when loading existing data (so we don't overwrite)
-      var autoEl = document.getElementById('mc_auto_apply');
-      if (autoEl) autoEl.checked = false;
-      calcMortgage();
-      if (autoEl) autoEl.checked = true;
     }
     sv('f_monthly_rent', p.monthly_rent_cost);
     sv('f_deposit', p.security_deposit);
@@ -3459,6 +3395,7 @@ async function openProperty(id, initialTab) {
     // Determine ownership: if is_managed, use 'managed'; otherwise existing logic
     var ownershipType = p.is_managed ? 'managed' : (p.ownership_type || 'purchased');
     setOwnership(ownershipType);
+    setFinancing(p.financing_type || 'conventional');
     toggleUnitField();
     updateImagePreview();
     updateCostSummary();
@@ -4250,6 +4187,7 @@ async function saveProperty() {
     annual_taxes: parseFloat(gv('f_taxes')) || null, tax_rate_pct: parseFloat(gv('f_tax_rate_pct')) || null, hoa_monthly: parseFloat(gv('f_hoa')) || 0,
     image_url: gv('f_image').trim() || null, unit_number: gv('f_unit') || null,
     ownership_type: currentOwnership === 'managed' ? 'managed' : currentOwnership,
+    financing_type: currentOwnership === 'purchased' ? currentFinancing : null,
     is_managed: currentOwnership === 'managed' ? 1 : 0,
     owner_name: gv('f_owner_name').trim() || null,
     management_fee_pct: parseFloat(gv('f_mgmt_fee_pct')) || null,
@@ -4258,7 +4196,6 @@ async function saveProperty() {
     rental_restrictions: gv('f_rental_restrictions').trim() || null,
     hoa_name: gv('f_hoa_name').trim() || null,
     ai_notes: gv('f_ai_notes').trim() || null,
-    monthly_mortgage: parseFloat(gv('f_mortgage')) || 0,
     monthly_insurance: parseFloat(gv('f_insurance')) || 0,
     monthly_rent_cost: parseFloat(gv('f_monthly_rent')) || 0,
     security_deposit: parseFloat(gv('f_deposit')) || 0,
@@ -4284,10 +4221,7 @@ async function saveProperty() {
     rental_type: gv('f_rental_type') || 'str',
     is_research: document.getElementById('f_research') && document.getElementById('f_research').checked ? 1 : 0,
     purchase_date: gv('f_purchase_date') || null,
-    down_payment_pct: parseFloat(gv('mc_down_pct')) || null,
-    interest_rate: parseFloat(gv('mc_rate')) || null,
-    loan_term_years: parseInt(gv('mc_term')) || null,
-    loan_amount: parseFloat(gv('mc_loan')) || null,
+    lease_start_date: gv('f_lease_start_date') || null,
   };
   if (!body.address || !body.city || !body.state) { toast('Address, city, and state required', 'error'); return; }
   try {
@@ -4531,6 +4465,11 @@ function setOwnership(type) {
   if (fm) fm.style.display = type === 'managed' ? '' : 'none';
   if (type === 'managed') updateManagedPreview();
   updateCostSummary();
+}
+
+function setFinancing(type) {
+  currentFinancing = type;
+  document.querySelectorAll('.financing-btn').forEach(function(b) { b.classList.toggle('active', b.dataset.fin === type); });
 }
 
 function setFeeBasis(basis) {

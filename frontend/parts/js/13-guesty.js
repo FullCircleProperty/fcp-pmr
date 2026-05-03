@@ -1100,9 +1100,92 @@ async function loadSyncDashboard() {
     h += 'Listings & Photos — weekly Mon · next: <strong>' + fmtEST(nextMon) + ' ' + tz + '</strong>';
     h += '</div>';
 
+    // ── Data Health Diagnostic ──────────────────────────────────────────────
+    h += '<div id="syncHealthPanel" style="margin-top:14px;padding:12px;background:var(--bg);border-radius:8px;border:1px solid var(--border);">';
+    h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">';
+    h += '<span style="font-size:0.78rem;font-weight:600;color:var(--text2);">' + _ico('shield', 13) + ' DATA LINKAGE HEALTH</span>';
+    h += '<button class="btn btn-xs" onclick="loadSyncHealth()" style="padding:2px 8px;font-size:0.65rem;">' + _ico('refresh', 11) + ' Check</button>';
+    h += '</div>';
+    h += '<div id="syncHealthContent" style="font-size:0.72rem;color:var(--text3);">Click Check to run diagnostic...</div>';
+    h += '</div>';
+
     el.innerHTML = h;
+    // Auto-load health on first render
+    loadSyncHealth();
   } catch (err) {
     el.innerHTML = '<span style="color:var(--danger);font-size:0.78rem;">Error loading sync dashboard: ' + esc(err.message) + '</span>';
+  }
+}
+
+async function loadSyncHealth() {
+  var el = document.getElementById('syncHealthContent');
+  if (!el) return;
+  el.innerHTML = '<span style="color:var(--text3);">' + _ico('clock', 11) + ' Checking...</span>';
+  try {
+    var d = await api('/api/sync/health');
+    var h = '';
+    var allGood = true;
+
+    // PriceLabs
+    var plOk = d.pricelabs.listings_linked > 0 && d.pricelabs.properties_missing_pl.length === 0;
+    h += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">';
+    h += '<span style="color:' + (plOk ? 'var(--accent)' : 'var(--danger)') + ';font-weight:700;">' + (plOk ? '✓' : '✗') + '</span>';
+    h += '<span style="font-weight:600;">PriceLabs:</span> ' + d.pricelabs.listings_linked + '/' + d.pricelabs.listings_total + ' linked';
+    if (d.pricelabs.listings_unlinked > 0) h += ' · <span style="color:#f59e0b;">' + d.pricelabs.listings_unlinked + ' unlinked</span>';
+    h += '</div>';
+    if (d.pricelabs.properties_missing_pl.length > 0) {
+      allGood = false;
+      h += '<div style="padding:6px 10px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.15);border-radius:6px;margin-bottom:8px;font-size:0.68rem;">';
+      h += '<strong style="color:var(--danger);">Properties missing PriceLabs link:</strong><br>';
+      d.pricelabs.properties_missing_pl.forEach(function(p) {
+        h += '• ' + esc(p.label) + ' (' + esc(p.city) + ', ' + esc(p.state) + ') — ID ' + p.id + '<br>';
+      });
+      h += '</div>';
+    }
+    if (d.pricelabs.rates) {
+      h += '<div style="font-size:0.65rem;color:var(--text3);margin-bottom:6px;margin-left:20px;">';
+      h += 'Rates: ' + d.pricelabs.rates.listings_with_rates + ' listings, ' + d.pricelabs.rates.total_rate_rows + ' rows';
+      if (d.pricelabs.rates.latest) h += ' · latest: ' + d.pricelabs.rates.latest;
+      h += '</div>';
+    }
+
+    // Guesty
+    var glOk = d.guesty.listings_linked > 0 && d.guesty.properties_missing_guesty.length === 0;
+    h += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">';
+    h += '<span style="color:' + (glOk ? 'var(--accent)' : 'var(--danger)') + ';font-weight:700;">' + (glOk ? '✓' : '✗') + '</span>';
+    h += '<span style="font-weight:600;">Guesty:</span> ' + d.guesty.listings_linked + '/' + d.guesty.listings_total + ' linked';
+    if (d.guesty.listings_unlinked > 0) h += ' · <span style="color:#f59e0b;">' + d.guesty.listings_unlinked + ' unlinked</span>';
+    h += '</div>';
+    if (d.guesty.properties_missing_guesty.length > 0) {
+      allGood = false;
+      h += '<div style="padding:6px 10px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.15);border-radius:6px;margin-bottom:8px;font-size:0.68rem;">';
+      h += '<strong style="color:var(--danger);">Properties missing Guesty link:</strong><br>';
+      d.guesty.properties_missing_guesty.forEach(function(p) {
+        h += '• ' + esc(p.label) + ' (' + esc(p.city) + ', ' + esc(p.state) + ') — ID ' + p.id + '<br>';
+      });
+      h += '</div>';
+    }
+    h += '<div style="font-size:0.65rem;color:var(--text3);margin-bottom:6px;margin-left:20px;">';
+    h += 'Reservations: ' + d.guesty.reservations.linked + '/' + d.guesty.reservations.total + ' linked';
+    if (d.guesty.reservations.unlinked > 0) h += ' · <span style="color:#f59e0b;">' + d.guesty.reservations.unlinked + ' unlinked</span>';
+    h += '</div>';
+
+    // Monthly Actuals
+    var maOk = d.monthly_actuals.properties_with_actuals >= d.properties.total - 2; // allow some slack for research/managed
+    h += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">';
+    h += '<span style="color:' + (maOk ? 'var(--accent)' : '#f59e0b') + ';font-weight:700;">' + (maOk ? '✓' : '⚠') + '</span>';
+    h += '<span style="font-weight:600;">Monthly Actuals:</span> ' + d.monthly_actuals.properties_with_actuals + '/' + d.properties.total + ' properties';
+    h += ' · ' + d.monthly_actuals.total_rows + ' rows';
+    if (d.monthly_actuals.latest_month) h += ' · latest: ' + d.monthly_actuals.latest_month;
+    h += '</div>';
+
+    if (allGood && maOk) {
+      h += '<div style="padding:6px 10px;background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.15);border-radius:6px;font-size:0.72rem;color:var(--accent);font-weight:600;">' + _ico('check', 13) + ' All data pipelines healthy</div>';
+    }
+
+    el.innerHTML = h;
+  } catch (err) {
+    el.innerHTML = '<span style="color:var(--danger);">Error: ' + esc(err.message) + '</span>';
   }
 }
 

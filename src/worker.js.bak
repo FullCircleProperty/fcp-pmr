@@ -4687,7 +4687,7 @@ async function getPortfolioIntelSummary(env, profileName, timeframe, customFrom,
     const compStartD = new Date(compEndD); compStartD.setMonth(compStartD.getMonth() - months + 1);
     compStart = compStartD.toISOString().slice(0, 7); compEnd = compEndD.toISOString().slice(0, 7);
   } else if (timeframe === 'all') {
-    periodStart = '2000-01'; periodEnd = '9999-12'; periodLabel = 'All Time'; compStart = null; compEnd = null;
+    periodStart = '2000-01'; periodEnd = thisMonth + '-31'; periodLabel = 'All Time'; compStart = null; compEnd = null;
   } else {
     periodStart = thisYear + '-01'; periodEnd = thisMonth; periodLabel = thisYear + ' YTD';
     compStart = (thisYear - 1) + '-01'; compEnd = (thisYear - 1) + '-' + String(now.getMonth() + 1).padStart(2, '0');
@@ -4745,16 +4745,12 @@ async function getPortfolioIntelSummary(env, profileName, timeframe, customFrom,
 
     // Effective date for timeline
     const effDate = isRental ? (p.lease_start_date || p.purchase_date) : (parentProp ? (parentProp.purchase_date || p.purchase_date) : p.purchase_date);
-    // activeMonths = number of months this property has actuals in the period
-    // This matches how Finances thinks about costs — tied to actual data
-    let activeMonths = periodActs.length || 0;
-    // If no actuals but property exists, use calendar calculation (for properties not yet producing revenue)
-    if (activeMonths === 0 && effDate) {
+    let activeMonths = periodMonths;
+    if (effDate) {
       const pm = effDate.substring(0, 7);
-      if (pm >= periodStart && pm <= periodEnd) {
-        const pD = new Date(pm + '-01');
-        const eD = new Date(Math.min(new Date(periodEnd + '-01').getTime(), new Date(thisMonth + '-01').getTime()));
-        activeMonths = Math.max(1, (eD.getFullYear() - pD.getFullYear()) * 12 + (eD.getMonth() - pD.getMonth()) + 1);
+      if (pm > periodStart) {
+        const pD = new Date(pm + '-01'), sD = new Date(periodEnd + '-01');
+        activeMonths = Math.max(1, (sD.getFullYear() - pD.getFullYear()) * 12 + (sD.getMonth() - pD.getMonth()));
       }
     }
 
@@ -5226,56 +5222,24 @@ async function _getPortfolioAnalyticsInner(env, profileName) {
     if (pRow) profile = pRow;
   }
 
-  // ════════════════════════════════════════════════════════════════════════
-  // SINGLE SOURCE OF TRUTH: Load from Finances — no independent queries
-  // ════════════════════════════════════════════════════════════════════════
-  const finRes = await getFinancesSummary(env, null);
-  const finData = await finRes.json();
-  const finProps = finData.properties || [];
+  // ── All properties (exclude buildings, research, managed) ──
+  const { results: allProps } = await env.DB.prepare(
+    `SELECT p.*, COALESCE(p.platform_listing_name, p.name, p.address) as label
+     FROM properties p
+     WHERE p.is_research != 1 AND (p.is_managed != 1 OR p.is_managed IS NULL)
+     AND p.id NOT IN (SELECT DISTINCT parent_id FROM properties WHERE parent_id IS NOT NULL)
+     ORDER BY COALESCE(p.purchase_date, p.lease_start_date, p.created_at)`
+  ).all();
+  const props = allProps || [];
 
-  if (finProps.length === 0) {
+  if (props.length === 0) {
     return json({ ramp_curves: [], unit_economics: { total_units: 0, avg_monthly_cost: 0, avg_stabilized_revenue: 0, avg_stabilized_noi: 0, avg_months_to_breakeven: 0, avg_noi_margin: 0 }, dscr_trend: [], dscr_growth_events: [], yoy_performance: [], projected_stabilized_dscr: null, market_benchmarks: [], stress_test: { scenarios: [], breakeven_revenue_drop: null, trailing_12_revenue: 0, annual_debt_service: 0 }, concentration: [], growth_timeline: [], debt_schedule: { loans: [], total_balance: 0, total_monthly_payment: 0, weighted_avg_rate: 0, debt_yield: null }, portfolio_summary: { total_units: 0, trail_12_revenue: 0, trail_12_expenses: 0, trail_12_noi: 0, annual_debt_service: 0, current_dscr: null, projected_stabilized_dscr: null } });
   }
 
-  // Build fp.monthly_cost map from Finances — THE definitive cost per property
-  const finCostMap = {};
-  finProps.forEach(fp => {
-    finCostMap[fp.id] = fp.monthly_cost || 0;
-  });
-  const finPropIds = finProps.map(fp => fp.id);
-
-  // ── All properties for ownership/date/building data ──
-  const { results: allDbProps } = await env.DB.prepare(
-    `SELECT p.*, COALESCE(p.platform_listing_name, p.name, p.address) as label
-     FROM properties p ORDER BY p.city, p.state`
-  ).all();
-  const allProps = allDbProps || [];
-  const buildings = allProps.filter(p => allProps.some(c => c.parent_id && String(c.parent_id) === String(p.id)));
-  const buildingIds = new Set(buildings.map(b => String(b.id)));
-
-  // Pre-compute child counts per building for splitting mortgage
-  const bldChildCounts = {};
-  buildings.forEach(b => { bldChildCounts[String(b.id)] = Math.max(1, allProps.filter(c => String(c.parent_id) === String(b.id)).length); });
-
-  // Props = only those in Finances (already filtered for buildings/research/managed)
-  // Enrich with DB data for ownership type, dates, mortgage/rent
-  const props = finProps.map(fp => {
-    const dbP = allProps.find(p => p.id === fp.id) || {};
-    const parentBldg = dbP.parent_id ? allProps.find(pp => String(pp.id) === String(dbP.parent_id)) : null;
-    const effOwnership = dbP.ownership_type || (parentBldg ? parentBldg.ownership_type : null) || 'purchased';
-    const isRental = effOwnership === 'rental';
-    const isChild = !!dbP.parent_id;
-    const childCount = isChild && dbP.parent_id ? (bldChildCounts[String(dbP.parent_id)] || 1) : 1;
-    // Mortgage: for child units, split parent building's mortgage
-    const monthlyMtg = isRental ? 0 : (isChild && parentBldg ? Math.round((parentBldg.monthly_mortgage || 0) / childCount) : (dbP.monthly_mortgage || 0));
-    const monthlyRent = isRental ? (dbP.monthly_rent_cost || 0) : 0;
-    return { ...dbP, monthly_cost: fp.monthly_cost || 0, monthly_mortgage: monthlyMtg, monthly_rent_cost: monthlyRent };
-  });
-
-  // ── All monthly actuals — same query as getFinanceMonthlyActuals ──
+  // ── All monthly actuals ──
   const { results: allActuals } = await env.DB.prepare(
-    `SELECT * FROM monthly_actuals WHERE property_id IN (${finPropIds.map(() => '?').join(',')}) ORDER BY month`
-  ).bind(...finPropIds).all();
+    `SELECT * FROM monthly_actuals WHERE property_id IN (${props.map(() => '?').join(',')}) ORDER BY month`
+  ).bind(...props.map(p => p.id)).all();
   const actuals = allActuals || [];
 
   // ── All loans (filtered by profile visibility) ──
@@ -5291,34 +5255,30 @@ async function _getPortfolioAnalyticsInner(env, profileName) {
   const plMap = {};
   (plData || []).forEach(pl => { plMap[pl.property_id] = pl; });
 
-  // ═══════════════════════════════════════════════════════════════════════
-  // Per-property cost info using FINANCES monthly_cost (not re-derived)
-  // ═══════════════════════════════════════════════════════════════════════
-  // For each property: monthly_cost from Finances, opex = cost - mortgage - rent,
-  // debt = mortgage portion, start date for timeline
-  const propCostInfo = props.map(p => {
-    const parentBldg = p.parent_id ? allProps.find(pp => String(pp.id) === String(p.parent_id)) : null;
-    const isR = p.ownership_type === 'rental' || (p.parent_id && parentBldg && parentBldg.ownership_type === 'rental');
-    const rawStart = p.purchase_date || p.lease_start_date || (p.parent_id && parentBldg ? (parentBldg.purchase_date || parentBldg.lease_start_date) : null) || (p.created_at || '').slice(0, 10);
-    const startMonth = rawStart ? rawStart.slice(0, 7) : '2000-01';
+  // ── Services per property ──
+  const { results: allSvcs } = await env.DB.prepare(`SELECT property_id, SUM(monthly_cost) as total FROM property_services GROUP BY property_id`).all();
+  const svcMap = {};
+  (allSvcs || []).forEach(s => { svcMap[s.property_id] = s.total || 0; });
 
-    // monthly_cost from Finances (total), mortgage/rent from enriched props (DB-derived)
-    const totalCost = p.monthly_cost || 0;
-    const mortgage = p.monthly_mortgage || 0;
-    const rent = p.monthly_rent_cost || 0;
-    const opex = totalCost - mortgage - rent;
-
-    return { id: p.id, startMonth, opex, debt: mortgage, totalCost, rent, isRental: isR };
-  });
-
-  // Business-level loans (no property_id) — always count
-  const bizLoansMonthlyDebt = loans.filter(l => !l.property_id).reduce((s, l) => s + (l.monthly_payment || 0), 0);
+  // ── Building map for child unit lookups (needed by ramp curves + DSCR) ──
+  const childIds = props.filter(p => p.parent_id).map(p => p.parent_id);
+  const uniqueParentIds = [...new Set(childIds)].filter(Boolean);
+  let buildingMap = {};
+  let childCountMap = {};
+  if (uniqueParentIds.length > 0) {
+    const { results: buildingRows } = await env.DB.prepare(
+      `SELECT * FROM properties WHERE id IN (${uniqueParentIds.map(() => '?').join(',')})`
+    ).bind(...uniqueParentIds).all();
+    (buildingRows || []).forEach(b => { buildingMap[String(b.id)] = b; });
+    props.forEach(p => { if (p.parent_id) { childCountMap[String(p.parent_id)] = (childCountMap[String(p.parent_id)] || 0) + 1; } });
+  }
 
   // ═══ 1. PROPERTY RAMP CURVES ═══
+  // For each property, compute monthly revenue from Month 0 (acquisition) onward
   const rampCurves = [];
   for (const p of props) {
-    const parentBldg = p.parent_id ? allProps.find(pp => String(pp.id) === String(p.parent_id)) : null;
-    const startDate = p.purchase_date || p.lease_start_date || (parentBldg ? (parentBldg.purchase_date || parentBldg.lease_start_date) : null) || (p.created_at || '').slice(0, 10);
+    const parentBldgForDate = p.parent_id ? buildingMap[String(p.parent_id)] : null;
+    const startDate = p.purchase_date || p.lease_start_date || (parentBldgForDate ? (parentBldgForDate.purchase_date || parentBldgForDate.lease_start_date) : null) || (p.created_at || '').slice(0, 10);
     if (!startDate) continue;
     const startMonth = startDate.slice(0, 7);
     const propActuals = actuals.filter(a => a.property_id === p.id && a.month >= startMonth).sort((a, b) => a.month.localeCompare(b.month));
@@ -5332,10 +5292,19 @@ async function _getPortfolioAnalyticsInner(env, profileName) {
       months.push({ month_num: idx + 1, month: a.month, revenue: rev, occupancy: a.occupancy_pct || 0, adr: a.avg_nightly_rate || 0 });
     });
 
-    // Monthly cost from Finances (single source of truth)
-    const monthlyCost = finCostMap[p.id] || 0;
-
-    // Breakeven: first month where revenue >= monthly cost
+    // Compute months to breakeven (revenue > monthly cost)
+    const isRental = p.ownership_type === 'rental' || (p.parent_id && buildingMap[String(p.parent_id)] && buildingMap[String(p.parent_id)].ownership_type === 'rental');
+    const isChild = !!p.parent_id;
+    const parentBldgRC = isChild ? buildingMap[String(p.parent_id)] : null;
+    const numSiblingsRC = isChild ? Math.max(1, childCountMap[String(p.parent_id)] || 1) : 1;
+    // Building costs split by child count; unit-level utilities/services from unit directly
+    const rcBldgMtg = isRental ? 0 : (isChild && parentBldgRC ? Math.round((parentBldgRC.monthly_mortgage || 0) / numSiblingsRC) : (p.monthly_mortgage || 0));
+    const rcBldgIns = isChild && parentBldgRC ? Math.round((parentBldgRC.monthly_insurance || 0) / numSiblingsRC) : (p.monthly_insurance || 0);
+    const rcBldgTax = isChild && parentBldgRC ? Math.round(((parentBldgRC.annual_taxes || 0) / 12) / numSiblingsRC) : Math.round((p.annual_taxes || 0) / 12);
+    const rcBldgHOA = isChild && parentBldgRC ? Math.round((parentBldgRC.hoa_monthly || 0) / numSiblingsRC) : (p.hoa_monthly || 0);
+    const monthlyCost = (isRental ? (p.monthly_rent_cost || 0) : rcBldgMtg) + rcBldgIns + rcBldgTax + rcBldgHOA +
+      (p.expense_electric || 0) + (p.expense_gas || 0) + (p.expense_water || 0) +
+      (p.expense_internet || 0) + (p.expense_trash || 0) + (p.expense_other || 0) + (svcMap[p.id] || 0);
     let breakevenMonth = null;
     for (let i = 0; i < months.length; i++) {
       if (months[i].revenue >= monthlyCost && monthlyCost > 0) { breakevenMonth = i + 1; break; }
@@ -5347,7 +5316,7 @@ async function _getPortfolioAnalyticsInner(env, profileName) {
     const stabilizedRev = last3.length > 0 ? Math.round(last3.reduce((s, a) => s + (a.total_revenue || 0), 0) / last3.length) : 0;
 
     rampCurves.push({
-      property_id: p.id, label: (p.unit_number ? p.unit_number + ' — ' : '') + (p.platform_listing_name || p.name || p.address || p.label),
+      property_id: p.id, label: (p.unit_number ? p.unit_number + ' — ' : '') + p.label,
       start_date: startDate, ownership_type: p.ownership_type || 'purchased',
       months_active: propActuals.length, monthly_cost: monthlyCost,
       total_revenue: totalRev, avg_monthly_revenue: avgMonthlyRev,
@@ -5374,11 +5343,44 @@ async function _getPortfolioAnalyticsInner(env, profileName) {
   };
 
   // ═══ 3. DSCR TREND (monthly) ═══
-  // Using Finances monthly_cost for each property (opex + rent portion goes to expenses,
-  // mortgage portion goes to debt service denominator)
+  // Compute portfolio-level DSCR for each month in trailing 18 months
+  // Operating expenses: utilities + insurance + taxes + HOA + rent (for rental) + services
+  // NOTE: mortgage is NOT in opex — it IS the debt service (denominator of DSCR)
   const dscrTrend = [];
   const monthSet = [...new Set(actuals.map(a => a.month))].sort();
   const recent18 = monthSet.filter(m => m < thisMonth).slice(-18);
+
+  // Pre-compute per-property start month and monthly opex/debt
+  // For child units: inherit building's insurance/taxes/HOA/mortgage split by child count
+  // (buildingMap and childCountMap already computed above)
+
+  const propCostInfo = props.map(p => {
+    const isChild = !!p.parent_id;
+    const parentBldg = isChild ? buildingMap[String(p.parent_id)] : null;
+    const numSiblings = isChild ? Math.max(1, childCountMap[String(p.parent_id)] || 1) : 1;
+
+    // Start date: child units use parent's purchase_date if they don't have their own
+    const rawStart = p.purchase_date || p.lease_start_date || (isChild && parentBldg ? (parentBldg.purchase_date || parentBldg.lease_start_date) : null) || (p.created_at || '').slice(0, 10);
+    const startMonth = rawStart ? rawStart.slice(0, 7) : '2000-01';
+    const isR = p.ownership_type === 'rental' || (isChild && parentBldg && parentBldg.ownership_type === 'rental');
+
+    // Building-level costs: split by child count for child units
+    const bldgInsurance = isChild && parentBldg ? Math.round((parentBldg.monthly_insurance || 0) / numSiblings) : (p.monthly_insurance || 0);
+    const bldgTaxes = isChild && parentBldg ? Math.round(((parentBldg.annual_taxes || 0) / 12) / numSiblings) : Math.round((p.annual_taxes || 0) / 12);
+    const bldgHOA = isChild && parentBldg ? Math.round((parentBldg.hoa_monthly || 0) / numSiblings) : (p.hoa_monthly || 0);
+
+    const opex = bldgInsurance + bldgTaxes + bldgHOA +
+      (p.expense_electric || 0) + (p.expense_gas || 0) + (p.expense_water || 0) +
+      (p.expense_internet || 0) + (p.expense_trash || 0) + (p.expense_other || 0) +
+      (isR ? (p.monthly_rent_cost || 0) : 0) + (svcMap[p.id] || 0);
+
+    // Debt: child units split parent building's mortgage
+    const debt = isR ? 0 : (isChild && parentBldg ? Math.round((parentBldg.monthly_mortgage || 0) / numSiblings) : (p.monthly_mortgage || 0));
+
+    return { id: p.id, startMonth, opex, debt };
+  });
+  // Business-level loans (no property_id) — always count
+  const bizLoansMonthlyDebt = loans.filter(l => !l.property_id).reduce((s, l) => s + (l.monthly_payment || 0), 0);
 
   // Determine which properties are "established" (6+ months of actuals by each trend month)
   const propActualMonths = {};
@@ -5387,14 +5389,15 @@ async function _getPortfolioAnalyticsInner(env, profileName) {
     propActualMonths[a.property_id].add(a.month);
   });
 
-  // Track growth events
+  // Track growth events — months where new properties first appear in the window
   const growthEvents = [];
+  // Pre-seed with properties that existed before the trend window (not "new")
   const seenProps = new Set();
   const windowStart = recent18.length > 0 ? recent18[0] : thisMonth;
   actuals.forEach(a => { if (a.month < windowStart) seenProps.add(a.property_id); });
 
   for (const month of recent18) {
-    // Detect truly new properties appearing this month
+    // Detect truly new properties appearing this month (not seen in prior months)
     const monthActualProps = actuals.filter(a => a.month === month).map(a => a.property_id);
     monthActualProps.forEach(pid => {
       if (!seenProps.has(pid)) {
@@ -5405,19 +5408,22 @@ async function _getPortfolioAnalyticsInner(env, profileName) {
     });
 
     const monthRev = actuals.filter(a => a.month === month).reduce((s, a) => s + (a.total_revenue || 0), 0);
-    // Only count costs for properties active by this month
-    let monthOpex = 0, monthPropDebt = 0;
-    let estRev = 0, estOpex = 0, estDebt = 0;
+    // Only count opex and debt for properties active by this month
+    let monthOpex = 0;
+    let monthPropDebt = 0;
+    let estRev = 0;
+    let estOpex = 0;
+    let estDebt = 0;
     for (const pc of propCostInfo) {
       if (month >= pc.startMonth) {
-        monthOpex += pc.opex + pc.rent; // opex includes everything except mortgage; rent is an operating cost for DSCR
+        monthOpex += pc.opex;
         monthPropDebt += pc.debt;
         // "Established" = had 6+ months of actuals by this point in time
         const monthsBefore = [...(propActualMonths[pc.id] || [])].filter(m => m <= month).length;
         if (monthsBefore >= 6) {
           const propRev = actuals.filter(a => a.property_id === pc.id && a.month === month).reduce((s, a) => s + (a.total_revenue || 0), 0);
           estRev += propRev;
-          estOpex += pc.opex + pc.rent;
+          estOpex += pc.opex;
           estDebt += pc.debt;
         }
       }
@@ -5425,7 +5431,8 @@ async function _getPortfolioAnalyticsInner(env, profileName) {
     const monthDebt = monthPropDebt + bizLoansMonthlyDebt;
     const monthNOI = monthRev - monthOpex;
     const dscr = monthDebt > 0 ? Math.round((monthNOI / monthDebt) * 100) / 100 : null;
-    // Established-only DSCR
+    // Established-only DSCR (properties with 6+ months history at this point)
+    // Business-level loans allocated proportionally by established vs total active property count
     const activeCount = propCostInfo.filter(pc => month >= pc.startMonth).length;
     const estCount = propCostInfo.filter(pc => month >= pc.startMonth && [...(propActualMonths[pc.id] || [])].filter(m => m <= month).length >= 6).length;
     const bizLoanShare = activeCount > 0 ? bizLoansMonthlyDebt * (estCount / activeCount) : 0;
@@ -5438,12 +5445,13 @@ async function _getPortfolioAnalyticsInner(env, profileName) {
     });
   }
 
-  // Projected stabilized DSCR
+  // Projected stabilized DSCR — what happens when ramping properties hit established revenue
   const rampingNow = rampCurves.filter(r => r.months_active < 6 && r.months_active >= 1);
   const establishedCurves = rampCurves.filter(rc => rc.months_active >= 6);
   const establishedAvgNOI = establishedCurves.reduce((s, r) => s + r.monthly_noi, 0);
   const estAvgStabilizedRev = establishedCurves.length > 0 ? Math.round(establishedCurves.reduce((ss, rc) => ss + rc.stabilized_monthly_revenue, 0) / establishedCurves.length) : 0;
   const rampingProjectedNOI = rampingNow.reduce((s, r) => {
+    // Use this property's own stabilized rev if available, otherwise use established avg as proxy
     const projRev = r.stabilized_monthly_revenue > 0 ? r.stabilized_monthly_revenue : Math.min(estAvgStabilizedRev, r.monthly_cost * 1.5);
     return s + (projRev - r.monthly_cost);
   }, 0);
@@ -5472,9 +5480,9 @@ async function _getPortfolioAnalyticsInner(env, profileName) {
   // ═══ 5. STRESS TESTING ═══
   const trail12Start = recent18.length >= 12 ? recent18[recent18.length - 12] : (recent18[0] || thisMonth);
   const trail12Rev = actuals.filter(a => a.month >= trail12Start && a.month < thisMonth).reduce((s, a) => s + (a.total_revenue || 0), 0);
-  // Expenses from Finances: sum of all monthly_cost × 12
-  const currentMonthlyExpenses = finProps.reduce((s, fp) => s + (fp.monthly_cost || 0), 0);
-  const trail12Exp = currentMonthlyExpenses * 12;
+  // Current portfolio monthly opex (all currently active properties)
+  const currentMonthlyOpex = propCostInfo.reduce((s, pc) => s + pc.opex, 0);
+  const trail12Exp = currentMonthlyOpex * 12;
   const annualDebt = totalMonthlyDebt * 12;
   const stressScenarios = [];
   [0, -10, -20, -30, -40].forEach(revDelta => {
@@ -5484,9 +5492,10 @@ async function _getPortfolioAnalyticsInner(env, profileName) {
     const cashFlow = noi - annualDebt;
     stressScenarios.push({ label: revDelta === 0 ? 'Current' : revDelta + '%', revenue: adjRev, noi, dscr, cash_flow: cashFlow });
   });
+  // Breakeven occupancy (at what revenue drop does DSCR = 1.0?)
   let breakevenRevDrop = null;
   if (annualDebt > 0 && trail12Rev > 0) {
-    const neededRev = trail12Exp + annualDebt;
+    const neededRev = trail12Exp + annualDebt; // NOI = debt → DSCR = 1.0
     breakevenRevDrop = Math.round(((neededRev - trail12Rev) / trail12Rev) * 100);
   }
 
@@ -5506,45 +5515,47 @@ async function _getPortfolioAnalyticsInner(env, profileName) {
   })).sort((a, b) => b.revenue - a.revenue);
 
   // ═══ 6B. YEAR-OVER-YEAR PERFORMANCE ═══
-  // Revenue: straight from actuals (no manipulation)
-  // Expenses: fp.monthly_cost × months_active_in_year (months with actuals in that year)
+  // Build per-year snapshots: units, revenue, expenses, NOI, DSCR, occupancy, ADR
   const allYears = [...new Set(actuals.map(a => parseInt((a.month || '').slice(0, 4))))].filter(y => y > 2000).sort();
   const yoyPerformance = [];
-  const currentYear = now.getFullYear();
 
+  const currentYear = now.getFullYear();
   for (const yr of allYears.filter(y => y <= currentYear)) {
     const yrActuals = actuals.filter(a => a.month.startsWith(String(yr)));
     const yrMonths = [...new Set(yrActuals.map(a => a.month))].sort();
     const yrRevenue = yrActuals.reduce((s, a) => s + (a.total_revenue || 0), 0);
 
-    // Units: properties that had ANY actuals in this year
+    // Which properties were active this year (had actuals or started this year)
     const yrPropertyIds = [...new Set(yrActuals.map(a => a.property_id))];
     const yrUnitCount = yrPropertyIds.length;
 
-    // Units added this year
+    // Units added this year (start date falls in this year)
     const unitsAdded = propCostInfo.filter(pc => pc.startMonth.startsWith(String(yr))).length;
 
-    // ────────────────────────────────────────────────────────────────────
-    // EXPENSES: For each property, monthly_cost × months_active_in_year
-    // months_active = number of months that property has actuals in this year
-    // This matches how Finances thinks about costs — tied to actual activity
-    // ────────────────────────────────────────────────────────────────────
+    // Expenses: sum each active property's opex for CALENDAR months they were active
+    // NOT data-months — expenses are real whether or not we have booking data for that month
     let yrExpenses = 0;
     let yrDebt = 0;
-    const isCurrentYear = yr === currentYear;
-
+    const isCurrentYear = yr === now.getFullYear();
+    const calendarMonthsInYear = isCurrentYear ? now.getMonth() : 12; // Jan=0, so getMonth() = elapsed full months for current year
     for (const pc of propCostInfo) {
-      // How many months did this property have actuals in this year?
-      const propYrActualMonths = actuals.filter(a => a.property_id === pc.id && a.month.startsWith(String(yr))).length;
-      if (propYrActualMonths === 0) continue; // property had no actuals this year — don't count expenses
-
-      // Use Finances monthly_cost × months with actuals
-      yrExpenses += (pc.opex + pc.rent) * propYrActualMonths;
-      yrDebt += pc.debt * propYrActualMonths;
+      const pcStartYr = parseInt(pc.startMonth.slice(0, 4));
+      if (pcStartYr > yr) continue; // not yet active
+      // How many calendar months of this year was property active?
+      let activeMonths;
+      if (pcStartYr < yr) {
+        activeMonths = calendarMonthsInYear; // active all year (or all elapsed months this year)
+      } else {
+        // Started this year — count from start month through end of year (or now)
+        const startMo = parseInt(pc.startMonth.slice(5, 7)); // 1-indexed
+        activeMonths = Math.max(0, calendarMonthsInYear - (startMo - 1));
+        if (activeMonths > 12) activeMonths = 12;
+      }
+      yrExpenses += pc.opex * activeMonths;
+      yrDebt += pc.debt * activeMonths;
     }
-    // Add business-level loan debt for calendar months elapsed
-    const calendarMonthsInYear = isCurrentYear ? now.getMonth() : 12;
-    yrDebt += bizLoansMonthlyDebt * Math.max(calendarMonthsInYear, 1);
+    // Add business-level loan debt
+    yrDebt += bizLoansMonthlyDebt * calendarMonthsInYear;
 
     const yrNOI = yrRevenue - yrExpenses;
     const yrDSCR = yrDebt > 100 ? Math.round((yrNOI / yrDebt) * 100) / 100 : null;
@@ -5555,68 +5566,93 @@ async function _getPortfolioAnalyticsInner(env, profileName) {
     const avgOcc = occVals.length > 0 ? Math.round(occVals.reduce((s, v) => s + v, 0) / occVals.length) : null;
     const avgAdr = adrVals.length > 0 ? Math.round(adrVals.reduce((s, v) => s + v, 0) / adrVals.length) : null;
 
-    const monthsElapsed = isCurrentYear ? now.getMonth() : 12;
+    const monthsElapsed = isCurrentYear ? now.getMonth() : 12; // Jan=0, so getMonth() gives elapsed months
     const monthsRemaining = isCurrentYear ? 12 - monthsElapsed : 0;
 
     yoyPerformance.push({
-      year: yr, is_current: isCurrentYear, is_projection: false,
-      unit_count: yrUnitCount, units_added: unitsAdded,
+      year: yr,
+      is_current: isCurrentYear,
+      is_projection: false,
+      unit_count: yrUnitCount,
+      units_added: unitsAdded,
       months_of_data: yrMonths.length,
-      revenue: Math.round(yrRevenue), expenses: Math.round(yrExpenses),
-      debt_service: Math.round(yrDebt), noi: Math.round(yrNOI), dscr: yrDSCR,
-      avg_occupancy: avgOcc, avg_adr: avgAdr,
+      revenue: Math.round(yrRevenue),
+      expenses: Math.round(yrExpenses),
+      debt_service: Math.round(yrDebt),
+      noi: Math.round(yrNOI),
+      dscr: yrDSCR,
+      avg_occupancy: avgOcc,
+      avg_adr: avgAdr,
       revenue_per_unit: yrUnitCount > 0 ? Math.round(yrRevenue / yrUnitCount) : 0,
       noi_margin: yrRevenue > 0 ? Math.round((yrNOI / yrRevenue) * 100) : null,
     });
 
     // For current year: add full-year projection
+    // Use current monthly run rates (all current properties), not averaged ramp-up period
     if (isCurrentYear && monthsElapsed >= 2 && monthsRemaining > 0) {
       const monthlyRunRate = yrRevenue / monthsElapsed;
       const projectedRevenue = Math.round(yrRevenue + monthlyRunRate * monthsRemaining);
-      // Use current Finances monthly costs for remaining months
-      const currentMonthlyExp = propCostInfo.reduce((s, pc) => s + pc.opex + pc.rent, 0);
+      // Expenses: use current monthly opex (all active properties now) for remaining months
+      const currentMonthlyExp = propCostInfo.reduce((s, pc) => s + pc.opex, 0);
       const currentMonthlyDebtAll = propCostInfo.reduce((s, pc) => s + pc.debt, 0) + bizLoansMonthlyDebt;
       const projectedExpenses = Math.round(yrExpenses + currentMonthlyExp * monthsRemaining);
       const projectedDebt = Math.round(yrDebt + currentMonthlyDebtAll * monthsRemaining);
       const projectedNOI = projectedRevenue - projectedExpenses;
       const projectedDSCR = projectedDebt > 0 ? Math.round((projectedNOI / projectedDebt) * 100) / 100 : null;
       yoyPerformance.push({
-        year: yr, is_current: true, is_projection: true,
-        label: '~' + yr + ' Projected',
-        unit_count: yrUnitCount, units_added: 0, months_of_data: 12,
-        revenue: projectedRevenue, expenses: projectedExpenses,
-        debt_service: projectedDebt, noi: projectedNOI, dscr: projectedDSCR,
-        avg_occupancy: avgOcc, avg_adr: avgAdr,
+        year: yr,
+        is_current: true,
+        is_projection: true,
+        label: yr + ' Projected',
+        unit_count: yrUnitCount,
+        units_added: 0,
+        months_of_data: 12,
+        revenue: projectedRevenue,
+        expenses: projectedExpenses,
+        debt_service: projectedDebt,
+        noi: projectedNOI,
+        dscr: projectedDSCR,
+        avg_occupancy: avgOcc,
+        avg_adr: avgAdr,
         revenue_per_unit: yrUnitCount > 0 ? Math.round(projectedRevenue / yrUnitCount) : 0,
         noi_margin: projectedRevenue > 0 ? Math.round((projectedNOI / projectedRevenue) * 100) : null,
       });
     }
   }
 
-  // Next year projection
+  // Next year projection (all properties at stabilized revenue)
   if (allYears.length > 0) {
-    const nextYear = currentYear + 1;
+    const nextYear = now.getFullYear() + 1;
     const totalStabilizedMonthlyRev = rampCurves.reduce((s, r) => s + (r.stabilized_monthly_revenue > 0 ? r.stabilized_monthly_revenue : r.avg_monthly_revenue), 0);
-    const totalMonthlyExp = propCostInfo.reduce((s, pc) => s + pc.opex + pc.rent, 0);
+    const totalMonthlyExpenses = propCostInfo.reduce((s, pc) => s + pc.opex, 0);
     const totalMonthlyDebtAll = propCostInfo.reduce((s, pc) => s + pc.debt, 0) + bizLoansMonthlyDebt;
     const nextRevenue = totalStabilizedMonthlyRev * 12;
-    const nextExpenses = totalMonthlyExp * 12;
+    const nextExpenses = totalMonthlyExpenses * 12;
     const nextDebt = totalMonthlyDebtAll * 12;
     const nextNOI = nextRevenue - nextExpenses;
     const nextDSCR = nextDebt > 0 ? Math.round((nextNOI / nextDebt) * 100) / 100 : null;
     yoyPerformance.push({
-      year: nextYear, is_current: false, is_projection: true,
-      label: '~' + nextYear + ' Projected',
-      unit_count: props.length, units_added: 0, months_of_data: 12,
-      revenue: Math.round(nextRevenue), expenses: Math.round(nextExpenses),
-      debt_service: Math.round(nextDebt), noi: Math.round(nextNOI), dscr: nextDSCR,
-      avg_occupancy: null, avg_adr: null,
+      year: nextYear,
+      is_current: false,
+      is_projection: true,
+      label: nextYear + ' Projected',
+      unit_count: props.length,
+      units_added: 0,
+      months_of_data: 12,
+      revenue: Math.round(nextRevenue),
+      expenses: Math.round(nextExpenses),
+      debt_service: Math.round(nextDebt),
+      noi: Math.round(nextNOI),
+      dscr: nextDSCR,
+      avg_occupancy: null,
+      avg_adr: null,
       revenue_per_unit: props.length > 0 ? Math.round(nextRevenue / props.length) : 0,
       noi_margin: nextRevenue > 0 ? Math.round((nextNOI / nextRevenue) * 100) : null,
     });
   }
 
   // ═══ 7. GROWTH TIMELINE ═══
+  // Only show properties with real acquisition/lease dates — not created_at fallback
   const growthTimeline = props.map(p => {
     const realDate = p.purchase_date || p.lease_start_date;
     return {

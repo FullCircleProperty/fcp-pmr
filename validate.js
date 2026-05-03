@@ -301,6 +301,30 @@ check('build.js reads version from package.json', buildJs.includes('version') &&
 const distExists = fs.existsSync(path.join(__dirname, 'dist/worker.js'));
 check('dist/worker.js exists after build', distExists);
 
+// 7d. VERSION BUMP CHECK — CRITICAL
+// Detect if the version in the NEW build matches the PREVIOUS build (meaning someone forgot to bump)
+if (distExists) {
+  const distContent = fs.readFileSync(path.join(__dirname, 'dist/worker.js'), 'utf8');
+  const distVersionMatch = distContent.match(/APP_VERSION\s*=\s*['"]([^'"]+)['"]/);
+  const distVersion = distVersionMatch ? distVersionMatch[1] : null;
+  if (distVersion && distVersion === pkg.version) {
+    // Same version — only OK if this is a fresh build with no prior dist
+    // Check if there's a .last-deployed-version file
+    const lastVersionFile = path.join(__dirname, '.last-deployed-version');
+    if (fs.existsSync(lastVersionFile)) {
+      const lastVersion = fs.readFileSync(lastVersionFile, 'utf8').trim();
+      if (lastVersion === pkg.version) {
+        check('Version bumped since last build (BUMP package.json VERSION!)', false,
+          `package.json is still v${pkg.version} — same as last build. Run: npm version patch (or edit package.json manually)`);
+      } else {
+        check('Version bumped since last build', true);
+      }
+    }
+  }
+  // Save current version for next comparison
+  fs.writeFileSync(path.join(__dirname, '.last-deployed-version'), pkg.version);
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Summary
 console.log('\n══════════════════════════════════════════════════════════');

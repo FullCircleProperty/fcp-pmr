@@ -6,6 +6,17 @@ const path = require('path');
 const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
 const VERSION = pkg.version;
 const BUILD_DATE = new Date().toISOString().split('T')[0];
+
+// Check if version was bumped since last build
+const lastVersionFile = path.join(__dirname, '.last-deployed-version');
+if (fs.existsSync(lastVersionFile)) {
+  const lastVersion = fs.readFileSync(lastVersionFile, 'utf8').trim();
+  if (lastVersion === VERSION) {
+    console.log(`\n⚠️  ⚠️  ⚠️  WARNING: VERSION NOT BUMPED! Still v${VERSION} ⚠️  ⚠️  ⚠️`);
+    console.log(`   Edit package.json "version" before building!\n`);
+  }
+}
+
 console.log(`\n🔨 Building FCP-PMR v${VERSION} (${BUILD_DATE})\n`);
 
 const partsDir = path.join(__dirname, 'frontend', 'parts');

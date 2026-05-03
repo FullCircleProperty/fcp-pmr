@@ -1,0 +1,1620 @@
+// ══════════════════════════════════════════════════════════════════════════
+// 17 — PORTFOLIO INTELLIGENCE (v2.45.0 Redesign)
+// Investor/lender-facing financial intelligence with analytics-powered
+// sections: ramp curves, DSCR trend, stress testing, concentration risk,
+// unit economics, market benchmarks, growth timeline, debt & coverage.
+// ══════════════════════════════════════════════════════════════════════════
+
+var _piData = null;       // from GET /api/portfolio/summary
+var _piAnalytics = null;  // from GET /api/portfolio/analytics
+var _piProfiles = [];
+var _piActiveProfile = null;
+var _piTimeframe = 'this_year';
+var _piCustomFrom = '';
+var _piCustomTo = '';
+
+// ── Section ordering by audience ─────────────────────────────────────────
+var _piSectionOrder = {
+  bank: ['executive', 'yoy_performance', 'debt_coverage', 'ramp_curves', 'unit_economics', 'stress_test', 'market_position', 'growth_story', 'concentration', 'scenario', 'narrative', 'snapshots', 'profiles'],
+  investor: ['executive', 'yoy_performance', 'growth_story', 'ramp_curves', 'unit_economics', 'market_position', 'debt_coverage', 'concentration', 'stress_test', 'scenario', 'narrative', 'snapshots', 'profiles'],
+  internal: ['executive', 'yoy_performance', 'debt_coverage', 'growth_story', 'ramp_curves', 'unit_economics', 'stress_test', 'market_position', 'concentration', 'scenario', 'narrative', 'snapshots', 'profiles']
+};
+
+async function loadPortfolioIntel() {
+  var el = document.getElementById('portfolioTabContent');
+  if (!el) return;
+  el.innerHTML = '<div style="padding:30px;text-align:center;color:var(--text3);">' + _ico('loader', 18) + ' Loading portfolio intelligence...</div>';
+  try {
+    // Load profiles
+    try { var pRes = await api('/api/portfolio/profiles'); _piProfiles = pRes.profiles || []; } catch(e) { _piProfiles = []; }
+    if (_piProfiles.length === 0) { try { await api('/api/portfolio/seed-profiles', 'POST', {}); var pRes2 = await api('/api/portfolio/profiles'); _piProfiles = pRes2.profiles || []; } catch(e) {} }
+
+    // Two parallel API calls
+    var profileParam = _piActiveProfile ? '&profile=' + encodeURIComponent(_piActiveProfile) : '';
+    var tfParam = '?timeframe=' + encodeURIComponent(_piTimeframe);
+    if (_piTimeframe === 'custom' && _piCustomFrom && _piCustomTo) tfParam += '&from=' + _piCustomFrom + '&to=' + _piCustomTo;
+
+    var results = await Promise.all([
+      api('/api/portfolio/summary' + tfParam + profileParam),
+      api('/api/portfolio/analytics' + (_piActiveProfile ? '?profile=' + encodeURIComponent(_piActiveProfile) : '')).catch(function(e) { return null; })
+    ]);
+    _piData = results[0];
+    _piAnalytics = results[1];
+
+    renderPortfolioIntel(el);
+  } catch (err) {
+    el.innerHTML = '<div class="card" style="margin:20px auto;max-width:600px;text-align:center;padding:30px;">'
+      + _ico('briefcase', 32, 'var(--text3)') + '<h3 style="margin:10px 0 6px;">Portfolio Intelligence</h3>'
+      + '<p style="color:var(--text3);font-size:0.85rem;">Make sure you have active properties with financial data entered.</p>'
+      + '<p style="color:var(--danger);font-size:0.8rem;margin-top:8px;">' + esc(err.message) + '</p>'
+      + '<button class="btn btn-primary" style="margin-top:12px;" onclick="loadPortfolioIntel()">' + _ico('refresh', 14) + ' Retry</button></div>';
+  }
+}
+
+function renderPortfolioIntel(el) {
+  var d = _piData;
+  if (!d || !d.portfolio) return;
+  var pf = d.portfolio;
+  var prof = d.profile || {};
+  var audience = (prof.audience || 'internal');
+
+  var h = _piRenderHeader(pf, prof);
+  window._piCardData = [];
+
+  // Render sections in audience-appropriate order
+  var order = _piSectionOrder[audience] || _piSectionOrder.internal;
+  var showFin = prof.show_financing_details !== 0;
+  var a = _piAnalytics || {};
+
+  // Show analytics error if endpoint failed
+  if (a.error) {
+    h += '<div style="padding:10px 14px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);border-radius:8px;margin-bottom:12px;font-size:0.78rem;color:#ef4444;">' + _ico('alertCircle', 14, '#ef4444') + ' Analytics error: ' + esc(a.error) + '</div>';
+  }
+
+  order.forEach(function(section) {
+    switch (section) {
+      case 'executive':
+        h += _piRenderExecutiveDashboard(pf, prof, a);
+        break;
+      case 'yoy_performance':
+        if (a.yoy_performance && a.yoy_performance.length > 0) h += _piRenderYoYPerformance(a, pf);
+        break;
+      case 'debt_coverage':
+        if (showFin) h += _piRenderDebtCoverage(pf, prof, a);
+        break;
+      case 'growth_story':
+        h += _piRenderGrowthStory(a, pf);
+        break;
+      case 'ramp_curves':
+        if (a.ramp_curves && a.ramp_curves.length > 0) h += _piRenderRampCurves(a.ramp_curves);
+        break;
+      case 'unit_economics':
+        if (a.unit_economics) h += _piRenderUnitEconomics(a);
+        break;
+      case 'stress_test':
+        if (a.stress_test) h += _piRenderStressTest(a.stress_test);
+        break;
+      case 'market_position':
+        if (a.market_benchmarks && a.market_benchmarks.length > 0) h += _piRenderMarketPosition(a.market_benchmarks);
+        break;
+      case 'concentration':
+        if (a.concentration && a.concentration.length > 1) h += _piRenderConcentration(a.concentration);
+        break;
+      case 'scenario':
+        if (prof.show_scenario !== 0) h += _piRenderScenarioPanel();
+        break;
+      case 'narrative':
+        h += _piRenderNarrativePanel();
+        break;
+      case 'snapshots':
+        if (d.snapshot_history && d.snapshot_history.length > 0) h += _piRenderSnapshotHistory(d.snapshot_history);
+        break;
+      case 'profiles':
+        h += _piRenderProfileManager();
+        break;
+    }
+  });
+
+  el.innerHTML = h;
+  setTimeout(_piLoadNarrativeAuto, 100);
+}
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// HEADER — Profile selector, timeframe, controls
+// ══════════════════════════════════════════════════════════════════════════
+function _piRenderHeader(pf, prof) {
+  var h = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">';
+  h += '<h2 style="margin:0;font-size:1.1rem;">' + _ico('briefcase', 18, 'var(--accent)') + ' Portfolio Intelligence</h2>';
+  h += '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">';
+
+  // Timeframe selector
+  h += '<select id="piTimeframeSelect" onchange="switchPortfolioTimeframe(this.value)" style="font-size:0.78rem;padding:3px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);">';
+  // Build year options dynamically from available data
+  var tfOpts = [['this_year', new Date().getFullYear() + ' YTD']];
+  var dataYears = (_piData && _piData.available_years) || [];
+  dataYears.forEach(function(yr) { if (yr < new Date().getFullYear()) tfOpts.push(['year_' + yr, String(yr)]); });
+  tfOpts.push(['all','All Time']);
+  tfOpts.push(['custom','Custom Range']);
+  tfOpts.forEach(function(t) { h += '<option value="' + t[0] + '"' + (_piTimeframe === t[0] ? ' selected' : '') + '>' + t[1] + '</option>'; });
+  h += '</select>';
+  if (_piTimeframe === 'custom') {
+    h += '<input type="month" id="piTfFrom" value="' + (_piCustomFrom || '') + '" onchange="_piCustomFrom=this.value" style="font-size:0.75rem;padding:2px 4px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text);width:110px;">';
+    h += '<span style="color:var(--text3);font-size:0.75rem;">to</span>';
+    h += '<input type="month" id="piTfTo" value="' + (_piCustomTo || '') + '" onchange="_piCustomTo=this.value" style="font-size:0.75rem;padding:2px 4px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text);width:110px;">';
+    h += '<button class="btn btn-xs btn-primary" onclick="loadPortfolioIntel()" style="padding:2px 8px;">Go</button>';
+  }
+
+  // Profile selector
+  h += '<select id="piProfileSelect" onchange="switchPortfolioProfile(this.value)" style="font-size:0.78rem;padding:3px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);">';
+  h += '<option value="">Full Internal</option>';
+  _piProfiles.forEach(function(p) { if (p.name === 'Full Internal') return; h += '<option value="' + esc(p.name) + '"' + (_piActiveProfile === p.name ? ' selected' : '') + '>' + esc(p.name) + '</option>'; });
+  h += '</select>';
+  h += '<button class="btn btn-xs" onclick="loadPortfolioIntel()" title="Refresh data">' + _ico('refresh', 12) + ' Refresh</button>';
+  h += '<button class="btn btn-xs" onclick="capturePortfolioSnapshot()" title="Save snapshot">' + _ico('camera', 12) + ' Snapshot</button>';
+  h += '</div></div>';
+
+  // Profile info bar
+  if (prof.audience && prof.audience !== 'internal') {
+    h += '<div style="padding:8px 12px;background:rgba(59,130,246,0.06);border-radius:8px;border-left:3px solid #3b82f6;margin-bottom:12px;font-size:0.78rem;">';
+    h += _ico('shield', 13, '#3b82f6') + ' <strong>' + esc(prof.name || '') + '</strong> view active. ';
+    if (prof.emphasis) h += esc(prof.emphasis);
+    if (!prof.show_addresses) h += ' &middot; Addresses hidden.';
+    if (!prof.show_financing_details) h += ' &middot; Financing details redacted.';
+    if (!prof.show_private_loans) h += ' &middot; Private loans hidden.';
+    h += '</div>';
+  }
+
+  // Timeframe label
+  var tf = _piData.timeframe || {};
+  h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;font-size:0.78rem;">';
+  h += '<span style="background:var(--accent);color:white;padding:2px 10px;border-radius:12px;font-weight:600;font-size:0.72rem;">' + esc(tf.label || String(new Date().getFullYear()) + ' YTD') + '</span>';
+  if (tf.start && tf.end) h += '<span style="color:var(--text3);">' + _piMonthLabel(tf.start) + ' — ' + _piMonthLabel(tf.end) + '</span>';
+  if (tf.comp_start) h += '<span style="color:var(--text3);font-size:0.7rem;">vs ' + _piMonthLabel(tf.comp_start) + ' — ' + _piMonthLabel(tf.comp_end) + '</span>';
+  h += '</div>';
+  return h;
+}
+
+function switchPortfolioProfile(name) {
+  _piActiveProfile = name || null;
+  loadPortfolioIntel();
+}
+
+function switchPortfolioTimeframe(tf) {
+  _piTimeframe = tf || 'this_year';
+  if (tf !== 'custom') { _piCustomFrom = ''; _piCustomTo = ''; }
+  loadPortfolioIntel();
+}
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// SECTION 1: EXECUTIVE DASHBOARD — Hero KPIs
+// ══════════════════════════════════════════════════════════════════════════
+function _piRenderExecutiveDashboard(pf, prof, a) {
+  var audience = prof.audience || 'internal';
+  var ps = a.portfolio_summary || {};
+  var ds = a.debt_schedule || {};
+  var ue = a.unit_economics || {};
+  var owned = pf.owned || {};
+  var showFin = prof.show_financing_details !== 0;
+  var yoyVal = pf.yoy_revenue_growth;
+  var est = pf.established || {};
+
+  var h = '<div style="margin-bottom:20px;">';
+  h += '<div style="font-size:0.82rem;font-weight:700;color:var(--text);margin-bottom:8px;display:flex;align-items:center;gap:8px;">' + _ico('briefcase', 16, 'var(--accent)') + ' Executive Dashboard</div>';
+  h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;">';
+
+  var cards = [];
+  if (audience === 'bank') {
+    // Bank: DSCR, Debt Yield, LTV, Equity, NOI, Units
+    cards.push({ label: 'Portfolio DSCR', value: pf.portfolio_dscr ? pf.portfolio_dscr.toFixed(2) + 'x' : 'N/A', icon: 'shield', color: (pf.portfolio_dscr || 0) >= 1.25 ? '#10b981' : (pf.portfolio_dscr || 0) >= 1.0 ? '#f59e0b' : 'var(--danger)', sub: (pf.portfolio_dscr || 0) >= 1.25 ? 'Exceeds 1.25x threshold' : 'Below 1.25x threshold', explain: 'Debt Service Coverage Ratio — NOI divided by annual debt payments.\nBanks require >= 1.25x.\nNOI: $' + (pf.annual_noi || 0).toLocaleString() + '\nDebt Service: $' + (ps.annual_debt_service || 0).toLocaleString() });
+    if (est.dscr && est.dscr !== pf.portfolio_dscr) cards.push({ label: 'Established DSCR', value: est.dscr.toFixed(2) + 'x', icon: 'shield', color: est.dscr >= 1.25 ? '#10b981' : est.dscr >= 1.0 ? '#f59e0b' : 'var(--danger)', sub: est.count + ' units with 6+ mo history', explain: 'DSCR for properties operating 6+ months \u2014 your proven track record.\nExcludes recently added units still in ramp-up.' });
+    if (ps.projected_stabilized_dscr && ps.projected_stabilized_dscr !== pf.portfolio_dscr) cards.push({ label: 'Projected DSCR', value: ps.projected_stabilized_dscr.toFixed(2) + 'x', icon: 'trendUp', color: ps.projected_stabilized_dscr >= 1.25 ? '#10b981' : '#f59e0b', sub: 'After new units stabilize', explain: 'Projected DSCR once ramping properties reach stabilized revenue.\nBased on established portfolio ramp patterns.' });
+    if (ds.debt_yield) cards.push({ label: 'Debt Yield', value: ds.debt_yield + '%', icon: 'target', color: (ds.debt_yield || 0) >= 10 ? '#10b981' : '#f59e0b', sub: (ds.debt_yield || 0) >= 10 ? 'Above 10% — strong' : 'Below 10% target', explain: 'NOI as % of total outstanding debt.\nLenders want >= 8-10%.\nNOI: $' + (pf.annual_noi || 0).toLocaleString() + '\nDebt: $' + (ds.total_balance || 0).toLocaleString() });
+    if (showFin && owned.value > 0) {
+      var totalLiab = ds.total_balance || 0;
+      var ltv = owned.value > 0 ? Math.round((totalLiab / owned.value) * 100) : 0;
+      cards.push({ label: 'LTV', value: ltv + '%', icon: 'scale', color: ltv <= 75 ? '#10b981' : '#f59e0b', sub: ltv <= 75 ? 'Under 75% — healthy' : 'Above 75%', explain: 'Loan-to-Value ratio.\n$' + totalLiab.toLocaleString() + ' debt / $' + (owned.value || 0).toLocaleString() + ' asset value' });
+      cards.push({ label: 'Portfolio Equity', value: '$' + _piK((owned.value || 0) - totalLiab), icon: 'trendUp', color: '#10b981', sub: 'Assets minus liabilities', explain: '$' + (owned.value || 0).toLocaleString() + ' assets - $' + totalLiab.toLocaleString() + ' debt' });
+    }
+    cards.push({ label: 'NOI', value: '$' + _piK(pf.annual_noi), icon: 'dollarSign', color: (pf.annual_noi || 0) >= 0 ? '#10b981' : 'var(--danger)', sub: 'Net Operating Income', explain: 'Revenue: $' + (pf.annual_revenue || 0).toLocaleString() + '\nExpenses: $' + (pf.annual_expenses || 0).toLocaleString() + '\nNOI: $' + (pf.annual_noi || 0).toLocaleString() });
+    cards.push({ label: 'Units Managed', value: ps.total_units || pf.property_count || 0, icon: 'home', color: 'var(--accent)', sub: (owned.count || 0) + ' owned, ' + ((pf.rental || {}).count || 0) + ' rented', explain: 'Total doors under management.' });
+  } else if (audience === 'investor') {
+    // Investor: Revenue, Growth, NOI Margin, Avg Unit NOI, Units, Breakeven
+    cards.push({ label: 'Revenue', value: '$' + _piK(pf.annual_revenue), icon: 'dollarSign', color: '#3b82f6', sub: ((_piData && _piData.timeframe) || {}).label || 'Selected period', explain: 'Total booking revenue.\nSource: Guesty monthly actuals.' });
+    if (yoyVal !== null) cards.push({ label: 'Revenue Growth', value: (yoyVal >= 0 ? '+' : '') + yoyVal + '%', icon: yoyVal >= 0 ? 'trendUp' : 'trendDown', color: yoyVal >= 0 ? '#10b981' : 'var(--danger)', sub: 'Year-over-year', explain: 'Revenue growth comparing equivalent periods.' });
+    var noiMargin = (pf.annual_revenue || 0) > 0 ? Math.round(((pf.annual_noi || 0) / pf.annual_revenue) * 100) : 0;
+    cards.push({ label: 'NOI Margin', value: noiMargin + '%', icon: 'barChart', color: noiMargin >= 30 ? '#10b981' : noiMargin >= 15 ? '#f59e0b' : 'var(--danger)', sub: '$' + _piK(pf.annual_noi) + ' NOI on $' + _piK(pf.annual_revenue) + ' rev', explain: 'How much of each revenue dollar becomes profit.' });
+    if (ue.avg_stabilized_noi) cards.push({ label: 'Avg Unit NOI', value: '$' + _piK(ue.avg_stabilized_noi) + '/mo', icon: 'home', color: '#10b981', sub: 'Per stabilized unit', explain: 'Average monthly NOI per property at stabilized occupancy.' });
+    cards.push({ label: 'Units Managed', value: ps.total_units || pf.property_count || 0, icon: 'home', color: 'var(--accent)', sub: (owned.count || 0) + ' owned, ' + ((pf.rental || {}).count || 0) + ' rented', explain: 'Total doors under management.' });
+    if (ue.avg_months_to_breakeven > 0) cards.push({ label: 'Avg Breakeven', value: ue.avg_months_to_breakeven + ' mo', icon: 'target', color: ue.avg_months_to_breakeven <= 3 ? '#10b981' : '#f59e0b', sub: 'Time to first profit', explain: 'Average months until a new property generates more revenue than its costs.' });
+  } else {
+    // Internal: show everything
+    cards.push({ label: 'Revenue', value: '$' + _piK(pf.annual_revenue), icon: 'dollarSign', color: '#3b82f6', sub: ((_piData && _piData.timeframe) || {}).label || 'Selected period', explain: 'Total booking revenue from Guesty actuals.' });
+    cards.push({ label: 'NOI', value: '$' + _piK(pf.annual_noi), icon: 'barChart', color: (pf.annual_noi || 0) >= 0 ? '#10b981' : 'var(--danger)', sub: 'Revenue minus expenses', explain: 'Revenue: $' + (pf.annual_revenue || 0).toLocaleString() + '\nExpenses: $' + (pf.annual_expenses || 0).toLocaleString() });
+    cards.push({ label: 'Portfolio DSCR', value: pf.portfolio_dscr ? pf.portfolio_dscr.toFixed(2) + 'x' : 'N/A', icon: 'shield', color: (pf.portfolio_dscr || 0) >= 1.25 ? '#10b981' : '#f59e0b', sub: (pf.portfolio_dscr || 0) >= 1.25 ? 'Healthy' : 'Watch', explain: 'NOI / Debt Service' });
+    cards.push({ label: 'Units', value: ps.total_units || pf.property_count || 0, icon: 'home', color: 'var(--accent)', sub: (owned.count || 0) + ' owned, ' + ((pf.rental || {}).count || 0) + ' rented', explain: 'Total doors.' });
+    if (yoyVal !== null) cards.push({ label: 'YoY Growth', value: (yoyVal >= 0 ? '+' : '') + yoyVal + '%', icon: yoyVal >= 0 ? 'trendUp' : 'trendDown', color: yoyVal >= 0 ? '#10b981' : 'var(--danger)', sub: 'Revenue growth', explain: 'Year-over-year.' });
+    cards.push({ label: 'Avg Occupancy', value: pf.avg_occupancy ? pf.avg_occupancy + '%' : 'N/A', icon: 'calendar', color: (pf.avg_occupancy || 0) >= 50 ? '#10b981' : '#f59e0b', sub: 'Across all units', explain: 'Average booking occupancy from Guesty.' });
+  }
+
+  cards.forEach(function(c) { window._piCardData.push(c); h += _piCardHtml(c, window._piCardData.length - 1); });
+  h += '</div></div>';
+  return h;
+}
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════
+// SECTION: YEAR-OVER-YEAR PERFORMANCE — The growth story in numbers
+// ══════════════════════════════════════════════════════════════════════════
+function _piRenderYoYPerformance(a, pf) {
+  var yoy = a.yoy_performance || [];
+  if (yoy.length === 0) return '';
+
+  var h = '<div class="card" style="margin-bottom:14px;">';
+  h += '<div class="card-header"><h3 style="font-size:0.9rem;">' + _ico('trendUp', 15, '#3b82f6') + ' Year-Over-Year Performance</h3>';
+  h += '<span style="font-size:0.68rem;color:var(--text3);">How the portfolio has grown and where it\'s headed</span>';
+  h += '</div>';
+
+  // Summary insight
+  var actuals = yoy.filter(function(y) { return !y.is_projection; });
+  var projections = yoy.filter(function(y) { return y.is_projection; });
+  if (actuals.length >= 2) {
+    var first = actuals[0];
+    var latest = actuals[actuals.length - 1];
+    var revGrowth = first.revenue > 0 ? Math.round(((latest.revenue - first.revenue) / first.revenue) * 100) : 0;
+    h += '<div style="padding:8px 12px;background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.15);border-radius:8px;margin-bottom:12px;font-size:0.78rem;color:var(--text2);">';
+    h += _ico('trendUp', 13, '#10b981') + ' From <strong>' + first.unit_count + ' unit' + (first.unit_count !== 1 ? 's' : '') + '</strong> in ' + first.year + ' to <strong>' + latest.unit_count + ' unit' + (latest.unit_count !== 1 ? 's' : '') + '</strong> in ' + latest.year;
+    if (revGrowth > 0) h += ' — revenue grew <strong style="color:#10b981;">+' + revGrowth + '%</strong>';
+    if (projections.length > 0) {
+      var proj = projections[projections.length - 1];
+      h += '. Projected ' + proj.year + ' revenue: <strong style="color:#8b5cf6;">$' + _piK(proj.revenue) + '</strong>';
+    }
+    h += '</div>';
+  }
+
+  // Table
+  h += '<div style="overflow-x:auto;">';
+  h += '<table class="comp-table" style="font-size:0.75rem;white-space:nowrap;">';
+  h += '<thead><tr>';
+  h += '<th style="text-align:left;">Year</th>';
+  h += '<th style="text-align:center;">Units</th>';
+  h += '<th style="text-align:center;">Added</th>';
+  h += '<th style="text-align:right;">Revenue</th>';
+  h += '<th style="text-align:right;">Expenses</th>';
+  h += '<th style="text-align:right;">NOI</th>';
+  h += '<th style="text-align:center;">Margin</th>';
+  h += '<th style="text-align:center;">DSCR</th>';
+  h += '<th style="text-align:center;">Occ %</th>';
+  h += '<th style="text-align:right;">Rev/Unit</th>';
+  h += '</tr></thead><tbody>';
+
+  var prevRev = null;
+  yoy.forEach(function(y) {
+    var isProj = y.is_projection;
+    var rowStyle = isProj ? 'background:rgba(139,92,246,0.04);font-style:italic;' : '';
+    var yearLabel = y.label || String(y.year);
+    if (y.is_current && !isProj) yearLabel += ' YTD';
+    if (isProj) yearLabel = '~' + yearLabel;
+
+    // Revenue change from prior year
+    var revDelta = '';
+    if (prevRev !== null && prevRev > 0 && !isProj) {
+      var pct = Math.round(((y.revenue - prevRev) / prevRev) * 100);
+      var color = pct >= 0 ? '#10b981' : '#ef4444';
+      revDelta = ' <span style="font-size:0.65rem;color:' + color + ';">' + (pct >= 0 ? '+' : '') + pct + '%</span>';
+    }
+
+    h += '<tr style="' + rowStyle + '">';
+    h += '<td style="font-weight:600;">' + yearLabel + '</td>';
+    h += '<td style="text-align:center;">' + (y.unit_count || 0) + '</td>';
+    h += '<td style="text-align:center;color:' + (y.units_added > 0 ? '#10b981' : 'var(--text3)') + ';">' + (y.units_added > 0 ? '+' + y.units_added : '—') + '</td>';
+    h += '<td style="text-align:right;font-family:DM Mono,monospace;">$' + (y.revenue || 0).toLocaleString() + revDelta + '</td>';
+    h += '<td style="text-align:right;font-family:DM Mono,monospace;color:var(--text3);">$' + (y.expenses || 0).toLocaleString() + '</td>';
+    h += '<td style="text-align:right;font-family:DM Mono,monospace;color:' + ((y.noi || 0) >= 0 ? '#10b981' : '#ef4444') + ';">$' + (y.noi || 0).toLocaleString() + '</td>';
+    h += '<td style="text-align:center;color:' + ((y.noi_margin || 0) >= 30 ? '#10b981' : (y.noi_margin || 0) >= 15 ? '#f59e0b' : '#ef4444') + ';">' + (y.noi_margin != null ? y.noi_margin + '%' : '—') + '</td>';
+
+    var dscrColor = (y.dscr || 0) >= 1.25 ? '#10b981' : (y.dscr || 0) >= 1.0 ? '#f59e0b' : (y.dscr != null ? '#ef4444' : 'var(--text3)');
+    h += '<td style="text-align:center;font-weight:600;color:' + dscrColor + ';">' + (y.dscr != null ? y.dscr.toFixed(2) + 'x' : '—') + '</td>';
+    h += '<td style="text-align:center;">' + (y.avg_occupancy ? y.avg_occupancy + '%' : '—') + '</td>';
+    h += '<td style="text-align:right;font-family:DM Mono,monospace;">$' + (y.revenue_per_unit || 0).toLocaleString() + '</td>';
+    h += '</tr>';
+
+    if (!isProj) prevRev = y.revenue;
+  });
+
+  h += '</tbody></table></div>';
+
+  // Chart: revenue bars with NOI overlay
+  if (yoy.length >= 2) {
+    h += _piSvgYoYChart(yoy);
+  }
+
+  h += '</div>';
+  return h;
+}
+
+function _piSvgYoYChart(yoy) {
+  var W = 680, H = 200, padL = 55, padR = 14, padT = 20, padB = 35;
+  var cW = W - padL - padR, cH = H - padT - padB;
+  var maxRev = Math.max.apply(null, yoy.map(function(y) { return y.revenue || 0; }));
+  if (maxRev === 0) return '';
+  var barW = Math.min(60, Math.floor(cW / yoy.length) - 12);
+  var gap = (cW - barW * yoy.length) / (yoy.length + 1);
+
+  var toX = function(i) { return padL + gap + i * (barW + gap); };
+  var toH = function(v) { return (v / maxRev) * cH; };
+
+  var h = '<div style="margin-top:12px;">';
+  h += '<svg width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '" style="display:block;max-width:100%;">';
+
+  // Gridlines
+  for (var gi = 0; gi <= 4; gi++) {
+    var gv = (maxRev / 4) * gi;
+    var gy = padT + cH - toH(gv);
+    h += '<line x1="' + padL + '" y1="' + gy + '" x2="' + (W - padR) + '" y2="' + gy + '" stroke="var(--border)" stroke-dasharray="3,4" opacity="0.4"/>';
+    h += '<text x="' + (padL - 6) + '" y="' + (gy + 4) + '" text-anchor="end" style="font-size:9px;fill:var(--text3);font-family:DM Mono,monospace;">$' + _piK(gv) + '</text>';
+  }
+
+  yoy.forEach(function(y, i) {
+    var x = toX(i);
+    var revH = toH(y.revenue || 0);
+    var noiH = y.noi > 0 ? toH(y.noi) : 0;
+    var isProj = y.is_projection;
+    var barColor = isProj ? '#8b5cf6' : '#3b82f6';
+    var barOpacity = isProj ? '0.5' : '0.8';
+
+    // Revenue bar
+    h += '<rect x="' + x + '" y="' + (padT + cH - revH) + '" width="' + barW + '" height="' + revH + '" rx="3" fill="' + barColor + '" opacity="' + barOpacity + '"';
+    if (isProj) h += ' stroke="' + barColor + '" stroke-width="1" stroke-dasharray="4,2"';
+    h += '/>';
+
+    // NOI overlay bar
+    if (noiH > 0) {
+      h += '<rect x="' + (x + 2) + '" y="' + (padT + cH - noiH) + '" width="' + (barW - 4) + '" height="' + noiH + '" rx="2" fill="#10b981" opacity="0.6"/>';
+    }
+
+    // Year label
+    var label = y.label || String(y.year);
+    if (y.is_current && !isProj) label = y.year + ' YTD';
+    if (isProj) label = '~' + (y.label || y.year);
+    h += '<text x="' + (x + barW / 2) + '" y="' + (H - 6) + '" text-anchor="middle" style="font-size:9px;fill:' + (isProj ? '#8b5cf6' : 'var(--text3)') + ';font-weight:' + (isProj ? '600' : '400') + ';">' + label + '</text>';
+
+    // Revenue value on top
+    h += '<text x="' + (x + barW / 2) + '" y="' + (padT + cH - revH - 4) + '" text-anchor="middle" style="font-size:8px;fill:var(--text2);font-family:DM Mono,monospace;">$' + _piK(y.revenue) + '</text>';
+
+    // Units added badge
+    if (y.units_added > 0) {
+      h += '<text x="' + (x + barW / 2) + '" y="' + (padT + cH - revH - 14) + '" text-anchor="middle" style="font-size:7px;fill:#10b981;font-weight:700;">+' + y.units_added + ' units</text>';
+    }
+  });
+
+  // Legend
+  h += '<rect x="' + padL + '" y="' + (H - 14) + '" width="10" height="6" rx="1" fill="#3b82f6" opacity="0.8"/>';
+  h += '<text x="' + (padL + 14) + '" y="' + (H - 8) + '" style="font-size:8px;fill:var(--text3);">Revenue</text>';
+  h += '<rect x="' + (padL + 65) + '" y="' + (H - 14) + '" width="10" height="6" rx="1" fill="#10b981" opacity="0.6"/>';
+  h += '<text x="' + (padL + 79) + '" y="' + (H - 8) + '" style="font-size:8px;fill:var(--text3);">NOI</text>';
+  h += '<rect x="' + (padL + 110) + '" y="' + (H - 14) + '" width="10" height="6" rx="1" fill="#8b5cf6" opacity="0.5" stroke="#8b5cf6" stroke-width="0.5" stroke-dasharray="3,1"/>';
+  h += '<text x="' + (padL + 124) + '" y="' + (H - 8) + '" style="font-size:8px;fill:var(--text3);">Projected</text>';
+
+  h += '</svg></div>';
+  return h;
+}
+
+
+// SECTION: DEBT & COVERAGE — DSCR Trend, Balance Sheet, Debt Schedule
+// ══════════════════════════════════════════════════════════════════════════
+function _piRenderDebtCoverage(pf, prof, a) {
+  var ds = a.debt_schedule || {};
+  var dscr = a.dscr_trend || [];
+  var ps = a.portfolio_summary || {};
+  var owned = pf.owned || {};
+  var lr = (_piData && _piData.loan_recommendation) || {};
+  var est = pf.established || {};
+
+  var h = '<div class="card" style="margin-bottom:14px;">';
+  h += '<div class="card-header"><h3 style="font-size:0.9rem;">' + _ico('shield', 15, '#3b82f6') + ' Debt & Coverage</h3>';
+  h += '<span style="font-size:0.68rem;color:var(--text3);">Why it matters: proves debt is safely covered by cash flow</span>';
+  h += '</div>';
+
+  // Context note for ramping properties
+  var growth = (_piData && _piData.growth) || {};
+  if (growth.ramping_count > 0 && est.dscr && est.dscr >= 1.0) {
+    h += '<div style="padding:8px 12px;background:rgba(59,130,246,0.06);border:1px solid rgba(59,130,246,0.15);border-radius:8px;margin-bottom:10px;font-size:0.78rem;color:var(--text2);">';
+    h += _ico('alertCircle', 13, '#3b82f6') + ' ' + growth.ramping_count + ' new unit' + (growth.ramping_count > 1 ? 's' : '') + ' onboarding. <strong>Established DSCR (' + est.count + ' units): ' + est.dscr.toFixed(2) + 'x</strong>';
+    if (a.projected_stabilized_dscr) h += ' &mdash; <strong style="color:#8b5cf6;">Projected after stabilization: ' + a.projected_stabilized_dscr.toFixed(2) + 'x</strong>';
+    h += '</div>';
+  }
+
+  // KPI row
+  h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:14px;">';
+  var dCards = [];
+  dCards.push({ label: 'Current DSCR', value: ps.current_dscr ? ps.current_dscr.toFixed(2) + 'x' : 'N/A', icon: 'shield', color: (ps.current_dscr || 0) >= 1.25 ? '#10b981' : '#f59e0b', sub: 'Banks want >= 1.25x' });
+  if (est.dscr) dCards.push({ label: 'Established DSCR', value: est.dscr.toFixed(2) + 'x', icon: 'shield', color: est.dscr >= 1.25 ? '#10b981' : '#f59e0b', sub: est.count + ' units, 6+ mo history' });
+  dCards.push({ label: 'Annual Debt Service', value: '$' + _piK(ps.annual_debt_service), icon: 'receipt', color: '#ef4444', sub: '$' + (ds.total_monthly_payment || 0).toLocaleString() + '/mo' });
+  if (ds.weighted_avg_rate) dCards.push({ label: 'Weighted Avg Rate', value: ds.weighted_avg_rate + '%', icon: 'target', color: 'var(--accent)', sub: 'Across all loans' });
+  if (lr.max_additional_monthly > 0) dCards.push({ label: "Add'l Debt Capacity", value: '$' + lr.max_additional_monthly.toLocaleString() + '/mo', icon: 'plus', color: '#10b981', sub: 'Maintaining 1.25x' });
+  dCards.forEach(function(c) { window._piCardData.push(c); h += _piCardHtml(c, window._piCardData.length - 1); });
+  h += '</div>';
+
+  // DSCR Trend chart (SVG) — dual lines: total portfolio + established only
+  if (dscr.length >= 3) {
+    h += _piSvgDscrTrend(dscr, a.dscr_growth_events || [], a.projected_stabilized_dscr);
+  }
+
+  // Balance sheet summary
+  if (owned.count > 0) {
+    var totalLiab = ds.total_balance || 0;
+    var equity = (owned.value || 0) - totalLiab;
+    h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin:14px 0;">';
+    ([
+      { label: 'Total Assets', value: '$' + _piK(owned.value), color: 'var(--accent)' },
+      { label: 'Total Debt', value: '$' + _piK(totalLiab), color: '#ef4444' },
+      { label: 'Equity', value: '$' + _piK(equity), color: '#10b981' },
+      { label: 'LTV', value: owned.value > 0 ? Math.round((totalLiab / owned.value) * 100) + '%' : 'N/A', color: (owned.value > 0 && (totalLiab / owned.value) <= 0.75) ? '#10b981' : '#f59e0b' }
+    ]).forEach(function(c) {
+      h += '<div style="background:var(--surface2);border-radius:8px;padding:10px 12px;border:1px solid var(--border);">';
+      h += '<div style="font-size:0.65rem;color:var(--text3);text-transform:uppercase;">' + c.label + '</div>';
+      h += '<div style="font-size:1rem;font-weight:700;font-family:DM Mono,monospace;color:' + c.color + ';">' + c.value + '</div></div>';
+    });
+    h += '</div>';
+  }
+
+  // Debt schedule table
+  if (ds.loans && ds.loans.length > 0) {
+    h += '<details style="margin-top:8px;"><summary style="cursor:pointer;font-size:0.78rem;font-weight:600;color:var(--text2);padding:4px 0;">' + _ico('receipt', 12) + ' Debt Schedule (' + ds.loans.length + ' loans)</summary>';
+    h += '<div style="overflow-x:auto;margin-top:6px;"><table class="comp-table" style="font-size:0.75rem;white-space:nowrap;">';
+    h += '<thead><tr><th>Lender</th><th>Type</th><th>Balance</th><th>Rate</th><th>Payment</th><th>Maturity</th></tr></thead><tbody>';
+    ds.loans.forEach(function(l) {
+      h += '<tr><td>' + esc(l.lender || '—') + '</td>';
+      h += '<td>' + esc(l.type || '—') + '</td>';
+      h += '<td style="font-family:DM Mono,monospace;">$' + _piK(l.balance) + '</td>';
+      h += '<td>' + (l.rate ? l.rate + '%' : '—') + '</td>';
+      h += '<td style="font-family:DM Mono,monospace;">$' + (l.payment || 0).toLocaleString() + '/mo</td>';
+      h += '<td>' + (l.maturity ? l.maturity.slice(0, 7) : '—') + '</td></tr>';
+    });
+    h += '</tbody></table></div></details>';
+  }
+
+  h += '</div>';
+  return h;
+}
+
+// DSCR Trend SVG line chart
+function _piSvgDscrTrend(data, growthEvents, projDscr) {
+  // Filter out months with null DSCR (no debt in that period)
+  var filtered = data.filter(function(d) { return d.dscr !== null && d.dscr !== undefined; });
+  if (filtered.length < 3) return '';
+  var hasEstLine = filtered.some(function(d) { return d.dscr_established !== null && d.dscr_established !== undefined && d.dscr_established !== d.dscr; });
+
+  var chartId = 'piDscr_' + Date.now();
+  var W = 680, H = 240, padL = 48, padR = 14, padT = 24, padB = 40;
+  var cW = W - padL - padR, cH = H - padT - padB;
+
+  var allVals = filtered.map(function(d) { return d.dscr; });
+  if (hasEstLine) filtered.forEach(function(d) { if (d.dscr_established != null) allVals.push(d.dscr_established); });
+  if (projDscr != null) allVals.push(projDscr);
+  var maxV = Math.max.apply(null, allVals.concat([2.0]));
+  var minV = Math.min.apply(null, allVals.concat([0]));
+  if (maxV === minV) maxV = minV + 1;
+
+  var toX = function(i) { return padL + (i / Math.max(1, filtered.length - 1)) * cW; };
+  var toY = function(v) { return padT + cH - ((v - minV) / (maxV - minV)) * cH; };
+  var colW = cW / Math.max(1, filtered.length);
+
+  var h = '<div style="margin-bottom:10px;">';
+  h += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;">';
+  h += '<span style="font-size:0.8rem;font-weight:600;color:var(--text);">' + _ico('activity', 14, '#3b82f6') + ' DSCR Trend</span>';
+  h += '<span style="font-size:0.7rem;color:var(--text3);">' + filtered.length + ' months</span>';
+  // Legend
+  h += '<span style="margin-left:auto;display:flex;gap:10px;font-size:0.68rem;color:var(--text3);">';
+  h += '<span><span style="display:inline-block;width:14px;height:3px;background:#3b82f6;border-radius:1px;vertical-align:middle;margin-right:3px;"></span>Total Portfolio</span>';
+  if (hasEstLine) h += '<span><span style="display:inline-block;width:14px;height:3px;background:#10b981;border-radius:1px;vertical-align:middle;margin-right:3px;border-top:2px dashed #10b981;background:none;"></span>Established (6+ mo)</span>';
+  h += '<span style="font-size:0.6rem;">Hover for details</span>';
+  h += '</span>';
+  h += '</div>';
+  h += '<div id="' + chartId + '_wrap" style="position:relative;overflow:visible;">';
+  h += '<svg width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '" style="display:block;max-width:100%;">';
+
+  // Zone fills: green above 1.25x, yellow 1.0-1.25, red below 1.0
+  if (1.25 <= maxV) {
+    var y125 = toY(Math.min(1.25, maxV));
+    h += '<rect x="' + padL + '" y="' + padT + '" width="' + cW + '" height="' + Math.max(0, y125 - padT) + '" fill="#10b981" opacity="0.04" rx="2"/>';
+  }
+  if (1.0 >= minV && 1.25 <= maxV) {
+    var y100 = toY(Math.max(1.0, minV));
+    var y125b = toY(Math.min(1.25, maxV));
+    h += '<rect x="' + padL + '" y="' + y125b + '" width="' + cW + '" height="' + Math.max(0, y100 - y125b) + '" fill="#f59e0b" opacity="0.04" rx="2"/>';
+  }
+  if (1.0 >= minV) {
+    var y100b = toY(Math.max(1.0, minV));
+    h += '<rect x="' + padL + '" y="' + y100b + '" width="' + cW + '" height="' + Math.max(0, padT + cH - y100b) + '" fill="#ef4444" opacity="0.04" rx="2"/>';
+  }
+
+  // Gridlines
+  [0, 0.5, 1.0, 1.25, 1.5, 2.0].forEach(function(v) {
+    if (v < minV || v > maxV) return;
+    var y = toY(v);
+    var isThreshold = v === 1.25;
+    var dashStyle = isThreshold ? 'stroke:#ef4444;stroke-dasharray:6,3;stroke-width:1.5;opacity:0.5' : 'stroke:var(--border);stroke-dasharray:3,4;opacity:0.5';
+    h += '<line x1="' + padL + '" y1="' + y + '" x2="' + (W - padR) + '" y2="' + y + '" style="' + dashStyle + '"/>';
+    h += '<text x="' + (padL - 6) + '" y="' + (y + 4) + '" text-anchor="end" style="font-size:10px;fill:' + (isThreshold ? '#ef4444' : 'var(--text3)') + ';font-family:DM Mono,monospace;font-weight:' + (isThreshold ? '600' : '400') + ';">' + v.toFixed(v === 0 ? 0 : 2) + 'x</text>';
+  });
+
+  // 1.25x label
+  if (1.25 >= minV && 1.25 <= maxV) {
+    h += '<text x="' + (W - padR - 2) + '" y="' + (toY(1.25) - 5) + '" text-anchor="end" style="font-size:9px;fill:#ef4444;font-weight:600;">Min threshold</text>';
+  }
+
+  // ── Growth event markers (vertical lines where new properties started) ──
+  if (growthEvents && growthEvents.length > 0) {
+    var monthToIdx = {};
+    filtered.forEach(function(d, i) { monthToIdx[d.month] = i; });
+    growthEvents.forEach(function(ev) {
+      var idx = monthToIdx[ev.month];
+      if (idx === undefined) return;
+      var ex = toX(idx);
+      h += '<line x1="' + ex + '" y1="' + padT + '" x2="' + ex + '" y2="' + (padT + cH) + '" stroke="#8b5cf6" stroke-width="1" stroke-dasharray="4,3" opacity="0.5"/>';
+      h += '<text x="' + ex + '" y="' + (padT - 4) + '" text-anchor="middle" style="font-size:8px;fill:#8b5cf6;">+unit</text>';
+    });
+  }
+
+  // ── Established DSCR line (green dashed) — drawn first so total line renders on top ──
+  if (hasEstLine) {
+    var estPts = [];
+    filtered.forEach(function(d, i) {
+      if (d.dscr_established != null) estPts.push({ x: toX(i), y: toY(d.dscr_established), v: d.dscr_established });
+    });
+    if (estPts.length >= 2) {
+      var estArea = 'M' + estPts[0].x + ',' + estPts[0].y;
+      estPts.forEach(function(pt, i) { if (i > 0) estArea += ' L' + pt.x + ',' + pt.y; });
+      estArea += ' L' + estPts[estPts.length - 1].x + ',' + (padT + cH) + ' L' + estPts[0].x + ',' + (padT + cH) + ' Z';
+      h += '<path d="' + estArea + '" fill="rgba(16,185,129,0.06)"/>';
+      var estLine = estPts.map(function(pt) { return pt.x + ',' + pt.y; });
+      h += '<polyline points="' + estLine.join(' ') + '" fill="none" stroke="#10b981" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="8,4"/>';
+      estPts.forEach(function(pt) {
+        h += '<circle cx="' + pt.x + '" cy="' + pt.y + '" r="2.5" fill="#10b981" stroke="var(--surface)" stroke-width="1"/>';
+      });
+    }
+  }
+
+  // ── Total portfolio DSCR line (blue solid) ──
+  var areaPath = 'M' + toX(0) + ',' + toY(filtered[0].dscr);
+  filtered.forEach(function(d, i) { if (i > 0) areaPath += ' L' + toX(i) + ',' + toY(d.dscr); });
+  areaPath += ' L' + toX(filtered.length - 1) + ',' + (padT + cH) + ' L' + toX(0) + ',' + (padT + cH) + ' Z';
+  h += '<path d="' + areaPath + '" fill="rgba(59,130,246,0.08)"/>';
+  var points = filtered.map(function(d, i) { return toX(i) + ',' + toY(d.dscr); });
+  h += '<polyline points="' + points.join(' ') + '" fill="none" stroke="#3b82f6" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>';
+  filtered.forEach(function(d, i) {
+    var x = toX(i); var y = toY(d.dscr);
+    var dotColor = d.dscr >= 1.25 ? '#10b981' : d.dscr >= 1.0 ? '#f59e0b' : '#ef4444';
+    var isLast = i === filtered.length - 1;
+    h += '<circle cx="' + x + '" cy="' + y + '" r="' + (isLast ? 5 : 3.5) + '" fill="' + dotColor + '" stroke="var(--surface)" stroke-width="' + (isLast ? 2 : 1.5) + '"/>';
+  });
+
+  // ── Projected stabilized DSCR marker ──
+  if (projDscr != null && projDscr >= minV && projDscr <= maxV) {
+    var projY = toY(projDscr);
+    h += '<line x1="' + (W - padR - 50) + '" y1="' + projY + '" x2="' + (W - padR) + '" y2="' + projY + '" stroke="#8b5cf6" stroke-width="2" stroke-dasharray="3,2"/>';
+    h += '<text x="' + (W - padR - 52) + '" y="' + (projY + 3) + '" text-anchor="end" style="font-size:8px;fill:#8b5cf6;font-weight:600;">Projected ' + projDscr.toFixed(2) + 'x</text>';
+  }
+
+  // Month labels
+  var labelSkip = filtered.length <= 8 ? 1 : filtered.length <= 14 ? 2 : 3;
+  filtered.forEach(function(d, i) {
+    if (i === 0 || i === filtered.length - 1 || i % labelSkip === 0) {
+      h += '<text x="' + toX(i) + '" y="' + (H - 8) + '" text-anchor="middle" style="font-size:10px;fill:var(--text3);">' + _piMonthLabel(d.month) + '</text>';
+    }
+  });
+
+  // Vertical guide line (hidden, shown on hover)
+  h += '<line id="' + chartId + '_guide" x1="0" y1="' + padT + '" x2="0" y2="' + (padT + cH) + '" stroke="var(--text3)" stroke-width="1" stroke-dasharray="3,2" opacity="0"/>';
+
+  // Invisible hover zones
+  filtered.forEach(function(d, i) {
+    var zx = toX(i) - colW / 2;
+    h += '<rect x="' + zx + '" y="' + padT + '" width="' + colW + '" height="' + cH + '" fill="transparent" data-i="' + i + '" style="cursor:crosshair;"/>';
+  });
+
+  h += '</svg>';
+  // Tooltip div (fixed positioning to avoid clipping)
+  h += '<div id="' + chartId + '_tip" style="display:none;position:fixed;pointer-events:none;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-size:0.78rem;box-shadow:0 4px 16px rgba(0,0,0,0.25);z-index:9999;min-width:200px;line-height:1.7;"></div>';
+  h += '</div></div>';
+
+  // Store data for tooltip access
+  window._piDscrData = filtered;
+  window._piDscrChartId = chartId;
+
+  // Wire up hover events after render
+  setTimeout(function() {
+    var wrap = document.getElementById(window._piDscrChartId + '_wrap');
+    if (!wrap) return;
+    var svg = wrap.querySelector('svg');
+    var tip = document.getElementById(window._piDscrChartId + '_tip');
+    var guide = document.getElementById(window._piDscrChartId + '_guide');
+    if (!svg || !tip) return;
+    svg.querySelectorAll('rect[data-i]').forEach(function(zone) {
+      zone.addEventListener('mouseenter', function() {
+        var idx = parseInt(zone.getAttribute('data-i'));
+        var d = window._piDscrData[idx];
+        if (!d) return;
+        var cx = parseFloat(zone.getAttribute('x')) + parseFloat(zone.getAttribute('width')) / 2;
+        if (guide) { guide.setAttribute('x1', cx); guide.setAttribute('x2', cx); guide.setAttribute('opacity', '0.4'); }
+        var statusColor = d.dscr >= 1.25 ? '#10b981' : d.dscr >= 1.0 ? '#f59e0b' : '#ef4444';
+        var statusLabel = d.dscr >= 1.25 ? 'Healthy' : d.dscr >= 1.0 ? 'Tight' : 'Below threshold';
+        var prev = idx > 0 ? window._piDscrData[idx - 1] : null;
+        var delta = prev ? (d.dscr - prev.dscr) : null;
+        var t = '<div style="font-weight:700;font-size:0.85rem;color:var(--text);margin-bottom:4px;">' + _piMonthLabel(d.month) + '</div>';
+        // Total portfolio DSCR
+        t += '<div style="margin-bottom:6px;"><div style="font-size:0.65rem;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;">Total Portfolio</div>';
+        t += '<div style="color:' + statusColor + ';font-weight:700;font-family:DM Mono,monospace;font-size:1rem;">' + d.dscr.toFixed(2) + 'x <span style="font-size:0.7rem;font-weight:400;">' + statusLabel + '</span></div></div>';
+        // Established DSCR (if different)
+        if (d.dscr_established != null && d.dscr_established !== d.dscr) {
+          var estColor = d.dscr_established >= 1.25 ? '#10b981' : d.dscr_established >= 1.0 ? '#f59e0b' : '#ef4444';
+          t += '<div style="margin-bottom:6px;"><div style="font-size:0.65rem;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;">Established Only</div>';
+          t += '<div style="color:' + estColor + ';font-weight:700;font-family:DM Mono,monospace;font-size:0.95rem;">' + d.dscr_established.toFixed(2) + 'x</div></div>';
+        }
+        t += '<div style="display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:0.75rem;">';
+        t += '<span style="color:var(--text3);">Revenue</span><span style="font-family:DM Mono,monospace;">$' + (d.revenue || 0).toLocaleString() + '</span>';
+        if (d.expenses) t += '<span style="color:var(--text3);">Expenses</span><span style="font-family:DM Mono,monospace;">$' + (d.expenses || 0).toLocaleString() + '</span>';
+        t += '<span style="color:var(--text3);">NOI</span><span style="font-family:DM Mono,monospace;color:' + ((d.noi || 0) >= 0 ? '#10b981' : '#ef4444') + ';">$' + (d.noi || 0).toLocaleString() + '</span>';
+        t += '<span style="color:var(--text3);">Debt Svc</span><span style="font-family:DM Mono,monospace;">$' + (d.debt_service || 0).toLocaleString() + '/mo</span>';
+        t += '</div>';
+        if (delta !== null) {
+          var arrow = delta >= 0 ? '\u2191' : '\u2193';
+          var dColor = delta >= 0 ? '#10b981' : '#ef4444';
+          t += '<div style="margin-top:4px;font-size:0.72rem;color:' + dColor + ';">' + arrow + ' ' + (delta >= 0 ? '+' : '') + delta.toFixed(2) + 'x from prior month</div>';
+        }
+        tip.innerHTML = t;
+        tip.style.display = '';
+      });
+      zone.addEventListener('mousemove', function(e) {
+        var x = e.clientX + 14;
+        var y = e.clientY - 10;
+        if (x + 220 > window.innerWidth) x = e.clientX - 240;
+        if (y + 250 > window.innerHeight) y = e.clientY - 250;
+        if (y < 0) y = 10;
+        tip.style.left = x + 'px';
+        tip.style.top = y + 'px';
+      });
+      zone.addEventListener('mouseleave', function() {
+        tip.style.display = 'none';
+        if (guide) guide.setAttribute('opacity', '0');
+      });
+    });
+  }, 150);
+
+  return h;
+}
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// SECTION: GROWTH STORY — Acquisition timeline, YoY
+// ══════════════════════════════════════════════════════════════════════════
+function _piRenderGrowthStory(a, pf) {
+  var timeline = a.growth_timeline || [];
+  if (timeline.length === 0) return '';
+
+  var h = '<div class="card" style="margin-bottom:14px;">';
+  h += '<div class="card-header"><h3 style="font-size:0.9rem;">' + _ico('trendUp', 15, '#10b981') + ' Growth Story</h3>';
+  h += '<span style="font-size:0.68rem;color:var(--text3);">Why it matters: demonstrates trajectory and scaling ability</span>';
+  h += '</div>';
+
+  // Growth KPIs
+  var growth = (_piData && _piData.growth) || {};
+  var stab = (_piData && _piData.stabilized) || {};
+  var yoyVal = pf.yoy_revenue_growth;
+  var timeInBiz = '';
+  if (growth.earliest_acquisition) {
+    var earlyD = new Date(growth.earliest_acquisition);
+    var bizMonths = Math.max(0, Math.round((Date.now() - earlyD.getTime()) / (30.44 * 86400000)));
+    timeInBiz = bizMonths < 12 ? bizMonths + ' months' : (Math.round(bizMonths / 12 * 10) / 10) + ' years';
+  }
+
+  h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:14px;">';
+  ([
+    { label: 'Total Units', value: timeline.length, color: 'var(--accent)' },
+    timeInBiz ? { label: 'In Business', value: timeInBiz, color: '#3b82f6' } : null,
+    { label: 'Established', value: growth.established_count || 0, color: '#10b981' },
+    { label: 'Ramping', value: growth.ramping_count || 0, color: '#f59e0b' },
+    yoyVal !== null ? { label: 'YoY Growth', value: (yoyVal >= 0 ? '+' : '') + yoyVal + '%', color: yoyVal >= 0 ? '#10b981' : 'var(--danger)' } : null,
+  ]).filter(Boolean).forEach(function(c) {
+    h += '<div style="background:var(--surface2);border-radius:8px;padding:10px 12px;border:1px solid var(--border);">';
+    h += '<div style="font-size:0.65rem;color:var(--text3);text-transform:uppercase;">' + c.label + '</div>';
+    h += '<div style="font-size:1rem;font-weight:700;font-family:DM Mono,monospace;color:' + c.color + ';">' + c.value + '</div></div>';
+  });
+  h += '</div>';
+
+  // Revenue upside callout
+  if (growth.ramping_count > 0 && stab.revenue_gap > 0) {
+    h += '<div style="padding:8px 12px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15);border-radius:8px;margin-bottom:10px;font-size:0.78rem;">';
+    h += _ico('alertCircle', 14, '#f59e0b') + ' <strong>' + growth.ramping_count + ' unit' + (growth.ramping_count > 1 ? 's' : '') + ' ramping</strong> — projected uplift: <strong style="color:#10b981;">+$' + _piK(stab.revenue_gap) + '/yr</strong>';
+    h += '</div>';
+  }
+
+  // Acquisition timeline (visual)
+  h += _piSvgGrowthTimeline(timeline);
+
+  h += '</div>';
+  return h;
+}
+
+function _piSvgGrowthTimeline(timeline) {
+  if (!timeline || timeline.length === 0) return '';
+  var h = '<div style="font-size:0.75rem;font-weight:600;color:var(--text2);margin-bottom:6px;">' + _ico('calendar', 13) + ' Acquisition Timeline</div>';
+  h += '<div style="overflow-x:auto;padding-bottom:8px;">';
+
+  // Simple horizontal timeline
+  h += '<div style="display:flex;gap:0;align-items:flex-start;min-width:' + Math.max(400, timeline.length * 100) + 'px;padding:10px 0;">';
+
+  timeline.forEach(function(t, i) {
+    var isRental = t.type === 'rental';
+    var dotColor = isRental ? '#a78bfa' : '#10b981';
+    var typeLabel = isRental ? 'Rental' : 'Purchased';
+
+    h += '<div style="display:flex;flex-direction:column;align-items:center;flex:1;min-width:80px;position:relative;">';
+    // Connector line
+    if (i < timeline.length - 1) {
+      h += '<div style="position:absolute;top:16px;left:50%;right:-50%;height:2px;background:var(--border);z-index:0;"></div>';
+    }
+    // Dot
+    h += '<div style="width:14px;height:14px;border-radius:50%;background:' + dotColor + ';border:2px solid var(--surface);z-index:1;box-shadow:0 0 0 2px ' + dotColor + '40;"></div>';
+    // Label
+    h += '<div style="text-align:center;margin-top:6px;">';
+    h += '<div style="font-size:0.7rem;font-weight:600;color:var(--text);line-height:1.3;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + esc(t.label) + '">' + esc(t.label.length > 18 ? t.label.slice(0, 16) + '\u2026' : t.label) + '</div>';
+    h += '<div style="font-size:0.62rem;color:var(--text3);">' + (t.date || '').slice(0, 7) + '</div>';
+    h += '<div style="font-size:0.58rem;color:' + dotColor + ';font-weight:600;">' + typeLabel + '</div>';
+    h += '</div></div>';
+  });
+
+  h += '</div></div>';
+  return h;
+}
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// SECTION: PROPERTY RAMP CURVES — Overlaid SVG line chart
+// ══════════════════════════════════════════════════════════════════════════
+function _piRenderRampCurves(ramps) {
+  var h = '<div class="card" style="margin-bottom:14px;">';
+  h += '<div class="card-header"><h3 style="font-size:0.9rem;">' + _ico('activity', 15, '#3b82f6') + ' Property Performance Ramps</h3>';
+  h += '<span style="font-size:0.68rem;color:var(--text3);">Why it matters: proves every property follows a predictable ramp to profitability</span>';
+  h += '</div>';
+
+  // Summary cards
+  var withBE = ramps.filter(function(r) { return r.breakeven_month; });
+  var avgBE = withBE.length > 0 ? Math.round(withBE.reduce(function(s, r) { return s + r.breakeven_month; }, 0) / withBE.length * 10) / 10 : null;
+  var peakRev = Math.max.apply(null, ramps.map(function(r) { return r.peak_monthly_revenue || 0; }));
+
+  h += '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;font-size:0.75rem;">';
+  h += '<span style="background:var(--surface2);padding:4px 10px;border-radius:6px;border:1px solid var(--border);">' + ramps.length + ' properties tracked</span>';
+  if (avgBE) h += '<span style="background:rgba(16,185,129,0.08);padding:4px 10px;border-radius:6px;border:1px solid rgba(16,185,129,0.2);color:#10b981;font-weight:600;">Avg breakeven: ' + avgBE + ' months</span>';
+  h += '<span style="background:var(--surface2);padding:4px 10px;border-radius:6px;border:1px solid var(--border);">Peak: $' + peakRev.toLocaleString() + '/mo</span>';
+  h += '</div>';
+
+  // Overlaid line chart (Month 0 aligned)
+  h += _piSvgRampChart(ramps);
+
+  // Per-property detail table
+  h += '<details style="margin-top:10px;"><summary style="cursor:pointer;font-size:0.78rem;font-weight:600;color:var(--text2);padding:4px 0;">' + _ico('home', 12) + ' Property Detail (' + ramps.length + ')</summary>';
+  h += '<div style="overflow-x:auto;margin-top:6px;"><table class="comp-table" style="font-size:0.75rem;white-space:nowrap;">';
+  h += '<thead><tr><th>Property</th><th>Start</th><th>Months</th><th>Mo. Cost</th><th>Avg Rev</th><th>Stabilized Rev</th><th>Breakeven</th><th>NOI</th></tr></thead><tbody>';
+  ramps.forEach(function(r) {
+    var noiColor = (r.monthly_noi || 0) >= 0 ? '#10b981' : 'var(--danger)';
+    h += '<tr><td style="font-weight:600;max-width:180px;overflow:hidden;text-overflow:ellipsis;" title="' + esc(r.label) + '">' + esc(r.label) + '</td>';
+    h += '<td>' + (r.start_date || '').slice(0, 7) + '</td>';
+    h += '<td>' + r.months_active + '</td>';
+    h += '<td style="font-family:DM Mono,monospace;color:#ef4444;">$' + (r.monthly_cost || 0).toLocaleString() + '</td>';
+    h += '<td style="font-family:DM Mono,monospace;">$' + (r.avg_monthly_revenue || 0).toLocaleString() + '</td>';
+    h += '<td style="font-family:DM Mono,monospace;color:#3b82f6;">$' + (r.stabilized_monthly_revenue || 0).toLocaleString() + '</td>';
+    h += '<td>' + (r.breakeven_month ? 'Mo ' + r.breakeven_month : '—') + '</td>';
+    h += '<td style="font-family:DM Mono,monospace;font-weight:600;color:' + noiColor + ';">' + (r.monthly_noi >= 0 ? '$' : '-$') + Math.abs(r.monthly_noi || 0).toLocaleString() + '</td></tr>';
+  });
+  h += '</tbody></table></div></details>';
+
+  h += '</div>';
+  return h;
+}
+
+function _piSvgRampChart(ramps) {
+  var chartId = 'piRamp_' + Date.now();
+  var W = 680, H = 240, padL = 54, padR = 14, padT = 20, padB = 42;
+  var cW = W - padL - padR, cH = H - padT - padB;
+
+  // Find max months and max revenue across all properties
+  var maxMonths = 0, maxRev = 0;
+  ramps.forEach(function(r) {
+    if (r.data && r.data.length > maxMonths) maxMonths = r.data.length;
+    (r.data || []).forEach(function(d) { if (d.revenue > maxRev) maxRev = d.revenue; });
+  });
+  if (maxMonths < 2) maxMonths = 2;
+  if (maxRev <= 0) maxRev = 1000;
+  // Also include max cost in Y scale so cost line is visible
+  var maxCost = Math.max.apply(null, ramps.map(function(r) { return r.monthly_cost || 0; }));
+  if (maxCost > maxRev) maxRev = maxCost * 1.1;
+
+  var toX = function(m) { return padL + (m / maxMonths) * cW; };
+  var toY = function(v) { return padT + cH - (v / maxRev) * cH; };
+  var lineW = ramps.length <= 5 ? 2.5 : ramps.length <= 10 ? 2 : 1.5;
+
+  // Color palette for properties
+  var colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16', '#f97316', '#6366f1'];
+
+  var h = '<div id="' + chartId + '_wrap" style="position:relative;overflow:visible;">';
+  h += '<svg id="' + chartId + '_svg" width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '" style="display:block;max-width:100%;">';
+
+  // Y-axis gridlines
+  var ySteps = 5;
+  for (var yi = 0; yi <= ySteps; yi++) {
+    var yVal = (maxRev / ySteps) * yi;
+    var y = toY(yVal);
+    h += '<line x1="' + padL + '" y1="' + y + '" x2="' + (W - padR) + '" y2="' + y + '" stroke="var(--border)" stroke-dasharray="3,4" opacity="0.5"/>';
+    h += '<text x="' + (padL - 6) + '" y="' + (y + 4) + '" text-anchor="end" style="font-size:10px;fill:var(--text3);font-family:DM Mono,monospace;">$' + _piK(yVal) + '</text>';
+  }
+
+  // X-axis month labels
+  var xStep = Math.max(1, Math.round(maxMonths / 10));
+  for (var xi = 0; xi <= maxMonths; xi += xStep) {
+    h += '<text x="' + toX(xi) + '" y="' + (H - 10) + '" text-anchor="middle" style="font-size:10px;fill:var(--text3);">Mo ' + xi + '</text>';
+  }
+
+  // Average monthly cost line (dashed, shows breakeven threshold)
+  var avgCost = ramps.reduce(function(s, r) { return s + (r.monthly_cost || 0); }, 0) / Math.max(1, ramps.length);
+  if (avgCost > 0 && avgCost <= maxRev) {
+    var costY = toY(avgCost);
+    h += '<line x1="' + padL + '" y1="' + costY + '" x2="' + (W - padR) + '" y2="' + costY + '" stroke="#ef4444" stroke-width="1.5" stroke-dasharray="8,4" opacity="0.5"/>';
+    h += '<text x="' + (W - padR - 2) + '" y="' + (costY - 5) + '" text-anchor="end" style="font-size:9px;fill:#ef4444;font-weight:600;">Avg cost $' + _piK(avgCost) + '/mo</text>';
+  }
+
+  // Draw each property's line with class for hover highlight
+  ramps.forEach(function(r, idx) {
+    if (!r.data || r.data.length < 2) return;
+    var c = colors[idx % colors.length];
+    var points = r.data.map(function(d) { return toX(d.month_num - 1) + ',' + toY(d.revenue); });
+    h += '<polyline data-ridx="' + idx + '" points="' + points.join(' ') + '" fill="none" stroke="' + c + '" stroke-width="' + lineW + '" stroke-linejoin="round" stroke-linecap="round" opacity="0.8" style="transition:opacity 0.15s;"/>';
+
+    // End dot
+    var lastD = r.data[r.data.length - 1];
+    h += '<circle data-ridx="' + idx + '" cx="' + toX(lastD.month_num - 1) + '" cy="' + toY(lastD.revenue) + '" r="4" fill="' + c + '" stroke="var(--surface)" stroke-width="1.5" style="transition:opacity 0.15s;"/>';
+
+    // Breakeven marker
+    if (r.breakeven_month && r.breakeven_month <= r.data.length) {
+      var beData = r.data[r.breakeven_month - 1];
+      if (beData) {
+        h += '<circle data-ridx="' + idx + '" cx="' + toX(beData.month_num - 1) + '" cy="' + toY(beData.revenue) + '" r="6" fill="none" stroke="#10b981" stroke-width="1.5" stroke-dasharray="2,2" style="transition:opacity 0.15s;"/>';
+      }
+    }
+  });
+
+  // Invisible hover zones per property line (end dots serve as hover targets)
+  ramps.forEach(function(r, idx) {
+    if (!r.data || r.data.length < 2) return;
+    // Make each data point a hover target
+    r.data.forEach(function(d) {
+      h += '<circle cx="' + toX(d.month_num - 1) + '" cy="' + toY(d.revenue) + '" r="8" fill="transparent" data-ridx="' + idx + '" data-mi="' + (d.month_num - 1) + '" style="cursor:crosshair;"/>';
+    });
+  });
+
+  h += '</svg>';
+
+  // Tooltip div
+  h += '<div id="' + chartId + '_tip" style="display:none;position:fixed;pointer-events:none;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-size:0.78rem;box-shadow:0 4px 16px rgba(0,0,0,0.25);z-index:9999;min-width:200px;line-height:1.7;"></div>';
+  h += '</div>';
+
+  // Legend
+  h += '<div style="display:flex;gap:10px;flex-wrap:wrap;font-size:0.72rem;margin-top:8px;">';
+  ramps.forEach(function(r, idx) {
+    var c = colors[idx % colors.length];
+    h += '<span data-rleg="' + idx + '" style="display:flex;align-items:center;gap:4px;cursor:pointer;padding:2px 4px;border-radius:4px;transition:background 0.15s;" onmouseenter="this.style.background=\'var(--surface2)\'" onmouseleave="this.style.background=\'transparent\'">';
+    h += '<span style="width:12px;height:3px;background:' + c + ';border-radius:1px;"></span>';
+    h += esc(r.label.length > 22 ? r.label.slice(0, 20) + '\u2026' : r.label) + '</span>';
+  });
+  h += '<span style="display:flex;align-items:center;gap:4px;color:var(--text3);"><span style="width:8px;height:8px;border-radius:50%;border:1.5px dashed #10b981;"></span> Breakeven</span>';
+  h += '<span style="display:flex;align-items:center;gap:4px;color:var(--text3);"><span style="width:12px;border-top:1.5px dashed #ef4444;"></span> Avg cost</span>';
+  h += '</div>';
+
+  // Store data + wire tooltips
+  window._piRampData = ramps;
+  window._piRampColors = colors;
+  window._piRampChartId = chartId;
+
+  setTimeout(function() {
+    var wrap = document.getElementById(window._piRampChartId + '_wrap');
+    if (!wrap) return;
+    var svg = wrap.querySelector('svg');
+    var tip = document.getElementById(window._piRampChartId + '_tip');
+    if (!svg || !tip) return;
+
+    var highlightProp = function(idx) {
+      svg.querySelectorAll('[data-ridx]').forEach(function(el) {
+        var elIdx = parseInt(el.getAttribute('data-ridx'));
+        if (el.tagName === 'circle' && el.getAttribute('fill') === 'transparent') return;
+        el.style.opacity = (elIdx === idx) ? '1' : '0.15';
+        if (el.tagName === 'polyline' && elIdx === idx) el.setAttribute('stroke-width', '3.5');
+      });
+    };
+    var resetHighlight = function() {
+      svg.querySelectorAll('[data-ridx]').forEach(function(el) {
+        if (el.tagName === 'circle' && el.getAttribute('fill') === 'transparent') return;
+        el.style.opacity = '0.8';
+        if (el.tagName === 'polyline') el.setAttribute('stroke-width', '' + lineW);
+      });
+    };
+
+    svg.querySelectorAll('circle[data-mi]').forEach(function(zone) {
+      zone.addEventListener('mouseenter', function() {
+        var idx = parseInt(zone.getAttribute('data-ridx'));
+        var mi = parseInt(zone.getAttribute('data-mi'));
+        var r = window._piRampData[idx];
+        if (!r || !r.data) return;
+        var d = r.data.find(function(x) { return x.month_num - 1 === mi; });
+        if (!d) return;
+        highlightProp(idx);
+        var c = window._piRampColors[idx % window._piRampColors.length];
+        var noi = d.revenue - (r.monthly_cost || 0);
+        var t = '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">';
+        t += '<span style="width:10px;height:10px;border-radius:50%;background:' + c + ';"></span>';
+        t += '<span style="font-weight:700;font-size:0.85rem;color:var(--text);">' + esc(r.label) + '</span></div>';
+        t += '<div style="font-size:0.72rem;color:var(--text3);margin-bottom:4px;">Month ' + d.month_num + ' \u00b7 ' + _piMonthLabel(d.month) + '</div>';
+        t += '<div style="display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:0.75rem;">';
+        t += '<span style="color:var(--text3);">Revenue</span><span style="font-family:DM Mono,monospace;color:#3b82f6;">$' + d.revenue.toLocaleString() + '</span>';
+        if (d.occupancy) t += '<span style="color:var(--text3);">Occupancy</span><span style="font-family:DM Mono,monospace;">' + d.occupancy + '%</span>';
+        if (d.adr) t += '<span style="color:var(--text3);">ADR</span><span style="font-family:DM Mono,monospace;">$' + d.adr + '</span>';
+        t += '<span style="color:var(--text3);">Cost</span><span style="font-family:DM Mono,monospace;color:#ef4444;">$' + (r.monthly_cost || 0).toLocaleString() + '</span>';
+        t += '<span style="color:var(--text3);">NOI</span><span style="font-family:DM Mono,monospace;font-weight:600;color:' + (noi >= 0 ? '#10b981' : '#ef4444') + ';">' + (noi >= 0 ? '$' : '-$') + Math.abs(noi).toLocaleString() + '</span>';
+        t += '</div>';
+        if (r.breakeven_month) {
+          var past = d.month_num >= r.breakeven_month;
+          t += '<div style="margin-top:4px;font-size:0.72rem;color:' + (past ? '#10b981' : '#f59e0b') + ';">' + (past ? '\u2713 Past breakeven (Mo ' + r.breakeven_month + ')' : 'Breakeven at Mo ' + r.breakeven_month) + '</div>';
+        }
+        tip.innerHTML = t;
+        tip.style.display = '';
+      });
+      zone.addEventListener('mousemove', function(e) {
+        var x = e.clientX + 14;
+        var y = e.clientY - 10;
+        if (x + 220 > window.innerWidth) x = e.clientX - 240;
+        if (y + 200 > window.innerHeight) y = e.clientY - 200;
+        if (y < 0) y = 10;
+        tip.style.left = x + 'px';
+        tip.style.top = y + 'px';
+      });
+      zone.addEventListener('mouseleave', function() {
+        tip.style.display = 'none';
+        resetHighlight();
+      });
+    });
+
+    // Legend hover also highlights
+    wrap.parentElement.querySelectorAll('[data-rleg]').forEach(function(leg) {
+      leg.addEventListener('mouseenter', function() { highlightProp(parseInt(leg.getAttribute('data-rleg'))); });
+      leg.addEventListener('mouseleave', resetHighlight);
+    });
+  }, 150);
+
+  return h;
+}
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// SECTION: UNIT ECONOMICS — Scalability proof
+// ══════════════════════════════════════════════════════════════════════════
+function _piRenderUnitEconomics(a) {
+  var ue = a.unit_economics || {};
+  var ramps = a.ramp_curves || [];
+
+  var h = '<div class="card" style="margin-bottom:14px;">';
+  h += '<div class="card-header"><h3 style="font-size:0.9rem;">' + _ico('layers', 15, '#8b5cf6') + ' Unit Economics</h3>';
+  h += '<span style="font-size:0.68rem;color:var(--text3);">Why it matters: proves the model works per-unit and scales predictably</span>';
+  h += '</div>';
+
+  // KPI cards
+  h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:12px;">';
+  ([
+    { label: 'Avg Monthly Cost', value: '$' + (ue.avg_monthly_cost || 0).toLocaleString(), color: '#ef4444' },
+    { label: 'Avg Stabilized Rev', value: '$' + (ue.avg_stabilized_revenue || 0).toLocaleString(), color: '#3b82f6' },
+    { label: 'Avg Unit NOI', value: '$' + (ue.avg_stabilized_noi || 0).toLocaleString(), color: (ue.avg_stabilized_noi || 0) >= 0 ? '#10b981' : 'var(--danger)' },
+    { label: 'NOI Margin', value: (ue.avg_noi_margin || 0) + '%', color: (ue.avg_noi_margin || 0) >= 25 ? '#10b981' : '#f59e0b' },
+    { label: 'Avg Breakeven', value: (ue.avg_months_to_breakeven || 0) + ' mo', color: (ue.avg_months_to_breakeven || 0) <= 3 ? '#10b981' : '#f59e0b' },
+    { label: 'Active Units', value: ue.total_units || 0, color: 'var(--accent)' },
+  ]).forEach(function(c) {
+    h += '<div style="background:var(--surface2);border-radius:8px;padding:10px 12px;border:1px solid var(--border);">';
+    h += '<div style="font-size:0.65rem;color:var(--text3);text-transform:uppercase;">' + c.label + '</div>';
+    h += '<div style="font-size:1rem;font-weight:700;font-family:DM Mono,monospace;color:' + c.color + ';">' + c.value + '</div></div>';
+  });
+  h += '</div>';
+
+  // Per-property bar chart: stabilized revenue vs cost
+  if (ramps.length > 0) {
+    if (ramps.length > 8) {
+      h += '<details><summary style="cursor:pointer;font-size:0.78rem;font-weight:600;color:var(--text2);padding:4px 0;">' + _ico('barChart', 12) + ' Cost vs Revenue per Unit (' + ramps.length + ' properties)</summary>';
+      h += _piSvgUnitEconBars(ramps);
+      h += '</details>';
+    } else {
+      h += _piSvgUnitEconBars(ramps);
+    }
+  }
+
+  h += '</div>';
+  return h;
+}
+
+function _piSvgUnitEconBars(ramps) {
+  // Horizontal bar chart: cost (red) vs stabilized revenue (blue) per property, with NOI delta
+  var barH = 20, pairH = barH * 2 + 6;
+  var maxVal = 0;
+  ramps.forEach(function(r) { maxVal = Math.max(maxVal, r.stabilized_monthly_revenue || 0, r.monthly_cost || 0); });
+  if (maxVal <= 0) maxVal = 1;
+
+  var W = 680, labelW = 130, barW = W - labelW - 80;
+  var totalH = ramps.length * (pairH + 10) + 20;
+
+  var h = '<div style="font-size:0.8rem;font-weight:600;color:var(--text);margin-bottom:8px;">' + _ico('barChart', 14, '#8b5cf6') + ' Cost vs Stabilized Revenue per Unit</div>';
+  h += '<div style="overflow-x:auto;">';
+  h += '<svg width="' + W + '" height="' + totalH + '" viewBox="0 0 ' + W + ' ' + totalH + '" style="display:block;max-width:100%;">';
+
+  ramps.forEach(function(r, i) {
+    var yBase = i * (pairH + 10) + 8;
+    var costW = Math.max(2, (r.monthly_cost / maxVal) * barW);
+    var revW = Math.max(2, ((r.stabilized_monthly_revenue || 0) / maxVal) * barW);
+    var noi = (r.stabilized_monthly_revenue || 0) - (r.monthly_cost || 0);
+    var noiColor = noi >= 0 ? '#10b981' : '#ef4444';
+
+    // Label
+    var shortLabel = r.label.length > 20 ? r.label.slice(0, 18) + '\u2026' : r.label;
+    h += '<text x="' + (labelW - 6) + '" y="' + (yBase + barH + 2) + '" text-anchor="end" style="font-size:10px;fill:var(--text2);" >' + esc(shortLabel) + '</text>';
+
+    // Cost bar
+    h += '<rect x="' + labelW + '" y="' + yBase + '" width="' + costW + '" height="' + barH + '" rx="3" fill="#ef4444" opacity="0.7"/>';
+    h += '<text x="' + (labelW + costW + 4) + '" y="' + (yBase + barH - 5) + '" style="font-size:10px;fill:#ef4444;font-family:DM Mono,monospace;">$' + _piK(r.monthly_cost) + '</text>';
+
+    // Revenue bar
+    h += '<rect x="' + labelW + '" y="' + (yBase + barH + 3) + '" width="' + revW + '" height="' + barH + '" rx="3" fill="#3b82f6" opacity="0.7"/>';
+    h += '<text x="' + (labelW + revW + 4) + '" y="' + (yBase + barH * 2 - 2) + '" style="font-size:10px;fill:#3b82f6;font-family:DM Mono,monospace;">$' + _piK(r.stabilized_monthly_revenue) + '</text>';
+
+    // NOI label on the right
+    h += '<text x="' + (W - 8) + '" y="' + (yBase + barH + 2) + '" text-anchor="end" style="font-size:10px;fill:' + noiColor + ';font-family:DM Mono,monospace;font-weight:600;">' + (noi >= 0 ? '+$' : '-$') + _piK(Math.abs(noi)) + '</text>';
+  });
+
+  h += '</svg></div>';
+  h += '<div style="display:flex;gap:14px;font-size:0.72rem;color:var(--text3);margin-top:6px;">';
+  h += '<span style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;background:#ef4444;border-radius:2px;opacity:0.7;"></span> Monthly Cost</span>';
+  h += '<span style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;background:#3b82f6;border-radius:2px;opacity:0.7;"></span> Stabilized Revenue</span>';
+  h += '<span style="display:flex;align-items:center;gap:4px;font-weight:600;">+/- NOI</span>';
+  h += '</div>';
+  return h;
+}
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// SECTION: STRESS TESTING — Sensitivity analysis
+// ══════════════════════════════════════════════════════════════════════════
+function _piRenderStressTest(st) {
+  var scenarios = st.scenarios || [];
+  if (scenarios.length === 0) return '';
+
+  var h = '<div class="card" style="margin-bottom:14px;">';
+  h += '<div class="card-header"><h3 style="font-size:0.9rem;">' + _ico('shield', 15, '#f59e0b') + ' Stress Testing</h3>';
+  h += '<span style="font-size:0.68rem;color:var(--text3);">Why it matters: shows the business survives downturns</span>';
+  h += '</div>';
+
+  // Breakeven callout
+  if (st.breakeven_revenue_drop !== null) {
+    if (st.breakeven_revenue_drop <= 0) {
+      // Negative = revenue can drop before hitting DSCR 1.0
+      var beColor = st.breakeven_revenue_drop < -30 ? '#10b981' : st.breakeven_revenue_drop < -15 ? '#f59e0b' : 'var(--danger)';
+      h += '<div style="padding:10px 14px;background:var(--surface2);border-radius:8px;border-left:3px solid ' + beColor + ';margin-bottom:12px;font-size:0.82rem;">';
+      h += _ico('target', 14, beColor) + ' Revenue can drop <strong style="color:' + beColor + ';">' + Math.abs(st.breakeven_revenue_drop) + '%</strong> before DSCR falls below 1.0x';
+      h += '</div>';
+    } else {
+      // Positive = already below DSCR 1.0, need more revenue
+      h += '<div style="padding:10px 14px;background:var(--surface2);border-radius:8px;border-left:3px solid var(--danger);margin-bottom:12px;font-size:0.82rem;">';
+      h += _ico('alertTriangle', 14, 'var(--danger)') + ' Revenue needs to increase <strong style="color:var(--danger);">' + st.breakeven_revenue_drop + '%</strong> to reach DSCR 1.0x';
+      h += '</div>';
+    }
+  }
+
+  // Scenario table
+  h += '<div style="overflow-x:auto;"><table class="comp-table" style="font-size:0.78rem;white-space:nowrap;">';
+  h += '<thead><tr><th>Scenario</th><th>Revenue</th><th>NOI</th><th>DSCR</th><th>Cash Flow</th><th>Status</th></tr></thead><tbody>';
+  scenarios.forEach(function(s) {
+    var dscrColor = (s.dscr || 0) >= 1.25 ? '#10b981' : (s.dscr || 0) >= 1.0 ? '#f59e0b' : '#ef4444';
+    var statusIcon = (s.dscr || 0) >= 1.25 ? _ico('check', 12, '#10b981') + ' Safe' : (s.dscr || 0) >= 1.0 ? _ico('alertCircle', 12, '#f59e0b') + ' Tight' : _ico('alertTriangle', 12, '#ef4444') + ' Risk';
+    var isCurrent = s.label === 'Current';
+    var rowStyle = isCurrent ? 'background:rgba(59,130,246,0.04);font-weight:600;' : '';
+    h += '<tr style="' + rowStyle + '">';
+    h += '<td>' + (isCurrent ? _ico('check', 11, '#3b82f6') + ' ' : '') + esc(s.label) + '</td>';
+    h += '<td style="font-family:DM Mono,monospace;">$' + _piK(s.revenue) + '</td>';
+    h += '<td style="font-family:DM Mono,monospace;color:' + ((s.noi || 0) >= 0 ? 'var(--text)' : 'var(--danger)') + ';">$' + _piK(s.noi) + '</td>';
+    h += '<td style="font-family:DM Mono,monospace;font-weight:700;color:' + dscrColor + ';">' + (s.dscr !== null ? s.dscr.toFixed(2) + 'x' : 'N/A') + '</td>';
+    h += '<td style="font-family:DM Mono,monospace;color:' + ((s.cash_flow || 0) >= 0 ? '#10b981' : 'var(--danger)') + ';">' + (s.cash_flow >= 0 ? '$' : '-$') + _piK(Math.abs(s.cash_flow || 0)) + '</td>';
+    h += '<td style="font-size:0.72rem;">' + statusIcon + '</td>';
+    h += '</tr>';
+  });
+  h += '</tbody></table></div>';
+
+  // Visual bar chart
+  h += _piSvgStressBars(scenarios);
+
+  h += '<div style="font-size:0.68rem;color:var(--text3);margin-top:8px;">Based on trailing 12-month revenue of $' + (st.trailing_12_revenue || 0).toLocaleString() + ' and annual debt service of $' + (st.annual_debt_service || 0).toLocaleString() + '. Expenses held constant.</div>';
+  h += '</div>';
+  return h;
+}
+
+function _piSvgStressBars(scenarios) {
+  var rowH = 40;
+  var W = 560, H = scenarios.length * rowH + 24;
+  var labelW = 70, barW = W - labelW - 100;
+  var maxDSCR = Math.max.apply(null, scenarios.map(function(s) { return s.dscr || 0; }).concat([2.0]));
+
+  var h = '<div style="overflow-x:auto;margin-top:12px;">';
+  h += '<svg width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '" style="display:block;max-width:100%;">';
+
+  // Background zone bands
+  var x125 = labelW + (1.25 / maxDSCR) * barW;
+  var x100 = labelW + (1.0 / maxDSCR) * barW;
+  h += '<rect x="' + labelW + '" y="0" width="' + (x100 - labelW) + '" height="' + H + '" fill="#ef4444" opacity="0.03"/>';
+  h += '<rect x="' + x100 + '" y="0" width="' + (x125 - x100) + '" height="' + H + '" fill="#f59e0b" opacity="0.03"/>';
+  h += '<rect x="' + x125 + '" y="0" width="' + (labelW + barW - x125) + '" height="' + H + '" fill="#10b981" opacity="0.03"/>';
+
+  // 1.25x threshold line
+  h += '<line x1="' + x125 + '" y1="0" x2="' + x125 + '" y2="' + H + '" stroke="#ef4444" stroke-dasharray="5,3" opacity="0.5"/>';
+  h += '<text x="' + x125 + '" y="12" text-anchor="middle" style="font-size:9px;fill:#ef4444;font-weight:600;">1.25x min</text>';
+
+  // 1.0x line
+  h += '<line x1="' + x100 + '" y1="14" x2="' + x100 + '" y2="' + H + '" stroke="var(--text3)" stroke-dasharray="3,4" opacity="0.3"/>';
+
+  scenarios.forEach(function(s, i) {
+    var y = i * rowH + 20;
+    var dscrVal = s.dscr || 0;
+    var bW = Math.max(2, (dscrVal / maxDSCR) * barW);
+    var barColor = dscrVal >= 1.25 ? '#10b981' : dscrVal >= 1.0 ? '#f59e0b' : '#ef4444';
+    var isCurrent = s.label === 'Current';
+    var fontW = isCurrent ? '700' : '600';
+
+    h += '<text x="' + (labelW - 6) + '" y="' + (y + 16) + '" text-anchor="end" style="font-size:11px;fill:var(--text' + (isCurrent ? '' : '2') + ');font-weight:' + fontW + ';">' + esc(s.label) + '</text>';
+    h += '<rect x="' + labelW + '" y="' + (y + 2) + '" width="' + bW + '" height="' + 22 + '" rx="4" fill="' + barColor + '" opacity="' + (isCurrent ? '0.85' : '0.65') + '"/>';
+    h += '<text x="' + (labelW + bW + 6) + '" y="' + (y + 18) + '" style="font-size:11px;fill:' + barColor + ';font-weight:700;font-family:DM Mono,monospace;">' + dscrVal.toFixed(2) + 'x</text>';
+  });
+
+  h += '</svg></div>';
+  return h;
+}
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// SECTION: MARKET POSITION — Your performance vs market
+// ══════════════════════════════════════════════════════════════════════════
+function _piRenderMarketPosition(benchmarks) {
+  var h = '<div class="card" style="margin-bottom:14px;">';
+  h += '<div class="card-header"><h3 style="font-size:0.9rem;">' + _ico('compass', 15, '#06b6d4') + ' Market Position</h3>';
+  h += '<span style="font-size:0.68rem;color:var(--text3);">Why it matters: shows operational competence vs competition</span>';
+  h += '</div>';
+
+  h += '<div style="overflow-x:auto;"><table class="comp-table" style="font-size:0.78rem;white-space:nowrap;">';
+  h += '<thead><tr><th>Property</th><th>Your ADR</th><th>Market Base</th><th>PL Rec</th><th>ADR Delta</th><th>Fwd Occ</th><th>Mkt Occ</th><th>Occ Delta</th></tr></thead><tbody>';
+
+  benchmarks.forEach(function(b) {
+    var adrDelta = b.your_adr && b.market_base_price ? b.your_adr - b.market_base_price : null;
+    var adrDeltaColor = adrDelta !== null ? (adrDelta >= 0 ? '#10b981' : '#ef4444') : 'var(--text3)';
+    var occDelta = b.occ_vs_market;
+    var occDeltaColor = occDelta !== null ? (occDelta >= 0 ? '#10b981' : '#ef4444') : 'var(--text3)';
+
+    h += '<tr>';
+    h += '<td style="font-weight:600;max-width:200px;overflow:hidden;text-overflow:ellipsis;" title="' + esc(b.label) + '">' + esc(b.label.length > 28 ? b.label.slice(0, 26) + '\u2026' : b.label) + '</td>';
+    h += '<td style="font-family:DM Mono,monospace;">' + (b.your_adr ? '$' + b.your_adr : '\u2014') + '</td>';
+    h += '<td style="font-family:DM Mono,monospace;color:var(--text3);">' + (b.market_base_price ? '$' + b.market_base_price : '\u2014') + '</td>';
+    h += '<td style="font-family:DM Mono,monospace;color:var(--text3);">' + (b.pl_recommended ? '$' + b.pl_recommended : '\u2014') + '</td>';
+    h += '<td style="font-family:DM Mono,monospace;font-weight:600;color:' + adrDeltaColor + ';">' + (adrDelta !== null ? (adrDelta >= 0 ? '+' : '') + '$' + adrDelta : '\u2014') + '</td>';
+    h += '<td style="font-family:DM Mono,monospace;">' + (b.your_fwd_occ !== null ? b.your_fwd_occ + '%' : '\u2014') + '</td>';
+    h += '<td style="font-family:DM Mono,monospace;color:var(--text3);">' + (b.market_fwd_occ !== null ? b.market_fwd_occ + '%' : '\u2014') + '</td>';
+    h += '<td style="font-family:DM Mono,monospace;font-weight:600;color:' + occDeltaColor + ';">' + (occDelta !== null ? (occDelta >= 0 ? '+' : '') + occDelta + 'pp' : '\u2014') + '</td>';
+    h += '</tr>';
+  });
+
+  h += '</tbody></table></div>';
+  h += '<div style="font-size:0.68rem;color:var(--text3);margin-top:6px;">ADR = your trailing 6-month average nightly rate. Market data from PriceLabs. Fwd Occ = next-30-day booking pace. Delta shows how you compare: green = outperforming, red = below market.</div>';
+  h += '</div>';
+  return h;
+}
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// SECTION: CONCENTRATION RISK — Revenue diversification
+// ══════════════════════════════════════════════════════════════════════════
+function _piRenderConcentration(conc) {
+  var h = '<div class="card" style="margin-bottom:14px;">';
+  h += '<div class="card-header"><h3 style="font-size:0.9rem;">' + _ico('pieChart', 15, '#8b5cf6') + ' Concentration Risk</h3>';
+  h += '<span style="font-size:0.68rem;color:var(--text3);">Why it matters: diversification reduces risk \u2014 no single market dominates</span>';
+  h += '</div>';
+
+  // Check for high concentration
+  var maxPct = Math.max.apply(null, conc.map(function(c) { return c.pct_of_total || 0; }));
+  if (maxPct <= 0) maxPct = 100;
+  var colors = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#ec4899', '#06b6d4'];
+  var highConc = conc.some(function(c) { return (c.pct_of_total || 0) > 60; });
+
+  if (highConc) {
+    h += '<div style="padding:8px 12px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15);border-radius:8px;margin-bottom:10px;font-size:0.78rem;">';
+    h += _ico('alertTriangle', 13, '#f59e0b') + ' <strong>High concentration detected</strong> \u2014 one market exceeds 60% of revenue. Consider geographic diversification.';
+    h += '</div>';
+  }
+
+  h += '<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:8px;">';
+  conc.forEach(function(c, i) {
+    var barColor = colors[i % colors.length];
+    var barW = Math.max(4, Math.round((c.pct_of_total / maxPct) * 100));
+    h += '<div style="display:flex;align-items:center;gap:10px;">';
+    h += '<div style="min-width:140px;font-size:0.78rem;font-weight:600;color:var(--text);text-align:right;">' + esc(c.city) + '</div>';
+    h += '<div style="flex:1;height:24px;background:var(--surface2);border-radius:4px;overflow:hidden;position:relative;">';
+    h += '<div style="height:100%;width:' + barW + '%;background:' + barColor + ';border-radius:4px;opacity:0.8;"></div>';
+    h += '</div>';
+    h += '<div style="min-width:100px;font-size:0.75rem;font-family:DM Mono,monospace;color:var(--text2);">';
+    h += c.pct_of_total + '% \u00b7 $' + _piK(c.revenue);
+    h += '</div>';
+    h += '<div style="min-width:40px;font-size:0.68rem;color:var(--text3);">' + c.units + ' unit' + (c.units !== 1 ? 's' : '') + '</div>';
+    h += '</div>';
+  });
+  h += '</div>';
+
+  h += '</div>';
+  return h;
+}
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// KEPT: Scenario Modeler (unchanged from original)
+// ══════════════════════════════════════════════════════════════════════════
+function _piRenderScenarioPanel() {
+  var h = '<div class="card" style="margin-bottom:14px;">';
+  h += '<div class="card-header"><h3 style="font-size:0.9rem;">' + _ico('plus', 15) + ' Acquisition Scenario</h3></div>';
+  h += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">';
+  var fields = [
+    { id: 'piScPrice', label: 'Purchase Price', val: 300000, step: 10000 },
+    { id: 'piScDown', label: 'Down %', val: 20, step: 5 },
+    { id: 'piScRate', label: 'Rate %', val: 7, step: 0.25 },
+    { id: 'piScAdr', label: 'ADR', val: 150, step: 10 },
+    { id: 'piScOcc', label: 'Occ %', val: 65, step: 5 },
+    { id: 'piScExp', label: 'Mo. Expenses', val: 500, step: 50 },
+    { id: 'piScRamp', label: 'Ramp Months', val: 3, step: 1 }
+  ];
+  fields.forEach(function(f) {
+    h += '<div class="form-group" style="margin-bottom:0;min-width:80px;"><label style="font-size:0.72rem;">' + f.label + '</label>';
+    h += '<input type="number" id="' + f.id + '" value="' + f.val + '" step="' + f.step + '" style="font-size:0.82rem;width:100px;"></div>';
+  });
+  h += '<div style="display:flex;align-items:flex-end;"><button class="btn btn-sm btn-primary" onclick="loadPortfolioScenario()" style="height:34px;">' + _ico('zap', 12) + ' Model</button></div>';
+  h += '</div><div id="piScenarioResult" style="color:var(--text3);font-size:0.82rem;">Enter details and click Model.</div></div>';
+  return h;
+}
+
+async function loadPortfolioScenario() {
+  var el = document.getElementById('piScenarioResult');
+  if (!el) return;
+  el.innerHTML = _ico('loader', 14) + ' Modeling...';
+  try {
+    var data = await api('/api/portfolio/scenario', 'POST', {
+      purchase_price: parseFloat(document.getElementById('piScPrice').value) || 300000,
+      down_payment_pct: parseFloat(document.getElementById('piScDown').value) || 20,
+      interest_rate: parseFloat(document.getElementById('piScRate').value) || 7,
+      loan_term: 30, projected_adr: parseFloat(document.getElementById('piScAdr').value) || 150,
+      projected_occ: parseFloat(document.getElementById('piScOcc').value) || 65,
+      monthly_expenses: parseFloat(document.getElementById('piScExp').value) || 500,
+      ramp_months: parseInt(document.getElementById('piScRamp').value) || 3
+    });
+    var b = data.before, a = data.after, acq = data.acquisition;
+    var h = '<div style="overflow-x:auto;"><table class="comp-table" style="font-size:0.8rem;">';
+    h += '<thead><tr><th>Metric</th><th>Current</th><th style="color:var(--accent);">New Property</th><th style="color:#10b981;">Combined</th></tr></thead><tbody>';
+    var rows = [
+      ['Properties', b.properties, '1 unit', a.properties, 'n'],
+      ['Total Value', b.total_value, acq.purchase_price, a.total_value, '$'],
+      ['Annual Revenue', b.annual_revenue, acq.projected_annual_revenue, a.annual_revenue, '$'],
+      ['Annual NOI', b.annual_noi, acq.projected_noi, a.annual_noi, '$'],
+      ['Annual Cash Flow', b.annual_cash_flow, acq.projected_cash_flow, a.annual_cash_flow, '$'],
+      ['DSCR', b.dscr, null, a.dscr, 'x'],
+      ['Cap Rate', b.avg_cap_rate, acq.cap_rate, a.avg_cap_rate, '%']
+    ];
+    rows.forEach(function(r) {
+      h += '<tr><td style="font-weight:600;">' + r[0] + '</td>';
+      h += '<td style="font-family:DM Mono,monospace;">' + _piFmtVal(r[1], r[4]) + '</td>';
+      h += '<td style="font-family:DM Mono,monospace;color:var(--accent);">' + _piFmtVal(r[2], r[4]) + '</td>';
+      h += '<td style="font-family:DM Mono,monospace;font-weight:600;color:#10b981;">' + _piFmtVal(r[3], r[4]) + '</td></tr>';
+    });
+    h += '</tbody></table></div>';
+    if (data.ramp_timeline && data.ramp_timeline.length > 0) {
+      h += '<div style="margin-top:10px;font-size:0.75rem;font-weight:600;">' + _ico('trendUp', 13, '#f59e0b') + ' Ramp-Up Timeline</div>';
+      h += '<div style="display:flex;gap:3px;margin-top:6px;align-items:flex-end;height:60px;">';
+      data.ramp_timeline.forEach(function(rt) {
+        var barH = Math.max(2, rt.ramp_pct * 0.5);
+        var color = rt.cash_flow >= 0 ? '#10b981' : '#ef4444';
+        h += '<div title="Mo ' + rt.month + ': ' + rt.ramp_pct + '% occ, $' + rt.revenue + ' rev, $' + rt.cash_flow + ' CF" style="width:28px;height:' + barH + 'px;background:' + color + ';border-radius:2px 2px 0 0;opacity:0.7;"></div>';
+      });
+      h += '</div>';
+    }
+    h += '<div style="margin-top:8px;padding:10px;background:var(--surface2);border-radius:8px;font-size:0.78rem;">';
+    h += _ico('info', 13, 'var(--accent)') + ' Requires $' + (acq.down_payment || 0).toLocaleString() + ' down, $' + (acq.monthly_mortgage || 0).toLocaleString() + '/mo mortgage. ';
+    if (acq.cash_on_cash) h += 'Cash-on-cash: <strong>' + acq.cash_on_cash + '%</strong>. ';
+    if (a.dscr) h += 'Combined DSCR: <strong>' + a.dscr + 'x</strong>' + (a.dscr >= 1.25 ? ' (above 1.25x threshold).' : '.');
+    h += '</div>';
+    el.innerHTML = h;
+  } catch (err) { el.innerHTML = '<span style="color:var(--danger);">' + esc(err.message) + '</span>'; }
+}
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// KEPT: AI Narrative (unchanged — auto-loads latest, has history)
+// ══════════════════════════════════════════════════════════════════════════
+function _piRenderNarrativePanel() {
+  var h = '<div class="card" style="margin-bottom:14px;">';
+  h += '<div class="card-header"><h3 style="font-size:0.9rem;">' + _ico('sparkle', 15, 'var(--accent)') + ' AI Investment Narrative</h3>';
+  h += '<div style="display:flex;gap:6px;align-items:center;">';
+  h += '<select id="piNarrativeAudience" style="font-size:0.78rem;padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text);"><option value="bank">Bank / Lender</option><option value="investor">Investor</option></select>';
+  h += '<button class="btn btn-xs btn-purple" onclick="loadPortfolioNarrative()">' + _ico('sparkle', 11) + ' Generate</button>';
+  h += '</div></div>';
+  h += '<div id="piNarrativeResult" style="min-height:40px;"></div>';
+  h += '<div id="piNarrativeHistory" style="margin-top:0;"></div>';
+  h += '</div>';
+  return h;
+}
+
+async function _piLoadNarrativeAuto() {
+  try {
+    var d = await api('/api/portfolio/narratives');
+    var narrs = d.narratives || [];
+    if (narrs.length > 0) {
+      var latest = narrs[0];
+      try { var parsed = JSON.parse(latest.narrative_json); _piRenderNarrativeContent(parsed, latest.provider, latest.profile_name, latest.created_at); } catch(e) {}
+    } else {
+      var el = document.getElementById('piNarrativeResult');
+      if (el) el.innerHTML = '<div style="color:var(--text3);font-size:0.82rem;padding:8px 0;">No narratives generated yet. Click <strong>Generate</strong> to create one.</div>';
+    }
+    if (narrs.length > 1) _piRenderNarrativeHistory(narrs.slice(1));
+  } catch(e) { /* non-critical */ }
+}
+
+async function loadPortfolioNarrative() {
+  var el = document.getElementById('piNarrativeResult');
+  if (!el) return;
+  var audience = document.getElementById('piNarrativeAudience').value;
+  el.innerHTML = '<div style="padding:24px;text-align:center;">' + _ico('loader', 20, 'var(--accent)') + '<div style="margin-top:8px;font-size:0.82rem;color:var(--text3);">Generating ' + audience + ' narrative... 15-30 seconds</div></div>';
+  try {
+    var n = await api('/api/portfolio/narrative', 'POST', { audience: audience, profile: _piActiveProfile });
+    var nar = n.narrative;
+    if (!nar) { el.innerHTML = '<span style="color:var(--danger);">No narrative generated.</span>'; return; }
+    _piRenderNarrativeContent(nar, n.provider, n.profile, null);
+    try { var hd = await api('/api/portfolio/narratives'); var narrs = hd.narratives || []; if (narrs.length > 1) _piRenderNarrativeHistory(narrs.slice(1)); } catch(e) {}
+  } catch (err) { el.innerHTML = '<span style="color:var(--danger);">' + esc(err.message) + '</span>'; }
+}
+
+function _piRenderNarrativeContent(nar, provider, profile, timestamp) {
+  var el = document.getElementById('piNarrativeResult');
+  if (!el) return;
+  var h = '';
+  if (timestamp) {
+    var ago = _piTimeAgo(timestamp);
+    h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><span style="font-size:0.68rem;color:var(--text3);">' + _ico('clock', 10, 'var(--text3)') + ' Generated ' + ago + ' \u00b7 ' + esc(profile || 'internal') + ' \u00b7 ' + esc(provider || '?') + '</span></div>';
+  }
+  if (nar.executive_summary) {
+    h += '<div style="padding:16px;background:linear-gradient(135deg,rgba(99,102,241,0.06),rgba(59,130,246,0.04));border-radius:10px;border-left:3px solid var(--accent);margin-bottom:14px;">';
+    h += '<div style="font-size:0.7rem;color:var(--accent);text-transform:uppercase;font-weight:700;letter-spacing:0.5px;margin-bottom:8px;">Executive Summary</div>';
+    h += '<div style="font-size:0.84rem;line-height:1.7;color:var(--text);white-space:pre-wrap;">' + esc(nar.executive_summary) + '</div></div>';
+  }
+  if (nar.financial_highlights && nar.financial_highlights.length > 0) {
+    h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:14px;">';
+    nar.financial_highlights.forEach(function(fh) {
+      h += '<div style="padding:10px 12px;background:var(--surface2);border-radius:8px;border:1px solid var(--border);"><div style="font-size:0.65rem;color:var(--text3);text-transform:uppercase;">' + esc(fh.metric) + '</div><div style="font-size:1rem;font-weight:700;font-family:DM Mono,monospace;color:var(--accent);margin-top:2px;">' + esc(fh.value) + '</div>';
+      if (fh.context) h += '<div style="font-size:0.65rem;color:var(--text3);margin-top:3px;line-height:1.4;">' + esc(fh.context) + '</div>';
+      h += '</div>';
+    });
+    h += '</div>';
+  }
+  if ((nar.key_strengths && nar.key_strengths.length) || (nar.risk_factors && nar.risk_factors.length)) {
+    h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">';
+    if (nar.key_strengths && nar.key_strengths.length) {
+      h += '<div style="padding:12px;background:rgba(16,185,129,0.05);border-radius:8px;border:1px solid rgba(16,185,129,0.15);">';
+      h += '<div style="font-size:0.72rem;font-weight:700;color:#10b981;margin-bottom:8px;display:flex;align-items:center;gap:4px;">' + _ico('check', 13, '#10b981') + ' Key Strengths</div>';
+      nar.key_strengths.forEach(function(s) { h += '<div style="font-size:0.78rem;margin-bottom:6px;padding-left:10px;border-left:2px solid #10b981;line-height:1.5;">' + esc(s) + '</div>'; });
+      h += '</div>';
+    }
+    if (nar.risk_factors && nar.risk_factors.length) {
+      h += '<div style="padding:12px;background:rgba(245,158,11,0.05);border-radius:8px;border:1px solid rgba(245,158,11,0.15);">';
+      h += '<div style="font-size:0.72rem;font-weight:700;color:#f59e0b;margin-bottom:8px;display:flex;align-items:center;gap:4px;">' + _ico('alertTriangle', 13, '#f59e0b') + ' Risks & Mitigations</div>';
+      nar.risk_factors.forEach(function(r) { h += '<div style="font-size:0.78rem;margin-bottom:6px;padding-left:10px;border-left:2px solid #f59e0b;line-height:1.5;">' + esc(r) + '</div>'; });
+      h += '</div>';
+    }
+    h += '</div>';
+  }
+  var hasGrowth = nar.growth_opportunity, hasAsk = nar.recommended_ask;
+  if (hasGrowth || hasAsk) {
+    h += '<div style="display:grid;grid-template-columns:' + (hasGrowth && hasAsk ? '1fr 1fr' : '1fr') + ';gap:12px;margin-bottom:14px;">';
+    if (hasGrowth) {
+      h += '<div style="padding:12px;background:rgba(59,130,246,0.05);border-radius:8px;border:1px solid rgba(59,130,246,0.15);">';
+      h += '<div style="font-size:0.72rem;font-weight:700;color:#3b82f6;margin-bottom:6px;">' + _ico('trendUp', 13, '#3b82f6') + ' Growth Opportunity</div>';
+      h += '<div style="font-size:0.8rem;line-height:1.6;">' + esc(nar.growth_opportunity) + '</div></div>';
+    }
+    if (hasAsk) {
+      h += '<div style="padding:12px;background:rgba(96,165,250,0.06);border-radius:8px;border:1px solid rgba(96,165,250,0.2);">';
+      h += '<div style="font-size:0.72rem;font-weight:700;color:#60a5fa;margin-bottom:6px;">' + _ico('dollarSign', 13, '#60a5fa') + ' Recommended Ask</div>';
+      h += '<div style="font-size:0.8rem;line-height:1.6;">' + esc(nar.recommended_ask) + '</div></div>';
+    }
+    h += '</div>';
+  }
+  if (nar.presentation_tips && nar.presentation_tips.length) {
+    h += '<details style="margin-bottom:10px;"><summary style="cursor:pointer;font-size:0.75rem;font-weight:600;color:var(--text2);padding:6px 0;">' + _ico('lightbulb', 12, 'var(--accent)') + ' Presentation Tips (' + nar.presentation_tips.length + ')</summary>';
+    h += '<div style="padding:10px;background:var(--surface2);border-radius:8px;margin-top:4px;">';
+    nar.presentation_tips.forEach(function(t) { h += '<div style="font-size:0.78rem;margin-bottom:5px;padding-left:10px;border-left:2px solid var(--accent);line-height:1.5;">' + esc(t) + '</div>'; });
+    h += '</div></details>';
+  }
+  if (!timestamp) {
+    h += '<div style="font-size:0.65rem;color:var(--text3);margin-top:4px;">AI-generated \u00b7 ' + esc(profile || 'internal') + ' profile \u00b7 ' + esc(provider || '?') + ' \u00b7 Review before presenting.</div>';
+  }
+  el.innerHTML = h;
+}
+
+function _piRenderNarrativeHistory(narrs) {
+  var el = document.getElementById('piNarrativeHistory');
+  if (!el || narrs.length === 0) return;
+  var h = '<details style="margin-top:12px;"><summary style="cursor:pointer;font-size:0.78rem;font-weight:600;color:var(--text2);padding:6px 0;">' + _ico('clock', 12) + ' Previous Narratives (' + narrs.length + ')</summary>';
+  h += '<div style="margin-top:8px;display:flex;flex-direction:column;gap:8px;">';
+  narrs.forEach(function(n) {
+    var parsed = null;
+    try { parsed = JSON.parse(n.narrative_json); } catch(e) {}
+    var snap = null;
+    try { snap = JSON.parse(n.portfolio_snapshot); } catch(e) {}
+    var ago = _piTimeAgo(n.created_at);
+    h += '<div style="padding:12px;background:var(--surface2);border-radius:8px;border:1px solid var(--border);">';
+    h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">';
+    h += '<div style="font-size:0.72rem;color:var(--text3);">' + _ico('sparkle', 10, 'var(--accent)') + ' ' + ago + ' \u00b7 ' + esc(n.audience || '?') + ' \u00b7 ' + esc(n.profile_name || 'internal') + '</div>';
+    h += '<div style="display:flex;gap:4px;">';
+    h += '<button class="btn btn-xs" onclick="_piShowHistoryNarrative(' + n.id + ')" style="font-size:0.65rem;">View</button>';
+    h += '<button class="btn btn-xs" style="color:var(--danger);font-size:0.65rem;" onclick="_piDeleteNarrative(' + n.id + ')">x</button>';
+    h += '</div></div>';
+    if (snap) {
+      h += '<div style="display:flex;gap:8px;flex-wrap:wrap;font-size:0.68rem;color:var(--text3);font-family:DM Mono,monospace;">';
+      if (snap.annual_revenue) h += '<span>Rev $' + _piK(snap.annual_revenue) + '</span>';
+      if (snap.annual_noi) h += '<span>NOI $' + _piK(snap.annual_noi) + '</span>';
+      if (snap.portfolio_dscr) h += '<span>DSCR ' + snap.portfolio_dscr + 'x</span>';
+      if (snap.avg_occupancy) h += '<span>Occ ' + Math.round(snap.avg_occupancy) + '%</span>';
+      if (snap.property_count) h += '<span>' + snap.property_count + ' units</span>';
+      h += '</div>';
+    }
+    if (parsed && parsed.executive_summary) {
+      var preview = parsed.executive_summary.substring(0, 150);
+      h += '<div style="font-size:0.75rem;color:var(--text3);margin-top:4px;line-height:1.4;">' + esc(preview) + (parsed.executive_summary.length > 150 ? '\u2026' : '') + '</div>';
+    }
+    h += '</div>';
+  });
+  h += '</div></details>';
+  el.innerHTML = h;
+}
+
+async function _piShowHistoryNarrative(id) {
+  try {
+    var d = await api('/api/portfolio/narratives');
+    var narr = (d.narratives || []).find(function(n) { return n.id === id; });
+    if (!narr) return;
+    var parsed = JSON.parse(narr.narrative_json);
+    _piRenderNarrativeContent(parsed, narr.provider, narr.profile_name, narr.created_at);
+    var el = document.getElementById('piNarrativeResult');
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch(e) { toast('Error loading narrative', 'error'); }
+}
+
+async function _piDeleteNarrative(id) {
+  if (!confirm('Delete this narrative?')) return;
+  try {
+    await api('/api/portfolio/narratives/' + id, 'DELETE');
+    var d = await api('/api/portfolio/narratives');
+    var narrs = d.narratives || [];
+    if (narrs.length > 0) {
+      var latest = narrs[0];
+      try { var parsed = JSON.parse(latest.narrative_json); _piRenderNarrativeContent(parsed, latest.provider, latest.profile_name, latest.created_at); } catch(e) {}
+      if (narrs.length > 1) _piRenderNarrativeHistory(narrs.slice(1));
+      else { var hel = document.getElementById('piNarrativeHistory'); if (hel) hel.innerHTML = ''; }
+    } else {
+      var el2 = document.getElementById('piNarrativeResult');
+      if (el2) el2.innerHTML = '<div style="color:var(--text3);font-size:0.82rem;">No narratives. Click Generate to create one.</div>';
+      var hel2 = document.getElementById('piNarrativeHistory'); if (hel2) hel2.innerHTML = '';
+    }
+  } catch(e) { toast('Error', 'error'); }
+}
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// KEPT: Snapshot History
+// ══════════════════════════════════════════════════════════════════════════
+function _piRenderSnapshotHistory(snaps) {
+  var h = '<div class="card" style="margin-bottom:14px;">';
+  h += '<div class="card-header"><h3 style="font-size:0.9rem;">' + _ico('clock', 15) + ' Portfolio Over Time</h3></div>';
+  if (snaps.length < 2) { h += '<div style="color:var(--text3);font-size:0.82rem;padding:8px 0;">Take snapshots regularly to track growth. Click ' + _ico('camera', 12) + ' Snapshot above.</div></div>'; return h; }
+  h += '<table class="comp-table" style="font-size:0.78rem;"><thead><tr><th>Date</th><th>Value</th><th>Revenue</th><th>NOI</th><th>DSCR</th><th>Occ</th></tr></thead><tbody>';
+  snaps.forEach(function(s) { h += '<tr><td>' + s.snapshot_date + '</td><td style="font-family:DM Mono,monospace;">$' + _piK(s.total_value) + '</td><td style="font-family:DM Mono,monospace;">$' + _piK(s.annual_revenue) + '</td><td style="font-family:DM Mono,monospace;">$' + _piK(s.annual_noi) + '</td><td>' + (s.portfolio_dscr ? s.portfolio_dscr + 'x' : '\u2014') + '</td><td>' + (s.avg_occupancy ? Math.round(s.avg_occupancy) + '%' : '\u2014') + '</td></tr>'; });
+  h += '</tbody></table></div>';
+  return h;
+}
+
+async function capturePortfolioSnapshot() {
+  try { await api('/api/portfolio/snapshot', 'POST', {}); toast('Snapshot saved'); loadPortfolioIntel(); }
+  catch (err) { toast('Snapshot failed: ' + err.message, 'error'); }
+}
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// KEPT: Profile Manager
+// ══════════════════════════════════════════════════════════════════════════
+function _piRenderProfileManager() {
+  var h = '<div class="card" style="margin-bottom:14px;">';
+  h += '<div class="card-header"><h3 style="font-size:0.9rem;">' + _ico('shield', 15) + ' Presentation Profiles</h3></div>';
+  h += '<div style="font-size:0.78rem;color:var(--text3);margin-bottom:8px;">Profiles control what information is visible when presenting to different audiences.</div>';
+  if (_piProfiles.length > 0) {
+    h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;">';
+    _piProfiles.forEach(function(p) {
+      var border = p.audience === 'bank' ? '#3b82f6' : p.audience === 'investor' ? '#10b981' : 'var(--border)';
+      h += '<div style="padding:10px;background:var(--surface2);border-radius:8px;border-left:3px solid ' + border + ';">';
+      h += '<div style="font-weight:600;font-size:0.82rem;">' + esc(p.name) + '</div>';
+      h += '<div style="font-size:0.68rem;color:var(--text3);margin-top:4px;">';
+      h += (p.show_addresses ? _ico('check', 10, '#10b981') : _ico('x', 10, 'var(--danger)')) + ' Addresses ';
+      h += (p.show_financing_details ? _ico('check', 10, '#10b981') : _ico('x', 10, 'var(--danger)')) + ' Financing ';
+      h += (p.show_private_loans ? _ico('check', 10, '#10b981') : _ico('x', 10, 'var(--danger)')) + ' Private Loans ';
+      h += (p.show_methodology ? _ico('check', 10, '#10b981') : _ico('x', 10, 'var(--danger)')) + ' Methods';
+      h += '</div>';
+      if (p.notes) h += '<div style="font-size:0.68rem;color:var(--text3);margin-top:4px;font-style:italic;">' + esc(p.notes) + '</div>';
+      h += '</div>';
+    });
+    h += '</div>';
+  }
+  h += '</div>';
+  return h;
+}
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// UTILITIES
+// ══════════════════════════════════════════════════════════════════════════
+var _piMonthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function _piMonthLabel(m) { if (!m) return ''; var parts = m.split('-'); return _piMonthNames[parseInt(parts[1]) - 1] + " '" + parts[0].slice(2); }
+function _piK(n) { if (n === null || n === undefined || isNaN(n)) return '\u2014'; var num = parseFloat(n); if (Math.abs(num) >= 1000000) return (num / 1000000).toFixed(1) + 'M'; if (Math.abs(num) >= 10000) return (num / 1000).toFixed(0) + 'K'; if (Math.abs(num) >= 1000) return (num / 1000).toFixed(1) + 'K'; return num.toLocaleString(); }
+function _piFmtVal(v, fmt) { if (v === null || v === undefined) return '\u2014'; if (fmt === '$') return '$' + _piK(v); if (fmt === '%') return v + '%'; if (fmt === 'x') return v + 'x'; return String(v); }
+
+function _piTimeAgo(dateStr) {
+  if (!dateStr) return '';
+  var d = new Date(dateStr + (dateStr.indexOf('T') < 0 ? 'T00:00:00Z' : ''));
+  var now = new Date();
+  var diffMs = now - d;
+  var mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return mins + 'm ago';
+  var hrs = Math.floor(mins / 60);
+  if (hrs < 24) return hrs + 'h ago';
+  var days = Math.floor(hrs / 24);
+  if (days < 30) return days + 'd ago';
+  return dateStr.substring(0, 10);
+}
+
+// KPI card HTML helper
+function _piCardHtml(c, idx) {
+  var h = '<div style="background:var(--surface2);border-radius:10px;padding:12px 14px;border:1px solid var(--border);cursor:pointer;transition:border-color 0.15s,box-shadow 0.15s;" onclick="piShowCardModal(' + idx + ')" onmouseenter="this.style.borderColor=\'var(--accent)\';this.style.boxShadow=\'0 2px 8px rgba(0,0,0,0.1)\'" onmouseleave="this.style.borderColor=\'var(--border)\';this.style.boxShadow=\'none\'">';
+  h += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">' + _ico(c.icon, 14, c.color);
+  h += '<span style="font-size:0.68rem;color:var(--text3);text-transform:uppercase;letter-spacing:0.3px;">' + c.label + '</span>';
+  h += '<span style="font-size:0.55rem;color:var(--text3);margin-left:auto;">\u24d8</span></div>';
+  h += '<div style="font-size:1.15rem;font-weight:700;color:' + c.color + ';font-family:DM Mono,monospace;">' + c.value + '</div>';
+  if (c.sub) h += '<div style="font-size:0.62rem;color:var(--text3);margin-top:2px;">' + c.sub + '</div>';
+  h += '</div>';
+  return h;
+}
+
+function piShowCardModal(idx) {
+  var c = (window._piCardData || [])[idx];
+  if (!c) return;
+  var lines = (c.explain || '').split('\n');
+  var body = '<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--border);">';
+  body += '<div style="width:44px;height:44px;border-radius:10px;background:' + c.color + '15;display:flex;align-items:center;justify-content:center;">' + _ico(c.icon, 22, c.color) + '</div>';
+  body += '<div><div style="font-size:1.3rem;font-weight:700;color:' + c.color + ';font-family:DM Mono,monospace;">' + esc(c.value) + '</div>';
+  if (c.sub) body += '<div style="font-size:0.75rem;color:var(--text3);">' + esc(c.sub) + '</div>';
+  body += '</div></div>';
+  lines.forEach(function(line) {
+    if (!line.trim()) { body += '<div style="height:8px;"></div>'; return; }
+    body += '<div style="font-size:0.82rem;color:var(--text2);line-height:1.6;margin-bottom:2px;">' + esc(line) + '</div>';
+  });
+  showModal(c.label, body);
+}

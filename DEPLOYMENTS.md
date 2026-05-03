@@ -1,6 +1,6 @@
 # FCP-PMR Deployment & Architecture Guide
 **Living document — update with every major change.**
-**Last updated:** v2.37.1 (2026-03-29)
+**Last updated:** v2.38.0 (2026-04-02)
 
 ---
 
@@ -50,7 +50,12 @@ frontend/parts/js/
   13-guesty.js              1,138 lines  ← Guesty PMS integration
   14-algo-health.js           586 lines  ← Algorithm health dashboard
   15-intelligence.js          482 lines  ← Intelligence features
+  16-marketing.js             862 lines  ← Marketing hub (admin-only)
+  17-portfolio-intel.js       508 lines  ← Portfolio Intelligence (investor/lender view)
 frontend/parts/app-html.html  1,656 lines  ← Main HTML shell
+src/modules/portfolio-intel/
+  calculations.js                        ← Pure financial functions (portable, zero deps)
+  PORTFOLIO-INTEL.md                     ← Module documentation
 validate.js                              ← Build validation (26 structural checks — RUN EVERY TIME)
 audit.js                                 ← Deep code audit (14 logic checks — RUN AFTER CHANGES)
 build.js                                 ← Frontend assembler
@@ -197,6 +202,7 @@ Same incremental approach: only extract when modifying that section.
 
 | Version | Date | Key Changes |
 |---------|------|-------------|
+| v2.38.0 | 2026-04-02 | **Portfolio Intelligence Module**: New top-level tab with investor/lender-facing financial analysis. Portfolio valuation summary (12 KPI cards: value, equity, NOI, cash flow, DSCR, cap rate, LTV, occupancy, ADR, YoY growth). Per-property P&L grid with NOI/DSCR coloring. Monthly revenue trend chart (SVG, revenue + NOI overlay). Growth projections engine (seasonal-aware, configurable 0-15% rates, 1-5yr forward). Acquisition scenario modeler ("What if we add a property?" before/after comparison with DSCR/cap-rate/cash-on-cash impact). AI investment narrative generator (bank loan or investor pitch modes — executive summary, strengths, risks, presentation tips, recommended ask). Portfolio snapshot system for historical tracking. Backend: 6 new endpoints (`/api/portfolio/*`), `portfolio_snapshots` table. Modular architecture: `src/modules/portfolio-intel/calculations.js` contains 14 pure portable financial functions (zero dependencies). **Market Alert Thresholds** (pipeline #6): 6 configurable thresholds in Admin UI (ADR divergence %, occupancy gap pts, stale analysis days, auto-analyze limits). `dailyPricingHealthCheck()` and `autoAnalyzeProperties()` now read from `app_settings` with defaults. **SVG Icon Audit** (pipeline #7): Found 4 missing icons (`star`, `plus`, `minus`, `loader`) used 16 times across codebase — all added to `_ICON_PATHS`. Zero unused icons. |
 | v2.37.1 | 2026-03-29 | **Bulk Re-analyze All**: `bulkAnalyzePricing` now accepts `reanalyze_all: true` to re-run unified AI analysis on ALL active properties, not just unanalyzed. New "Re-analyze All" button on Pricing Overview toolbar with confirmation dialog, progress spinner, and results table. **Occupancy vs Market Badge**: Property cards now show occupancy comparison badge alongside existing ADR badge — green ↑ when beating market by 5+ pts, blue ≈ when within range, red ↓ when lagging. Reads PriceLabs forward 30d occupancy vs market. **Pipeline cleanup**: Confirmed items 1-3 (Property Research Tab, Market Demographics, Guest Origins) were already fully built and deployed — removed from pipeline. |
 | v2.37.0 | 2026-03-29 | **Unified Pricing Analysis**: Consolidated three separate AI analysis functions (`generateAIStrategy`, `generatePLStrategyRecommendation`, `generateRevenueOptimization`) into single `generateUnifiedAnalysis()` — one AI call produces pricing, PriceLabs setup, seasonal strategy, and revenue optimization. Eliminates contradictions between separate analyses and saves ~2/3 AI token cost. All three API routes (`/analyze`, `/pl-strategy`, `/revenue-optimize`) now call unified function with backward-compatible response shapes. New `buildUnifiedPrompt()` combines best context from all three original prompts. Robust `parseUnifiedResponse()` with 4-tier fallback parsing (direct JSON → control char cleanup → quote fixing → regex extraction). Saves to `unified_analysis` report type plus backward-compat writes to `pricing_analysis`, `pl_strategy`, `revenue_optimization`. Frontend: analyze results now show seasonal strategy (peak/low with dollar amounts), PriceLabs setup steps, action items, quick wins, and strategy summary inline. `renderStrategyCard()` peak/low badges now show dollar amounts (e.g., "+40% Peak → $231/nt"). Fixed pre-existing bug: `currentRev`, `listingAudit`, `cleaningFee`, `cleaningCost` were undefined in old `generateRevenueOptimization` prompt. `autoAnalyzeProperties()` and `bulkAnalyzePricing()` now call unified function. Old functions kept but deprecated. |
 | v2.35.0 | 2026-03-27 | **Daily pricing health check cron** (`dailyPricingHealthCheck`): lightweight daily comparison of actual ADR vs PriceLabs set rates vs AI recommendations — flags divergent properties (>20% gap), occupancy underperformance (>15pts below market), stale analysis, missing PriceLabs link. Stores divergent IDs in `market_intelligence` for auto-analyze prioritization. **Smarter `autoAnalyzeProperties`**: moved from weekly to daily, 3-tier priority (never-analyzed → divergent properties from health check → stale 14+ days), max 3/day (was 5/week), logs results via `syslog()`. New API endpoint `POST /api/pricing/health-check`. New Health Check UI button on Pricing Overview tab with severity-sorted results table. **Bill Tracker**: new `bill_accounts` + `bill_payments` tables for recurring utility/insurance/subscription tracking. Full CRUD API (`/api/bills`, `/api/bills/pay`, `/api/bills/dashboard`). Finance tab section with category-grouped payment table, mark-paid workflow, period navigation, add/manage accounts forms. Dashboard widget showing overdue/upcoming bills. Auto-generates monthly payment entries. Trailing 3-month actuals auto-update property `expense_*` fields for better P&L accuracy. Cascade delete coverage (19 tables). New icons: `heartPulse`, `xCircle`, `droplet`, `wifi`, `undo`. |
@@ -333,4 +339,6 @@ tar czf fcp-pmr-v{VERSION}.tar.gz \
 
 **Bills:** `bill_accounts`, `bill_payments`
 
-**All tables with `property_id`** must be included in cascade delete. Current coverage: 19 tables + child units via `parent_id`.
+**Portfolio:** `portfolio_snapshots`, `portfolio_property_config`, `portfolio_profiles`
+
+**All tables with `property_id`** must be included in cascade delete. Current coverage: 20 tables + child units via `parent_id`. Note: `portfolio_snapshots` and `portfolio_profiles` are portfolio-level (no property_id) — not in cascade.
